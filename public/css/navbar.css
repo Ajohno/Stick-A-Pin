@@ -1,3 +1,16 @@
+/* =========================================================
+   navbar.css
+   - Global top navigation styling
+   - Includes desktop layout and mobile drawer behavior
+
+   SECTION MAP
+   1) Accessibility Utility
+   2) Navbar Structure + Brand + Links
+   3) Status/Counter Area
+   4) Mobile Drawer + Breakpoints
+   ========================================================= */
+
+/* Accessibility-only text helper (screen readers) */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -9,6 +22,7 @@
   border: 0;
 }
 
+/* Core navbar container */
 .navbar {
   position: relative;
   z-index: 1200;
@@ -141,6 +155,7 @@
   pointer-events: auto;
 }
 
+/* Tablet/coarse-pointer: convert links into slide-in drawer */
 @media (max-width: 1023px), (hover: none) and (pointer: coarse) {
   .navbar {
     gap: 10px;
@@ -215,6 +230,7 @@
   }
 }
 
+/* Phone breakpoint: tighter spacing and typography */
 @media (max-width: 767px) {
   .navbar {
     padding: 9px 10px;
