@@ -1,3 +1,15 @@
+/* ============================================================
+   stickies.css
+   - Visual skin for corkboard + sticky notes + tape/thumbtack effects
+   - Decorative hand-drawn account dropdown treatment
+
+   SECTION MAP
+   1) Corkboard Surface + Grid Helpers
+   2) Sticky Note Base + Color Variants
+   3) Note Attachments (Thumbtack / Tape)
+   4) Interaction Layers (Rotation / Hover / Z-index)
+   5) Account Dropdown Styling
+   ============================================================ */
 
 /* ============================================================
    CORKBOARD BACKGROUND
@@ -335,7 +347,10 @@
 }
 
 
-/* Hand Drawn Styling */
+/* ============================================================
+   ACCOUNT DROPDOWN (HAND-DRAWN LOOK)
+   - Decorative dropdown trigger + menu treatment
+   ============================================================ */
 
 .account-dropdown {
     position: relative;
@@ -351,7 +366,7 @@
     cursor: pointer;
 }
 
-/* menu */
+/* Dropdown menu container */
 .account-menu {
     position: absolute;
     top: 120%;
@@ -367,25 +382,25 @@
     z-index: 100;
 }
 
-/* open state */
+/* Open state: menu visible */
 .account-dropdown.open .account-menu {
     display: block;
 }
 
-/* items */
+/* Menu items */
 .account-menu li {
     padding: 10px;
     border-radius: 12px 10px 14px 11px;
     cursor: pointer;
 }
 
-/* hover */
+/* Menu item hover state */
 .account-menu li:hover {
     background: #d86f67;
     color: white;
 }
 
-/* divider */
+/* Menu divider */
 .account-menu .divider {
     height: 1px;
     background: rgba(0,0,0,0.15);
@@ -393,7 +408,7 @@
     pointer-events: none;
 }
 
-/* logout styling */
+/* Logout emphasis styling */
 .account-menu .logout {
     color: #b33a35;
 }
