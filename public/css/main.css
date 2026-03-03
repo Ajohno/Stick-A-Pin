@@ -1,7 +1,16 @@
 /* =========================================================
    main.css
-   - Everything EXCEPT sticky notes / tape / corkboard textures
-   - Core typography, layout, auth UI, dashboard widgets, tasks
+   - Core app foundation + page layout + dashboard/task widgets
+   - Responsive behavior for tablet/phone breakpoints
+   - Detailed sticky-note skins live in stickies.css
+
+   SECTION MAP
+   1) Global Base + Utilities
+   2) Auth & Landing Layout
+   3) Typography + Shared Components
+   4) Dashboard & Widgets
+   5) Responsive Overrides (Tablet / Phone)
+   6) Task Detail Side Panel
    ========================================================= */
 
 
@@ -1483,6 +1492,10 @@ input:focus{
 }
 
 
+/* =========================================================
+   TASK DETAIL SIDE PANEL
+   - Slide-in panel used to view/edit individual task details
+   ========================================================= */
 .task-detail-backdrop {
   position: fixed;
   inset: 0;

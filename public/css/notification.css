@@ -1,8 +1,20 @@
 /* =========================================================
+   notification.css
+   - Toast notification component and state variants
+
+   SECTION MAP
+   1) Toast Container + Layout
+   2) Toast Content Elements
+   3) Animations + Motion Preferences
+   4) Variant Themes (success/error/warning/info)
+   ========================================================= */
+
+/* =========================================================
    TOAST NOTIFICATIONS
    - Single toast component with type variants
    ========================================================= */
 
+/* Toast shell: fixed bottom-center notification */
 .toast {
   position: fixed;
   left: 50%;
@@ -89,7 +101,7 @@
   transition: transform linear;
 }
 
-/* Slide/fade animation */
+/* Entry/exit animation states */
 .toast.toast--show {
   animation: toastIn 180ms ease-out;
 }
@@ -106,13 +118,13 @@
   to   { opacity: 0; transform: translateX(-50%) translateY(10px); }
 }
 
-/* Reduced motion */
+/* Respect reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
   .toast.toast--show, .toast.toast--hide { animation: none; }
   .toast__progress::before { transition: none; }
 }
 
-/* Type variants via CSS variables */
+/* Type variants via CSS custom properties */
 .toast--default { --toast-accent: #b98b5f; --toast-accent-soft: rgba(185,139,95,0.18); }
 .toast--success { --toast-accent: #2e8b57; --toast-accent-soft: rgba(46,139,87,0.16); }
 .toast--error   { --toast-accent: #b23b3b; --toast-accent-soft: rgba(178,59,59,0.16); }
