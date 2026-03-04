@@ -8,6 +8,7 @@ const passport = require("passport"); // Middleware for authentication
 const bcrypt = require("bcryptjs"); // Used to hash passwords
 const User = require("./config/models/user"); // User model for the database
 const Task = require("./config/models/task"); // Task model for the database
+const FocusSession = require("./config/models/focusSession"); // FocusSession model for tracking focus sessions
 const MongoStore = require("connect-mongo").default; // Store sessions in MongoDB
 
 
@@ -186,6 +187,34 @@ function parseDateOnlyInput(value) {
   return date;
 }
 
+function parseIsoDateTimeInput(value) {
+  if (typeof value !== "string" || value.trim() === "") return null;
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
+}
+
+function toFocusSessionResponse(session) {
+  const rawTask = session?.taskId;
+  const taskId = rawTask && typeof rawTask === "object" && rawTask._id
+    ? rawTask._id
+    : rawTask;
+  const taskDescription = rawTask && typeof rawTask === "object" && rawTask.description
+    ? rawTask.description
+    : null;
+
+  return {
+    _id: session._id,
+    taskId,
+    taskDescription,
+    startedAt: session.startedAt,
+    endedAt: session.endedAt,
+    durationMs: session.durationMs || 0,
+    endedReason: session.endedReason
+  };
+}
+
 // Handles the submit button
 app.post("/tasks", ensureAuthenticated, async (req, res) => {
   const { description, dueDate, effortLevel } = req.body;
@@ -236,9 +265,27 @@ app.put("/tasks/:taskId", ensureAuthenticated, async (req, res) => {
       task.description = nextDescription;
     }
 
+    // if (Object.prototype.hasOwnProperty.call(req.body, "status")) {
+    //   task.status = req.body.status;
+    // }
+
+    
     if (Object.prototype.hasOwnProperty.call(req.body, "status")) {
-      task.status = req.body.status;
+      const nextStatus = req.body.status;
+      if (!["active", "completed"].includes(nextStatus)) {
+        return res.status(400).json({ error: "Invalid status value" });
+      }
+      
+      if (task.status !== nextStatus) {
+        task.status = nextStatus;
+        if (nextStatus === "completed") {
+          task.completedAt = new Date();
+        } else if (nextStatus === "active") {
+          task.completedAt = null;
+        }
+      }
     }
+
 
     if (Object.prototype.hasOwnProperty.call(req.body, "dueDate")) {
       if (req.body.dueDate === null || req.body.dueDate === "") {
@@ -306,6 +353,126 @@ app.delete("/tasks/:taskId", ensureAuthenticated, async (req, res) => {
   } catch (err) {
     console.error("Error deleting task:", err);
     return res.status(500).json({ error: "Server error while deleting task" });
+  }
+});
+
+// Start a focus session for a task
+app.post("/focus-sessions/start", ensureAuthenticated, async (req, res) => {
+  try {
+    const taskId = String(req.body.taskId || "").trim();
+    if (!taskId) {
+      return res.status(400).json({ error: "taskId is required" });
+    }
+    if (!/^[a-f\d]{24}$/i.test(taskId)) {
+      return res.status(400).json({ error: "Invalid taskId format" });
+    }
+
+    const task = await Task.findOne({ _id: taskId, userId: req.user.id });
+    if (!task) {
+      return res.status(404).json({ error: "Task not found" });
+    }
+    if (task.status !== "active") {
+      return res.status(400).json({ error: "Only active tasks can be focused." });
+    }
+
+    const now = new Date();
+
+    // Ensure one running session per user.
+    const openSession = await FocusSession.findOne({
+      userId: req.user.id,
+      endedAt: null
+    }).sort({ startedAt: -1 });
+
+    if (openSession) {
+      openSession.endedAt = now;
+      openSession.durationMs = Math.max(0, now.getTime() - new Date(openSession.startedAt).getTime());
+      openSession.endedReason = "manual_stop";
+      await openSession.save();
+    }
+
+    const created = await FocusSession.create({
+      userId: req.user.id,
+      taskId: task._id,
+      startedAt: now
+    });
+
+    const session = await FocusSession.findById(created._id).populate({
+      path: "taskId",
+      select: "description"
+    });
+
+    return res.status(201).json(toFocusSessionResponse(session));
+  } catch (err) {
+    console.error("Error starting focus session:", err);
+    return res.status(500).json({ error: "Server error while starting focus session" });
+  }
+});
+
+// Stop the active focus session
+app.post("/focus-sessions/stop", ensureAuthenticated, async (req, res) => {
+  try {
+    const validReasons = new Set(["completed_task", "manual_stop", "timeout", "app_closed"]);
+    const requestedReason = String(req.body.reason || "manual_stop");
+    const endedReason = validReasons.has(requestedReason) ? requestedReason : "manual_stop";
+
+    const openSession = await FocusSession.findOne({
+      userId: req.user.id,
+      endedAt: null
+    }).sort({ startedAt: -1 });
+
+    if (!openSession) {
+      return res.status(404).json({ error: "No active focus session to stop." });
+    }
+
+    const endedAt = new Date();
+    openSession.endedAt = endedAt;
+    openSession.durationMs = Math.max(0, endedAt.getTime() - new Date(openSession.startedAt).getTime());
+    openSession.endedReason = endedReason;
+    await openSession.save();
+
+    const session = await FocusSession.findById(openSession._id).populate({
+      path: "taskId",
+      select: "description"
+    });
+
+    return res.json(toFocusSessionResponse(session));
+  } catch (err) {
+    console.error("Error stopping focus session:", err);
+    return res.status(500).json({ error: "Server error while stopping focus session" });
+  }
+});
+
+// Query focus sessions by date range (used by reflections)
+app.get("/focus-sessions", ensureAuthenticated, async (req, res) => {
+  try {
+    const from = parseIsoDateTimeInput(req.query.from);
+    const to = parseIsoDateTimeInput(req.query.to);
+
+    if (req.query.from && !from) {
+      return res.status(400).json({ error: "Invalid from date" });
+    }
+    if (req.query.to && !to) {
+      return res.status(400).json({ error: "Invalid to date" });
+    }
+    if (from && to && from >= to) {
+      return res.status(400).json({ error: "from must be earlier than to" });
+    }
+
+    const query = { userId: req.user.id };
+    if (from || to) {
+      query.startedAt = {};
+      if (from) query.startedAt.$gte = from;
+      if (to) query.startedAt.$lt = to;
+    }
+
+    const sessions = await FocusSession.find(query)
+      .sort({ startedAt: -1 })
+      .populate({ path: "taskId", select: "description" });
+
+    return res.json(sessions.map((session) => toFocusSessionResponse(session)));
+  } catch (err) {
+    console.error("Error retrieving focus sessions:", err);
+    return res.status(500).json({ error: "Server error while retrieving focus sessions" });
   }
 });
 

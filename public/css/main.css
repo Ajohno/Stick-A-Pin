@@ -513,7 +513,6 @@ input:focus{
 
 /* Widget containers inside columns */
 .board-grid #task-list-widget,
-.board-grid #focus-mode-widget,
 .board-grid #big-3-tasks,
 .board-grid #create-task-widget,
 .board-grid #reflection-section{
@@ -521,16 +520,6 @@ input:focus{
   margin-bottom: 0;
   min-height: 0;
 }
-
-
-
-/* Right column: Focus mode sits above reflections */
-.board-grid #focus-mode-widget{
-  height: auto;
-  flex: 0 0 auto;
-  margin-bottom: 8px;
-}
-
 /* Reflection section is a 2-column grid on desktop */
 .board-grid #reflection-section{
   display: grid;
@@ -748,7 +737,7 @@ input:focus{
 .task-item{
   margin-top: 0.6rem;
   padding-bottom: 0.5rem;
-  padding-right: 5.4rem;
+  padding-right: 0.25rem;
   position: relative;
 }
 
@@ -768,14 +757,6 @@ input:focus{
   );
 }
 
-
-.task-actions{
-  position: absolute;
-  top: 0.2rem;
-  right: 0;
-  display: inline-flex;
-  gap: 0.35rem;
-}
 
 .task-action-btn{
   width: 1.7rem;
@@ -1259,11 +1240,6 @@ input:focus{
     width: clamp(120px, 45%, 170px);
   }
 
-  #focus-mode-widget p{
-    margin: 0 0 6px;
-    font-size: 0.95rem;
-  }
-
   #focus-button{
     width: min(170px, 70%);
     margin-top: 6px;
@@ -1332,7 +1308,6 @@ input:focus{
   #task-list-widget,
   #create-task-widget,
   #big-3-tasks,
-  #focus-mode-widget,
   #reflection-section,
   #daily-reflection,
   #weekly-reflection{
@@ -1356,7 +1331,6 @@ input:focus{
 
   /* Widgets stop relying on % heights */
   #task-list-widget,
-  #focus-mode-widget,
   #reflection-section{
     height: auto;
     min-height: 220px;

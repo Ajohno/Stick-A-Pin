@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <title>Stick A Pin</title>
@@ -9,7 +9,11 @@
     <link rel="icon" type="image/png" href="/assets/image/donezo-logo.png" />
 
     <!-- iOS home screen icon -->
-    <link rel="apple-touch-icon" sizes="180x180" href="/assets/image/donezo-logo.png" />
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="/assets/image/donezo-logo.png"
+    />
     <link rel="manifest" href="/site.webmanifest" />
     <meta name="theme-color" content="#f5ecd7" />
     <link rel="stylesheet" href="css/main.css" />
@@ -24,66 +28,59 @@
     />
 
     <!-- get rid of favicon error -->
-        
+
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css"
     />
   </head>
   <body>
-    
-
     <!-- Hidden until login -->
     <div id="main-section">
-      
+      <!-- NEW NAV BAR -->
+      <nav class="navbar">
+        <div class="nav-left">
+          <button
+            class="nav__toggle"
+            type="button"
+            aria-label="Open menu"
+            aria-controls="nav-drawer"
+            aria-expanded="false"
+          >
+            <i class="fa-solid fa-bars" aria-hidden="true"></i>
+            <span class="sr-only">Menu</span>
+          </button>
 
-<!-- NEW NAV BAR -->
-<nav class="navbar">
-  <div class="nav-left">
-    <button
-      class="nav__toggle"
-      type="button"
-      aria-label="Open menu"
-      aria-controls="nav-drawer"
-      aria-expanded="false"
-    >
-      <i class="fa-solid fa-bars" aria-hidden="true"></i>
-      <span class="sr-only">Menu</span>
-    </button>
-
-    <div class="logo-container">
-      
-      <div class="logo-sticky">
-        
-        <div class="thumbtack">
-          <i class="fa-solid fa-thumbtack" style="color:#c6534e;"></i>
+          <div class="logo-container">
+            <div class="logo-sticky">
+              <div class="thumbtack">
+                <i class="fa-solid fa-thumbtack" style="color: #c6534e"></i>
+              </div>
+            </div>
+            <span class="brand-name">Stick A Pin</span>
+          </div>
         </div>
-      </div>
-      <span class="brand-name">Stick A Pin</span>
-    </div>
-  </div>
 
-  <ul class="nav-links" id="nav-drawer">
-    <li><a href="/dashboard.html" class="nav-item active">Board</a></li>
-    <li><a href="/calendar-page.html" class="nav-item">Calendar</a></li>
-    <li><a href="/feedback-page.html" class="nav-item">Feedback</a></li>
-    <li><a href="/settings-page.html" class="nav-item">Settings</a></li>
-    <li><a href="/profile-page.html" class="nav-item">Profile</a></li>
-    <li><a href="#" id="logoutBtn" class="nav-item">Logout</a></li>
-  </ul>
+        <ul class="nav-links" id="nav-drawer">
+          <li><a href="/dashboard.html" class="nav-item active">Board</a></li>
+          <li><a href="/calendar-page.html" class="nav-item">Calendar</a></li>
+          <li><a href="/feedback-page.html" class="nav-item">Feedback</a></li>
+          <li><a href="/settings-page.html" class="nav-item">Settings</a></li>
+          <li><a href="/profile-page.html" class="nav-item">Profile</a></li>
+          <li><a href="#" id="logoutBtn" class="nav-item">Logout</a></li>
+        </ul>
 
-  <div class="nav-right">
-    <div class="nav-status">
-      <div class="nav-tasks">
-        <span class="tasks-count item-counter"></span>
-        <span class="tasks-label-text">Tasks Left</span>
-      </div>
-      <span id="authStatus" class="nav-welcome"></span>
-    </div>
-  </div>
-</nav>
-<div id="nav-backdrop" aria-hidden="true"></div>
-
+        <div class="nav-right">
+          <div class="nav-status">
+            <div class="nav-tasks">
+              <span class="tasks-count item-counter"></span>
+              <span class="tasks-label-text">Tasks Left</span>
+            </div>
+            <span id="authStatus" class="nav-welcome"></span>
+          </div>
+        </div>
+      </nav>
+      <div id="nav-backdrop" aria-hidden="true"></div>
 
       <div class="corkboard">
         <!-- Dashboard -->
@@ -93,28 +90,38 @@
             <!-- Task List -->
             <div id="task-list-widget" class="sticky-note thumbtack task-note">
               <h2 class="widget-title highlight-on-parent-hover">
-                <i class="fa-solid fa-list" style="color: #c6534e;"></i>
+                <i class="fa-solid fa-list" style="color: #c6534e"></i>
                 Task List
               </h2>
 
               <ul class="task-list scrollable"></ul>
               <template id="task-template">
                 <li class="task-item">
-                  <label class="checkbox-container" aria-label="Mark task complete">
+                  <label
+                    class="checkbox-container"
+                    aria-label="Mark task complete"
+                  >
                     <input type="checkbox" class="task-check" />
                     <span class="checkmark"></span>
                   </label>
-                  <button type="button" class="task-text task-details-trigger"></button>
+                  <button
+                    type="button"
+                    class="task-text task-details-trigger"
+                  ></button>
                   <div class="task-meta">
-                    <span class="task-due"></span>
                     <span class="task-meta-right">
                       <span class="task-effort">
                         <span class="dot"></span><span class="dot"></span>
                         <span class="dot"></span><span class="dot"></span>
                         <span class="dot"></span>
                       </span>
-                      <i class="fa-solid fa-star task-big-three-indicator" aria-hidden="true" hidden></i>
+                      <i
+                        class="fa-solid fa-star task-big-three-indicator"
+                        aria-hidden="true"
+                        hidden
+                      ></i>
                     </span>
+                    <span class="task-due"></span>
                   </div>
                 </li>
               </template>
@@ -145,35 +152,49 @@
                 <div class="paper-field effort-field">
                   <label>Effort Level (1–5)</label>
 
-                  <div class="effort-options" role="radiogroup" aria-label="Effort level">
+                  <div
+                    class="effort-options"
+                    role="radiogroup"
+                    aria-label="Effort level"
+                  >
                     <label class="effort-option">
-                      <input type="radio" name="effortLevel" value="1" required>
+                      <input
+                        type="radio"
+                        name="effortLevel"
+                        value="1"
+                        required
+                      />
                       1
                     </label>
 
                     <label class="effort-option">
-                      <input type="radio" name="effortLevel" value="2">
+                      <input type="radio" name="effortLevel" value="2" />
                       2
                     </label>
 
                     <label class="effort-option">
-                      <input type="radio" name="effortLevel" value="3" checked>
+                      <input
+                        type="radio"
+                        name="effortLevel"
+                        value="3"
+                        checked
+                      />
                       3
                     </label>
 
                     <label class="effort-option">
-                      <input type="radio" name="effortLevel" value="4">
+                      <input type="radio" name="effortLevel" value="4" />
                       4
                     </label>
 
                     <label class="effort-option">
-                      <input type="radio" name="effortLevel" value="5">
+                      <input type="radio" name="effortLevel" value="5" />
                       5
                     </label>
                   </div>
                 </div>
 
-                <button id="submitBtn" class="paper-button" type="submit" >
+                <button id="submitBtn" class="paper-button" type="submit">
                   Pin it!
                 </button>
               </form>
@@ -181,19 +202,26 @@
 
             <!-- Big 3 Tasks -->
             <div id="big-3-tasks" class="sticky-note pink thumbtack">
-              
               <!-- Title -->
               <h2 class="widget-title highlight-on-parent-hover">
-                <i class="fa-solid fa-star" style="color: #c6534e;"></i>
+                <i class="fa-solid fa-star" style="color: #c6534e"></i>
                 Big 3 Tasks
               </h2>
 
               <p class="big-three-empty">
-                <i class="fa-regular fa-star" style="color: rgba(237, 28, 28, 1.00);"></i>
+                <i
+                  class="fa-regular fa-star"
+                  style="color: rgba(237, 28, 28, 1)"
+                ></i>
                 No Big 3 tasks yet. Star up to 3 tasks from your list.
               </p>
               <ul id="big-three-list" class="big-three-list"></ul>
-              <button id="drown-noise-btn" class="paper-button big-three-cta" type="button">
+              <button
+                id="drown-noise-btn"
+                class="paper-button big-three-cta"
+                type="button"
+                onclick="window.location.href = 'focus-page.html'"
+              >
                 Drown the Noise
               </button>
             </div>
@@ -247,12 +275,28 @@
     <aside id="task-detail-panel" class="task-detail-panel" aria-hidden="true">
       <div class="task-detail-panel__header">
         <h3>Task Details</h3>
-        <button id="taskDetailClose" class="task-detail-close" type="button" aria-label="Close task details">×</button>
+        <button
+          id="taskDetailClose"
+          class="task-detail-close"
+          type="button"
+          aria-label="Close task details"
+        >
+          ×
+        </button>
       </div>
 
       <div class="task-detail-actions">
-        <button type="button" id="panelBigThreeBtn" class="task-action-btn big-three-btn" aria-label="Toggle Big 3 task">
-          <i class="fa-regular fa-star" style="color: rgba(237, 28, 28, 1.00);" aria-hidden="true"></i>
+        <button
+          type="button"
+          id="panelBigThreeBtn"
+          class="task-action-btn big-three-btn"
+          aria-label="Toggle Big 3 task"
+        >
+          <i
+            class="fa-regular fa-star"
+            style="color: rgba(237, 28, 28, 1)"
+            aria-hidden="true"
+          ></i>
           <span>Big 3</span>
         </button>
         <button type="button" id="panelEditBtn" class="task-action-btn">
@@ -268,30 +312,62 @@
       <div class="task-detail-content">
         <p class="task-detail-label">Task Description</p>
         <p id="panelTaskDescription" class="task-detail-value"></p>
-        <input id="panelTaskDescriptionInput" class="task-detail-input" type="text" hidden />
+        <input
+          id="panelTaskDescriptionInput"
+          class="task-detail-input"
+          type="text"
+          hidden
+        />
 
         <p class="task-detail-label">Due Date</p>
         <p id="panelTaskDueDate" class="task-detail-value"></p>
-        <input id="panelTaskDueDateInput" class="task-detail-input" type="date" hidden />
+        <input
+          id="panelTaskDueDateInput"
+          class="task-detail-input"
+          type="date"
+          hidden
+        />
 
         <p class="task-detail-label">Effort Level</p>
         <p id="panelTaskEffort" class="task-detail-value"></p>
-        <div id="panelTaskEffortInput" class="effort-options task-detail-effort-options" role="radiogroup" aria-label="Edit effort level" hidden>
-          <label class="effort-option"><input type="radio" name="panelEffortLevel" value="1">1</label>
-          <label class="effort-option"><input type="radio" name="panelEffortLevel" value="2">2</label>
-          <label class="effort-option"><input type="radio" name="panelEffortLevel" value="3">3</label>
-          <label class="effort-option"><input type="radio" name="panelEffortLevel" value="4">4</label>
-          <label class="effort-option"><input type="radio" name="panelEffortLevel" value="5">5</label>
+        <div
+          id="panelTaskEffortInput"
+          class="effort-options task-detail-effort-options"
+          role="radiogroup"
+          aria-label="Edit effort level"
+          hidden
+        >
+          <label class="effort-option"
+            ><input type="radio" name="panelEffortLevel" value="1" />1</label
+          >
+          <label class="effort-option"
+            ><input type="radio" name="panelEffortLevel" value="2" />2</label
+          >
+          <label class="effort-option"
+            ><input type="radio" name="panelEffortLevel" value="3" />3</label
+          >
+          <label class="effort-option"
+            ><input type="radio" name="panelEffortLevel" value="4" />4</label
+          >
+          <label class="effort-option"
+            ><input type="radio" name="panelEffortLevel" value="5" />5</label
+          >
         </div>
 
-        <label class="task-detail-complete checkbox-container" aria-label="Mark task complete from details panel">
+        <label
+          class="task-detail-complete checkbox-container"
+          aria-label="Mark task complete from details panel"
+        >
           <input type="checkbox" id="panelTaskComplete" />
           <span class="checkmark"></span>
           <span class="task-detail-complete-text">Mark as complete</span>
         </label>
       </div>
     </aside>
-    <div id="task-detail-backdrop" class="task-detail-backdrop" aria-hidden="true"></div>
-    
+    <div
+      id="task-detail-backdrop"
+      class="task-detail-backdrop"
+      aria-hidden="true"
+    ></div>
   </body>
 </html>
