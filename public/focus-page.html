@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Stick A Pin</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script src="js/notification.js" defer></script>
+    <script src="js/main.js" defer></script>
+    <link rel="icon" type="image/png" href="/assets/image/donezo-logo.png" />
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="/assets/image/donezo-logo.png"
+    />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#f5ecd7" />
+    <link rel="stylesheet" href="css/main.css" />
+    <link rel="stylesheet" href="css/focus-page.css" />
+    <link rel="stylesheet" href="css/stickies.css" />
+    <link rel="stylesheet" href="css/notification.css" />
+    <link rel="stylesheet" href="css/navbar.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Gochi+Hand&family=Itim&family=Quantico:ital,wght@0,400;0,700;1,400;1,700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css"
+    />
+  </head>
+  <body>
+    <nav class="navbar">
+      <div class="nav-left">
+        <button
+          class="nav__toggle"
+          type="button"
+          aria-label="Open menu"
+          aria-controls="nav-drawer"
+          aria-expanded="false"
+        >
+          <i class="fa-solid fa-bars" aria-hidden="true"></i>
+          <span class="sr-only">Menu</span>
+        </button>
+        <div class="logo-container">
+          <div class="logo-sticky">
+            <div class="thumbtack">
+              <i class="fa-solid fa-thumbtack" style="color: #c6534e"></i>
+            </div>
+          </div>
+          <span class="brand-name">Stick A Pin</span>
+        </div>
+      </div>
+      <ul class="nav-links" id="nav-drawer">
+        <li><a href="/dashboard.html" class="nav-item">Board</a></li>
+        <li><a href="/calendar-page.html" class="nav-item">Calendar</a></li>
+        <li>
+          <a href="/feedback-page.html" class="nav-item">Feedback</a>
+        </li>
+        <li><a href="/settings-page.html" class="nav-item">Settings</a></li>
+        <li><a href="/profile-page.html" class="nav-item">Profile</a></li>
+        <li><a href="#" id="logoutBtn" class="nav-item">Logout</a></li>
+      </ul>
+      <div class="nav-right">
+        <div class="nav-status">
+          <div class="nav-tasks">
+            <span class="tasks-count item-counter"></span>
+            <span class="tasks-label-text">Tasks Left</span>
+          </div>
+          <span id="authStatus" class="nav-welcome"></span>
+        </div>
+      </div>
+    </nav>
+    <div id="nav-backdrop" aria-hidden="true"></div>
+
+    <main class="corkboard" style="max-width: 1100px; margin: 2rem auto">
+      <!-- Focus Mode -->
+      <div id="focus-mode-widget" class="sticky-note white tape">
+        <h2 class="widget-title highlight-on-parent-hover">
+          <i class="fa-solid fa-bullseye" style="color: #c6534e"></i>
+          Focus Mode
+        </h2>
+
+        <div class="focus-mode-grid">
+          <div class="focus-mode-left">
+            <p id="focus-status" class="focus-status">
+              Pick a task and start a focus session.
+            </p>
+
+            <div class="paper-field">
+              <label id="focusTaskLabel" for="focusTaskSelect">Task</label>
+              <select
+                id="focusTaskSelect"
+                aria-label="Select a task to focus on"
+                hidden
+              ></select>
+              <ul
+                id="focusTaskList"
+                class="big-three-list focus-task-list"
+                role="listbox"
+                aria-labelledby="focusTaskLabel"
+              ></ul>
+            </div>
+
+            <div class="focus-controls">
+              <button id="focusStartBtn" class="paper-button" type="button">
+                Start
+              </button>
+              <button id="focusStopBtn" class="paper-button" type="button" hidden disabled>
+                Stop
+              </button>
+              <span id="focusTimer" class="focus-timer" aria-live="polite"
+                >00:00</span
+              >
+            </div>
+          </div>
+
+          <div class="focus-mode-right">
+            <h3 class="focus-log-title">Focus Log</h3>
+            <div id="focus-log-body" class="focus-log-body">
+              <p class="focus-log-note">
+                No focused tasks yet today. Start a focus session to track one.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <div
+      id="toast"
+      class="toast toast--default"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      hidden
+    >
+      <div class="toast__icon" aria-hidden="true">i</div>
+      <div class="toast__content">
+        <div id="toastTitle" class="toast__title" hidden></div>
+        <div id="toastMessage" class="toast__message"></div>
+      </div>
+      <button
+        id="toastClose"
+        class="toast__close"
+        type="button"
+        aria-label="Close notification"
+      >
+        ×
+      </button>
+      <div class="toast__progress"></div>
+    </div>
+  </body>
+</html>

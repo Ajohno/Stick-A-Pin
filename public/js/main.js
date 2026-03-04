@@ -16,6 +16,460 @@ async function parseApiResponse(response) {
     return { error: text || "Unexpected server response" };
 }
 
+const focusState = {
+    taskId: null,
+    sessionId: null,
+    startedAt: null,
+    timerIntervalId: null
+};
+
+function formatFocusDuration(totalSeconds) {
+    const safeSeconds = Math.max(0, parseInt(totalSeconds, 10) || 0);
+    const minutes = Math.floor(safeSeconds / 60);
+    const seconds = safeSeconds % 60;
+    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function renderFocusTimer() {
+    const timerEl = document.getElementById("focusTimer");
+    if (!timerEl) return;
+
+    if (!focusState.startedAt) {
+        timerEl.textContent = "00:00";
+        return;
+    }
+
+    const elapsedSeconds = Math.floor((Date.now() - focusState.startedAt) / 1000);
+    timerEl.textContent = formatFocusDuration(elapsedSeconds);
+}
+
+function startFocusTimer() {
+    if (focusState.timerIntervalId) {
+        window.clearInterval(focusState.timerIntervalId);
+    }
+    renderFocusTimer();
+    focusState.timerIntervalId = window.setInterval(renderFocusTimer, 1000);
+}
+
+function stopFocusTimer() {
+    if (focusState.timerIntervalId) {
+        window.clearInterval(focusState.timerIntervalId);
+        focusState.timerIntervalId = null;
+    }
+}
+
+function updateFocusModeControls({ running, hasTask } = {}) {
+    const selectEl = document.getElementById("focusTaskSelect");
+    const taskListEl = document.getElementById("focusTaskList");
+    const startBtn = document.getElementById("focusStartBtn");
+    const stopBtn = document.getElementById("focusStopBtn");
+    const canStart = typeof hasTask === "boolean"
+        ? hasTask
+        : Boolean(selectEl?.value);
+
+    if (selectEl) selectEl.disabled = running;
+    if (taskListEl) {
+        taskListEl.setAttribute("aria-disabled", Boolean(running) ? "true" : "false");
+        taskListEl.querySelectorAll(".focus-task-option").forEach((buttonEl) => {
+            buttonEl.disabled = Boolean(running);
+        });
+    }
+    if (startBtn) {
+        startBtn.hidden = Boolean(running);
+        startBtn.disabled = Boolean(running) || !canStart;
+    }
+    if (stopBtn) {
+        stopBtn.hidden = !Boolean(running);
+        stopBtn.disabled = !Boolean(running);
+    }
+}
+
+function syncFocusTaskSelection(taskListEl, selectedTaskId) {
+    if (!taskListEl) return;
+
+    const selectedValue = String(selectedTaskId || "");
+    taskListEl.querySelectorAll(".focus-task-list-item").forEach((item) => {
+        const isSelected = item.dataset.taskId === selectedValue;
+        item.classList.toggle("is-selected", isSelected);
+        item.setAttribute("aria-selected", isSelected ? "true" : "false");
+    });
+}
+
+function updateFocusTaskOptions(tasks) {
+    const selectEl = document.getElementById("focusTaskSelect");
+    const taskListEl = document.getElementById("focusTaskList");
+    if (!selectEl) return;
+
+    const activeTasks = Array.isArray(tasks)
+        ? tasks.filter((task) => task.status === "active")
+        : [];
+
+    const previousValue = selectEl.value;
+    selectEl.innerHTML = "";
+    if (taskListEl) taskListEl.innerHTML = "";
+
+    if (activeTasks.length === 0) {
+        const option = document.createElement("option");
+        option.value = "";
+        option.textContent = "No active tasks";
+        selectEl.appendChild(option);
+
+        if (taskListEl) {
+            const emptyItem = document.createElement("li");
+            emptyItem.className = "big-three-item focus-task-empty";
+            emptyItem.textContent = "No active tasks";
+            taskListEl.appendChild(emptyItem);
+        }
+
+        updateFocusModeControls({ running: Boolean(focusState.taskId), hasTask: false });
+        return;
+    }
+
+    activeTasks.forEach((task) => {
+        const option = document.createElement("option");
+        const taskId = String(task._id);
+        option.value = taskId;
+        option.textContent = task.description || "Untitled task";
+        selectEl.appendChild(option);
+
+        if (taskListEl) {
+            const item = document.createElement("li");
+            item.className = "big-three-item focus-task-list-item";
+            item.dataset.taskId = taskId;
+            item.setAttribute("role", "option");
+            item.setAttribute("aria-selected", "false");
+
+            const completeInput = document.createElement("input");
+            completeInput.type = "checkbox";
+            completeInput.className = "task-check big-three-check focus-task-check";
+            completeInput.checked = false;
+            completeInput.setAttribute("aria-label", `Mark task complete: ${task.description || "Untitled task"}`);
+            completeInput.addEventListener("click", (event) => {
+                event.stopPropagation();
+            });
+            completeInput.addEventListener("change", async () => {
+                if (!completeInput.checked) return;
+
+                completeInput.disabled = true;
+                optionButton.disabled = true;
+
+                const payload = { status: "completed" };
+                if (Boolean(task.isBigThree)) {
+                    payload.isBigThree = false;
+                }
+
+                try {
+                    const updateResponse = await fetch(`/tasks/${taskId}`, {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload)
+                    });
+
+                    const updateData = await parseApiResponse(updateResponse);
+                    if (!updateResponse.ok) {
+                        completeInput.checked = false;
+                        Toast.show({
+                            message: updateData?.error || "Could not complete task.",
+                            type: "error",
+                            duration: 3000
+                        });
+                        return;
+                    }
+
+                    if (focusState.taskId && String(focusState.taskId) === taskId) {
+                        await stopFocusSession("completed_task");
+                    }
+
+                    await loadFocusTasks();
+                } catch (error) {
+                    console.error("Completing focus-list task failed:", error);
+                    completeInput.checked = false;
+                    Toast.show({ message: "Could not complete task.", type: "error", duration: 3000 });
+                } finally {
+                    if (!focusState.taskId) {
+                        updateFocusModeControls({ running: false, hasTask: Boolean(selectEl.value) });
+                    }
+                }
+            });
+
+            const optionButton = document.createElement("button");
+            optionButton.type = "button";
+            optionButton.className = "focus-task-option";
+            optionButton.textContent = task.description || "Untitled task";
+            optionButton.addEventListener("click", () => {
+                if (focusState.taskId) return;
+                selectEl.value = taskId;
+                syncFocusTaskSelection(taskListEl, taskId);
+                updateFocusModeControls({ running: false, hasTask: true });
+            });
+
+            item.append(completeInput, optionButton);
+            taskListEl.appendChild(item);
+        }
+    });
+
+    if (previousValue && activeTasks.some((task) => String(task._id) === previousValue)) {
+        selectEl.value = previousValue;
+    }
+
+    if (!selectEl.value && activeTasks.length > 0) {
+        selectEl.value = String(activeTasks[0]._id);
+    }
+
+    if (focusState.taskId && !activeTasks.some((task) => String(task._id) === String(focusState.taskId))) {
+        void stopFocusSession("task_no_longer_active");
+    }
+
+    syncFocusTaskSelection(taskListEl, selectEl.value);
+    updateFocusModeControls({ running: Boolean(focusState.taskId), hasTask: Boolean(selectEl.value) });
+}
+
+async function loadFocusTasks() {
+    const response = await fetch("/tasks", { credentials: "include" });
+    if (!response.ok) {
+        updateFocusTaskOptions([]);
+        return [];
+    }
+
+    const tasks = await response.json();
+    updateFocusTaskOptions(tasks);
+    return tasks;
+}
+
+function getFocusLogBody() {
+    return document.getElementById("focus-log-body");
+}
+
+function getTodayIsoRange() {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    return { from: start.toISOString(), to: end.toISOString() };
+}
+
+function computeSessionDurationMs(session) {
+    const explicitDurationMs = Number(session?.durationMs);
+    if (Number.isFinite(explicitDurationMs) && explicitDurationMs > 0) {
+        return explicitDurationMs;
+    }
+
+    const startedAt = new Date(session?.startedAt || 0);
+    if (Number.isNaN(startedAt.getTime())) return 0;
+
+    const endedAt = session?.endedAt ? new Date(session.endedAt) : new Date();
+    if (Number.isNaN(endedAt.getTime())) return 0;
+
+    return Math.max(0, endedAt.getTime() - startedAt.getTime());
+}
+
+function summarizeDailyFocusSessions(sessions) {
+    const totalsByTask = new Map();
+
+    sessions.forEach((session) => {
+        const taskId = String(session?.taskId || session?.taskDescription || "unknown-task");
+        const taskDescription = String(session?.taskDescription || "Deleted task").trim() || "Deleted task";
+
+        if (!totalsByTask.has(taskId)) {
+            totalsByTask.set(taskId, {
+                taskDescription,
+                sessions: 0,
+                durationMs: 0
+            });
+        }
+
+        const entry = totalsByTask.get(taskId);
+        entry.sessions += 1;
+        entry.durationMs += computeSessionDurationMs(session);
+    });
+
+    return Array.from(totalsByTask.values()).sort((a, b) => {
+        if (b.durationMs !== a.durationMs) return b.durationMs - a.durationMs;
+        if (b.sessions !== a.sessions) return b.sessions - a.sessions;
+        return a.taskDescription.localeCompare(b.taskDescription);
+    });
+}
+
+function formatSessionMinutes(durationMs) {
+    const minutes = Math.max(1, Math.round((Number(durationMs) || 0) / 60000));
+    return `${minutes} min`;
+}
+
+async function updateFocusLogWidget() {
+    const body = getFocusLogBody();
+    if (!body) return;
+
+    const { from, to } = getTodayIsoRange();
+    const query = new URLSearchParams({ from, to }).toString();
+
+    try {
+        const response = await fetch(`/focus-sessions?${query}`, {
+            credentials: "include",
+            cache: "no-store"
+        });
+        const data = await parseApiResponse(response);
+
+        if (!response.ok) {
+            throw new Error(data?.error || "Could not load focus sessions.");
+        }
+
+        const sessions = Array.isArray(data) ? data : [];
+        const summary = summarizeDailyFocusSessions(sessions);
+
+        if (summary.length === 0) {
+            body.innerHTML = "<p class=\"focus-log-note\">No focused tasks yet today. Start a focus session to track one.</p>";
+            return;
+        }
+
+        body.innerHTML = "";
+        const list = document.createElement("ul");
+        list.className = "focus-log-list";
+
+        summary.forEach((entry) => {
+            const sessionLabel = entry.sessions === 1 ? "session" : "sessions";
+            const item = document.createElement("li");
+            item.className = "focus-log-item";
+
+            const title = document.createElement("span");
+            title.className = "focus-log-item-title";
+            title.textContent = entry.taskDescription;
+
+            const meta = document.createElement("span");
+            meta.className = "focus-log-item-meta";
+            meta.textContent = `${entry.sessions} ${sessionLabel} - ${formatSessionMinutes(entry.durationMs)}`;
+
+            item.append(title, meta);
+            list.appendChild(item);
+        });
+
+        body.appendChild(list);
+    } catch (error) {
+        console.error("Failed to update focus log widget:", error);
+        body.innerHTML = "<p class=\"focus-log-note\">Could not load today's focus log right now.</p>";
+    }
+}
+
+async function stopFocusSession(reason = "manual_stop") {
+    const statusEl = document.getElementById("focus-status");
+    const isRunning = Boolean(focusState.taskId);
+    const apiReason = ["completed_task", "manual_stop", "timeout", "app_closed"].includes(reason)
+        ? reason
+        : "manual_stop";
+    let stopError = null;
+
+    if (isRunning) {
+        try {
+            const response = await fetch("/focus-sessions/stop", {
+                credentials: "include",
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ reason: apiReason })
+            });
+
+            if (!response.ok && response.status !== 404) {
+                const payload = await parseApiResponse(response);
+                stopError = payload?.error || "Could not save focus session.";
+            }
+        } catch (error) {
+            console.error("Stop focus session request failed:", error);
+            stopError = "Could not save focus session.";
+        }
+    }
+
+    stopFocusTimer();
+    focusState.taskId = null;
+    focusState.sessionId = null;
+    focusState.startedAt = null;
+    updateFocusModeControls({ running: false });
+    renderFocusTimer();
+
+    if (isRunning) {
+        await updateFocusLogWidget();
+    }
+
+    if (!statusEl || !isRunning) return;
+
+    if (reason === "completed_task") {
+        statusEl.textContent = "Focus session ended because this task was completed.";
+    } else if (reason === "task_no_longer_active") {
+        statusEl.textContent = "Focus session ended because the task is no longer active.";
+    } else {
+        statusEl.textContent = "Focus session stopped.";
+    }
+
+    if (stopError) {
+        Toast.show({ message: stopError, type: "error", duration: 3000 });
+    }
+}
+
+async function initFocusMode() {
+    const selectEl = document.getElementById("focusTaskSelect");
+    const startBtn = document.getElementById("focusStartBtn");
+    const stopBtn = document.getElementById("focusStopBtn");
+    const statusEl = document.getElementById("focus-status");
+    if (!selectEl || !startBtn || !stopBtn || !statusEl) return;
+
+    try {
+        await loadFocusTasks();
+    } catch (error) {
+        console.error("Focus task preload failed:", error);
+        updateFocusTaskOptions([]);
+    }
+
+    startBtn.addEventListener("click", async () => {
+        const selectedTaskId = selectEl.value;
+        const selectedTaskLabel = selectEl.options[selectEl.selectedIndex]?.text || "";
+        if (!selectedTaskId) {
+            Toast.show({ message: "Select a task before starting focus mode.", type: "error", duration: 2500 });
+            return;
+        }
+
+        if (focusState.taskId) {
+            return;
+        }
+
+        startBtn.disabled = true;
+
+        try {
+            const response = await fetch("/focus-sessions/start", {
+                credentials: "include",
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ taskId: selectedTaskId })
+            });
+            const payload = await parseApiResponse(response);
+
+            if (!response.ok) {
+                Toast.show({ message: payload?.error || "Could not start focus session.", type: "error", duration: 3000 });
+                return;
+            }
+
+            const parsedStartedAt = new Date(payload?.startedAt || Date.now());
+
+            focusState.sessionId = payload?._id || null;
+            focusState.taskId = selectedTaskId;
+            focusState.startedAt = Number.isNaN(parsedStartedAt.getTime())
+                ? Date.now()
+                : parsedStartedAt.getTime();
+            updateFocusModeControls({ running: true, hasTask: true });
+            startFocusTimer();
+            statusEl.textContent = `Focused on: ${selectedTaskLabel}`;
+            await updateFocusLogWidget();
+        } catch (error) {
+            console.error("Start focus session request failed:", error);
+            Toast.show({ message: "Could not start focus session.", type: "error", duration: 3000 });
+        } finally {
+            if (!focusState.taskId) {
+                updateFocusModeControls({ running: false, hasTask: Boolean(selectEl.value) });
+            }
+        }
+    });
+
+    stopBtn.addEventListener("click", async () => {
+        await stopFocusSession("manual_stop");
+    });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
     console.log("DOM Fully Loaded - JavaScript Running");
 
@@ -162,6 +616,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     checkAuthStatus({ isLoginPage, isRegisterPage, isProtectedPage, isHomePage }); // Check authentication status on page load
+    initFocusMode();
 });
 
 
@@ -187,7 +642,7 @@ async function updateNavTaskCounter() {
 }
 
 // Function to check if a user is currently logged in
-async function checkAuthStatus({ isLoginPage, isRegisterPage, isProtectedPage, isHomePage }) {
+async function checkAuthStatus({ isLoginPage = false, isRegisterPage = false, isProtectedPage = false, isHomePage = false } = {}) {
     const authSection = document.getElementById("auth-section");
     const mainSection = document.getElementById("main-section");
     const authStatus = document.getElementById("authStatus");
@@ -245,6 +700,7 @@ async function checkAuthStatus({ isLoginPage, isRegisterPage, isProtectedPage, i
         if (mainSection) {
             fetchTasks(); // Automatically load tasks if user is logged in
         }
+        updateFocusLogWidget();
 
         updateNavTaskCounter();
     } else {
@@ -793,8 +1249,15 @@ function updateTaskList(tasks) {
                     taskCheck.checked = !isCompleted;
                     taskItem?.classList.toggle("is-completed", taskCheck.checked);
                 }
+
+                // If the task was just completed and it's currently focused, end the focus session since the task is no longer active
+                if (updated && isCompleted && focusState.taskId && String(focusState.taskId) === String(task._id)) {
+                    await stopFocusSession("completed_task");
+                }
             });
         }
+
+
         if (dueText) {
             if (task.dueDate) {
                 dueText.textContent = formatTaskDueDate(task.dueDate);
@@ -891,10 +1354,8 @@ function updateTaskList(tasks) {
             }
         };
 
-        const rowBigThreeButton = clone.querySelector(".big-three-btn");
         const rowDeleteButton = clone.querySelector(".delete-btn");
 
-        rowBigThreeButton?.addEventListener("click", toggleBigThree);
         rowDeleteButton?.addEventListener("click", deleteTask);
 
         const openTaskDetails = () => {
@@ -940,6 +1401,7 @@ function updateTaskList(tasks) {
         listOfTasks.appendChild(clone);
     });
 
+    updateFocusTaskOptions(sortedTasks);
     updateBigThreeWidget(sortedTasks, bigThreeInteractions);
 
     // Update the task counter

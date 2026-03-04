@@ -1,0 +1,216 @@
+#focus-mode-widget {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 420px;
+}
+
+.focus-mode-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.9rem;
+  align-items: stretch;
+  flex: 1;
+  min-height: 0;
+}
+
+.focus-mode-left,
+.focus-mode-right {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.focus-mode-left {
+  gap: 0.55rem;
+  overflow: hidden;
+}
+
+.focus-mode-left > * {
+  min-width: 0;
+}
+
+#focus-mode-widget .focus-status {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+#focus-mode-widget .paper-field {
+  margin: 0;
+}
+
+#focusTaskSelect {
+  display: none !important;
+}
+
+.focus-task-list {
+  margin-top: 0.3rem;
+  max-height: 210px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 0.2rem;
+}
+
+.focus-task-list-item {
+  padding: 0.35rem 0.5rem;
+}
+
+.focus-task-list-item.big-three-item {
+  grid-template-columns: 1.35rem 1fr;
+  gap: 0.45rem;
+  align-items: start;
+}
+
+.focus-task-check {
+  margin-top: 0.18rem;
+}
+
+.focus-task-option {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1.3;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+}
+
+.focus-task-list-item.is-selected {
+  border-color: rgba(198, 83, 78, 0.65);
+  box-shadow: 0 0 0 2px rgba(198, 83, 78, 0.2);
+  background: rgba(247, 204, 220, 0.45);
+}
+
+.focus-task-list-item.is-selected .focus-task-option {
+  color: #8b3a2e;
+}
+
+.focus-task-empty {
+  opacity: 0.8;
+}
+
+.focus-task-list[aria-disabled="true"] .focus-task-option {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+#focus-mode-widget .focus-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 0.45rem;
+}
+
+#focus-mode-widget .focus-controls .paper-button {
+  width: clamp(120px, 40%, 170px);
+  margin: 0;
+  padding: 10px 0;
+}
+
+#focus-mode-widget .focus-controls button[hidden] {
+  display: none !important;
+}
+
+#focusStartBtn {
+  background: linear-gradient(180deg, #4fae58 0%, #33823c 100%);
+  color: #fff !important;
+}
+
+#focusStartBtn::before {
+  border-color: rgba(22, 67, 28, 0.42);
+}
+
+#focusStartBtn:hover:not(:disabled) {
+  background: linear-gradient(180deg, #58bd63 0%, #3b9346 100%);
+}
+
+#focusStopBtn {
+  color: #fff !important;
+}
+
+.focus-timer {
+  min-width: 4.2ch;
+  font-family: "Quantico", serif;
+  font-size: 1.12rem;
+  color: #5d4037;
+}
+
+.focus-mode-right {
+  border-left: 1px dashed rgba(93, 64, 55, 0.35);
+  padding-left: 0.9rem;
+}
+
+.focus-log-title {
+  margin: 0 0 0.35rem;
+  font-family: "Itim", serif;
+  font-size: 1rem;
+  color: #5d4037;
+}
+
+.focus-log-body {
+  margin-top: 0.15rem;
+  overflow-y: auto;
+  max-height: 100%;
+  padding-right: 0.15rem;
+}
+
+.focus-log-note {
+  margin: 0.2rem 0 0;
+  font-size: 0.9rem;
+  line-height: 1.3;
+  color: #5d4037;
+}
+
+.focus-log-list {
+  list-style: none;
+  margin: 0.2rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.focus-log-item {
+  border: 1px solid rgba(198, 83, 78, 0.28);
+  border-radius: 8px;
+  padding: 0.3rem 0.45rem;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.focus-log-item-title {
+  display: block;
+  font-size: 0.92rem;
+  line-height: 1.28;
+  color: #5d4037;
+}
+
+.focus-log-item-meta {
+  display: block;
+  margin-top: 0.08rem;
+  font-size: 0.78rem;
+  opacity: 0.85;
+}
+
+@media (max-width: 1023px), (hover: none) and (pointer: coarse) {
+  .focus-mode-grid {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  .focus-mode-right {
+    border-left: 0;
+    border-top: 1px dashed rgba(93, 64, 55, 0.35);
+    padding-left: 0;
+    padding-top: 0.65rem;
+  }
+}
