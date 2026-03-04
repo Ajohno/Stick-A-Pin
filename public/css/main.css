@@ -737,7 +737,7 @@ input:focus{
 .task-item{
   margin-top: 0.6rem;
   padding-bottom: 0.5rem;
-  padding-right: 5.4rem;
+  padding-right: 0.25rem;
   position: relative;
 }
 
@@ -757,14 +757,6 @@ input:focus{
   );
 }
 
-
-.task-actions{
-  position: absolute;
-  top: 0.2rem;
-  right: 0;
-  display: inline-flex;
-  gap: 0.35rem;
-}
 
 .task-action-btn{
   width: 1.7rem;
