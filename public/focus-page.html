@@ -74,20 +74,41 @@
     </nav>
     <div id="nav-backdrop" aria-hidden="true"></div>
 
-    <main class="corkboard" style="max-width: 1100px; margin: 2rem auto">
-      <!-- Focus Mode -->
-      <div id="focus-mode-widget" class="sticky-note white tape">
-        <h2 class="widget-title highlight-on-parent-hover">
-          <i class="fa-solid fa-bullseye" style="color: #c6534e"></i>
-          Focus Mode
-        </h2>
+    <main class="corkboard" style="max-width: 1200px; margin: 2rem auto">
+      <section id="focus-mode-widget" class="focus-board" aria-label="Focus mode board">
+        <div class="focus-column focus-column-left">
+          <article class="sticky-note yellow tape focus-card focus-log-card">
+            <h2 class="focus-log-title">Focus Log</h2>
+            <div id="focus-log-body" class="focus-log-body">
+              <p class="focus-log-note">
+                No focused tasks yet today. Start a focus session to track one.
+              </p>
+            </div>
+          </article>
+        </div>
 
-        <div class="focus-mode-grid">
-          <div class="focus-mode-left">
+        <div class="focus-column focus-column-middle">
+          <article class="sticky-note white tape focus-card focus-session-card">
+            <h2 class="focus-phase-title">Concentration Phase</h2>
             <p id="focus-status" class="focus-status">
               Pick a task and start a focus session.
             </p>
+            <div class="focus-session-center">
+              <span id="focusTimer" class="focus-timer" aria-live="polite">00:00</span>
+            </div>
+            <div class="focus-controls">
+              <button id="focusStartBtn" class="paper-button" type="button">
+                Start
+              </button>
+              <button id="focusStopBtn" class="paper-button" type="button" hidden disabled>
+                Stop
+              </button>
+            </div>
+          </article>
+        </div>
 
+        <div class="focus-column focus-column-right">
+          <article class="sticky-note blue tape focus-card focus-task-card">
             <div class="paper-field">
               <label id="focusTaskLabel" for="focusTaskSelect">Task</label>
               <select
@@ -102,30 +123,13 @@
                 aria-labelledby="focusTaskLabel"
               ></ul>
             </div>
+          </article>
 
-            <div class="focus-controls">
-              <button id="focusStartBtn" class="paper-button" type="button">
-                Start
-              </button>
-              <button id="focusStopBtn" class="paper-button" type="button" hidden disabled>
-                Stop
-              </button>
-              <span id="focusTimer" class="focus-timer" aria-live="polite"
-                >00:00</span
-              >
-            </div>
-          </div>
-
-          <div class="focus-mode-right">
-            <h3 class="focus-log-title">Focus Log</h3>
-            <div id="focus-log-body" class="focus-log-body">
-              <p class="focus-log-note">
-                No focused tasks yet today. Start a focus session to track one.
-              </p>
-            </div>
-          </div>
+          <article class="sticky-note pink tape focus-card focus-quote-card">
+            <p class="focus-quote-text">Put a encouraging quote here</p>
+          </article>
         </div>
-      </div>
+      </section>
     </main>
 
     <div
