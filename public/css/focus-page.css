@@ -299,3 +299,30 @@
     max-height: 180px;
   }
 }
+
+/* Force a single-column stack across all supported screen sizes */
+#focus-mode-widget.focus-board {
+  grid-template-columns: 1fr;
+  min-height: 0;
+}
+
+#focus-mode-widget.focus-board .focus-column {
+  display: contents;
+}
+
+#focus-mode-widget.focus-board .focus-session-card {
+  order: 1;
+}
+
+#focus-mode-widget.focus-board .focus-task-card {
+  order: 2;
+}
+
+#focus-mode-widget.focus-board .focus-log-card {
+  order: 3;
+  margin-top: 0;
+}
+
+#focus-mode-widget.focus-board .focus-quote-card {
+  order: 4;
+}
