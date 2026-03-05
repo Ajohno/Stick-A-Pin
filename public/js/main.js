@@ -615,6 +615,11 @@ document.addEventListener("DOMContentLoaded", () => {
         taskForm.addEventListener("submit", submit);
     }
 
+    const clearCompletedButton = document.getElementById("clear-completed-tasks-btn");
+    if (clearCompletedButton) {
+        clearCompletedButton.addEventListener("click", clearCompletedTasks);
+    }
+
     checkAuthStatus({ isLoginPage, isRegisterPage, isProtectedPage, isHomePage }); // Check authentication status on page load
     initFocusMode();
 });
@@ -737,6 +742,56 @@ async function fetchTasks() {
     } else {
         console.error("Error fetching tasks:", tasks.error);
         alert("Please log in to see your tasks.");
+    }
+}
+
+async function clearCompletedTasks() {
+    const clearCompletedButton = document.getElementById("clear-completed-tasks-btn");
+
+    if (clearCompletedButton) {
+        clearCompletedButton.disabled = true;
+    }
+
+    try {
+        const response = await fetch("/tasks", { credentials: "include" });
+        const tasks = await parseApiResponse(response);
+
+        if (!response.ok) {
+            Toast.show({ message: tasks?.error || "Could not load tasks.", type: "error", duration: 3000 });
+            return;
+        }
+
+        const completedTasks = Array.isArray(tasks)
+            ? tasks.filter((task) => task.status === "completed")
+            : [];
+
+        if (completedTasks.length === 0) {
+            Toast.show({ message: "No completed tasks to clear.", type: "error", duration: 2200 });
+            return;
+        }
+
+        const deleteResults = await Promise.allSettled(
+            completedTasks.map((task) => fetch(`/tasks/${task._id}`, { method: "DELETE" }))
+        );
+
+        const deletedCount = deleteResults.filter((result) => result.status === "fulfilled" && result.value.ok).length;
+
+        if (deletedCount === completedTasks.length) {
+            Toast.show({ message: "Cleared completed tasks", type: "success", duration: 2500 });
+        } else if (deletedCount > 0) {
+            Toast.show({ message: `Cleared ${deletedCount} completed tasks. Some could not be deleted.`, type: "error", duration: 3500 });
+        } else {
+            Toast.show({ message: "Could not clear completed tasks.", type: "error", duration: 3000 });
+        }
+
+        fetchTasks();
+    } catch (error) {
+        console.error("Clearing completed tasks failed:", error);
+        Toast.show({ message: "Could not clear completed tasks.", type: "error", duration: 3000 });
+    } finally {
+        if (clearCompletedButton) {
+            clearCompletedButton.disabled = false;
+        }
     }
 }
 
@@ -1412,6 +1467,12 @@ function updateTaskList(tasks) {
 
     el.textContent = String(activeCount);
     });
+
+    const clearCompletedButton = document.getElementById("clear-completed-tasks-btn");
+    if (clearCompletedButton) {
+        const hasCompletedTasks = Array.isArray(tasks) && tasks.some((task) => task.status === "completed");
+        clearCompletedButton.disabled = !hasCompletedTasks;
+    }
 
     // If no tasks, show a friendly message
     if (tasks.length === 0) {
