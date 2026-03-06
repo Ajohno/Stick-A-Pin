@@ -101,6 +101,29 @@ img, svg, canvas, video{
 
 
 
+
+/* =========================================================
+   Verification Status Page
+   ========================================================= */
+#verification-status-page{
+  text-align: center;
+  max-width: fit-content;
+  width: clamp(320px, 42vw, 430px);
+  justify-self: center;
+}
+
+.verification-status-page .paper-content{
+  width: 100%;
+}
+
+.verification-status-page .paper-form{
+  margin-top: 4px;
+}
+
+.verification-status-page .paper-footer{
+  text-align: center;
+}
+
 /* =========================================================
    TEXT STYLES
    - Default typography + colors
