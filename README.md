@@ -38,6 +38,8 @@ Donezo is an application for making and storing a list of task for the user to k
 
 The app now sends a verification email after registration and requires a verified email before login.
 
+- Existing accounts are treated as verified by default (legacy-safe), while new registrations are explicitly created as unverified until they verify by email.
+
 1. In Resend, keep your sending domain as `mail.stickapin.app`.
 2. Create an API key in Resend.
 3. Add these environment variables to your local `.env` and deployment secrets:

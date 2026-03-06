@@ -224,7 +224,7 @@ app.post("/resend-verification", async (req, res) => {
       return res.json({ message: "If that account exists, a verification email has been sent." });
     }
 
-    if (user.emailVerified) {
+    if (user.emailVerified !== false) {
       return res.json({ message: "Your email is already verified." });
     }
 

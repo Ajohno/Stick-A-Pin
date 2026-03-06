@@ -20,7 +20,7 @@ module.exports = function (passport) {
                     return done(null, false, { message: "Incorrect password" });
                 }
 
-                if (!user.emailVerified) {
+                if (user.emailVerified === false) {
                     return done(null, false, { message: "Please verify your email before logging in" });
                 }
 

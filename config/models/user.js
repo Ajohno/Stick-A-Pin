@@ -16,7 +16,7 @@ const UserSchema = new mongoose.Schema(
 
     passwordHash: { type: String, required: true },
 
-    emailVerified: { type: Boolean, default: false },
+    emailVerified: { type: Boolean, default: true },
     emailVerificationTokenHash: { type: String, default: null },
     emailVerificationExpiresAt: { type: Date, default: null },
     emailVerifiedAt: { type: Date, default: null },
