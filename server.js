@@ -158,7 +158,7 @@ app.post("/register", async (req, res) => {
     } catch (emailError) {
       console.error("Verification email delivery failed after registration:", emailError);
       return res.status(201).json({
-        message: "Registration successful, but we could not send the verification email yet. Please use resend verification after RESEND_API_KEY is configured.",
+        message: "Registration successful, but we could not send the verification email yet. Please use resend verification from the verification page.",
         emailDeliveryFailed: true,
       });
     }

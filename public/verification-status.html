@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Stick A Pin</title>
+    <link rel="icon" type="image/png" href="/assets/image/donezo-logo.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/assets/image/donezo-logo.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#f5ecd7" />
+    <link rel="stylesheet" href="css/main.css" />
+    <link rel="stylesheet" href="css/stickies.css" />
+    <link rel="stylesheet" href="css/notification.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Itim&family=Quantico:ital,wght@0,400;0,700;1,400;1,700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body class="cork-page verification-status-page">
+    <main id="verification-status-page" class="sticky-note double-tape">
+      <div class="paper-content">
+        <div class="paper-header">
+          <h1>Stick A Pin</h1>
+          <p class="highlight-on-parent-hover" id="verificationStatusMessage">Checking email status...</p>
+          <p id="verificationStatusEmail"></p>
+        </div>
+
+        <div class="paper-form">
+          <button class="paper-button" id="resendVerificationBtn" type="button">Resend Verification Email</button>
+        </div>
+
+        <p class="paper-footer">
+          <a href="/login.html">Back to login</a>
+        </p>
+      </div>
+    </main>
+
+    <script src="js/notification.js" defer></script>
+    <script src="js/main.js" defer></script>
+
+    <div
+      id="toast"
+      class="toast toast--default"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      hidden
+    >
+      <div class="toast__icon" aria-hidden="true">i</div>
+      <div class="toast__content">
+        <div id="toastTitle" class="toast__title" hidden></div>
+        <div id="toastMessage" class="toast__message"></div>
+      </div>
+      <button id="toastClose" class="toast__close" type="button" aria-label="Close notification">×</button>
+      <div class="toast__progress"></div>
+    </div>
+  </body>
+</html>
