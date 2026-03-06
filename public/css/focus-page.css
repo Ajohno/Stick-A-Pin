@@ -239,26 +239,31 @@
 
 @media (max-width: 1100px) {
   #focus-mode-widget.focus-board {
-    grid-template-columns: minmax(0, 1fr) minmax(280px, 1.1fr);
-    grid-template-areas:
-      "middle middle"
-      "left right";
+    grid-template-columns: 1fr;
+    gap: 0.95rem;
+    min-height: 0;
   }
 
-  .focus-column-left {
-    grid-area: left;
+  #focus-mode-widget.focus-board .focus-column {
+    display: contents;
   }
 
-  .focus-column-middle {
-    grid-area: middle;
-  }
-
-  .focus-column-right {
-    grid-area: right;
-  }
-
-  .focus-session-card {
+  #focus-mode-widget.focus-board .focus-session-card {
     min-height: 360px;
+    order: 1;
+  }
+
+  #focus-mode-widget.focus-board .focus-task-card {
+    order: 2;
+  }
+
+  #focus-mode-widget.focus-board .focus-log-card {
+    order: 3;
+    margin-top: 0;
+  }
+
+  #focus-mode-widget.focus-board .focus-quote-card {
+    order: 4;
   }
 }
 
