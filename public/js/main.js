@@ -526,15 +526,69 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 // Check if registration went alright
                 if (response.ok) {
-                    alert("Registration successful! Please log in.");
-                    Toast.show({ message: "Registration Sucessful", type: "success", duration: 2000 });
-                    window.location.href = "/login.html";
+                    const sentFlag = data?.emailDeliveryFailed ? "0" : "1";
+                    const query = new URLSearchParams({ sent: sentFlag, email }).toString();
+                    window.location.href = `/verification-status.html?${query}`;
                 } else {
                     alert("Registration failed: " + (data.error || "Unknown error"));
                 }
             } catch (error) {
                 console.error("Registration request failed:", error);
                 alert("Registration failed due to a network/server issue.");
+            }
+        });
+    }
+
+
+    const verificationPage = document.getElementById("verification-status-page");
+    if (verificationPage) {
+        const params = new URLSearchParams(window.location.search);
+        const sent = params.get("sent") === "1";
+        const email = (params.get("email") || "").trim();
+
+        const messageEl = document.getElementById("verificationStatusMessage");
+        const emailEl = document.getElementById("verificationStatusEmail");
+        const resendBtn = document.getElementById("resendVerificationBtn");
+
+        if (messageEl) {
+            messageEl.textContent = sent
+                ? "Verification email was sent."
+                : "Verification email was not sent.";
+        }
+
+        if (emailEl) {
+            emailEl.textContent = email ? `Email: ${email}` : "Email unavailable";
+        }
+
+        resendBtn?.addEventListener("click", async () => {
+            if (!email) {
+                alert("No email found for this registration. Please sign up again.");
+                return;
+            }
+
+            resendBtn.disabled = true;
+
+            try {
+                const response = await fetch("/resend-verification", {
+                    credentials: "include",
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email })
+                });
+
+                const data = await parseApiResponse(response);
+                if (response.ok) {
+                    alert(data.message || "Verification email sent.");
+                    Toast.show({ message: "Verification email resent", type: "success", duration: 2200 });
+                } else {
+                    alert(data.error || "Could not resend verification email.");
+                    Toast.show({ message: "Resend failed", type: "error", duration: 2200 });
+                }
+            } catch (error) {
+                console.error("Resend verification request failed:", error);
+                alert("Network error while resending verification email.");
+            } finally {
+                resendBtn.disabled = false;
             }
         });
     }

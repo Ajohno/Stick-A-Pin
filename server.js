@@ -2,6 +2,7 @@ const express = require("express");
 const fs = require("fs");
 const mime = require("mime");
 const path = require("path");
+const crypto = require("crypto");
 const connectDB = require("./config/database"); // Connects to MongoDB
 const session = require("express-session"); // Handles sessions for logged-in users
 const passport = require("passport"); // Middleware for authentication
@@ -18,6 +19,9 @@ require("./config/passport-config")(passport); // Configures Passport authentica
 const app = express();
 const port = process.env.PORT || 3000;
 const REMEMBER_ME_MS = 14 * 24 * 60 * 60 * 1000;
+const EMAIL_VERIFICATION_TTL_MINUTES = Number(process.env.EMAIL_VERIFICATION_TTL_MINUTES || 60);
+const APP_BASE_URL = process.env.APP_BASE_URL || `http://localhost:${port}`;
+const EMAIL_FROM = process.env.EMAIL_FROM || "Stick A Pin <no-reply@mail.stickapin.app>";
 
 let appdata = [];
 
@@ -44,6 +48,46 @@ function ensureAuthenticated(req, res, next) {
         return next(); // If the user is authenticated, continue to the route
     }
     res.status(401).json({ error: "Unauthorized - Please log in" });
+}
+
+function hashVerificationToken(token) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+function generateVerificationToken() {
+  return crypto.randomBytes(32).toString("hex");
+}
+
+async function sendVerificationEmail(email, firstName, token) {
+  if (!process.env.RESEND_API_KEY) {
+    throw new Error("RESEND_API_KEY is not configured");
+  }
+
+  const verificationUrl = `${APP_BASE_URL}/verify-email?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: EMAIL_FROM,
+      to: [email],
+      subject: "Verify your Stick A Pin account",
+      html: `
+        <p>Hi ${firstName},</p>
+        <p>Thanks for registering. Click the link below to verify your email address:</p>
+        <p><a href="${verificationUrl}">Verify my email</a></p>
+        <p>If you did not sign up, you can ignore this message.</p>
+      `,
+    }),
+  });
+
+  if (!response.ok) {
+    const failure = await response.text();
+    throw new Error(`Resend API request failed (${response.status}): ${failure}`);
+  }
 }
 
 // Session Handling
@@ -94,9 +138,30 @@ app.post("/register", async (req, res) => {
 
     const passwordHash = await bcrypt.hash(password, 10);
 
-    await User.create({ firstName: firstName.trim(), lastName: lastName.trim(), email: normalizedEmail, passwordHash });
+    const verificationToken = generateVerificationToken();
+    const verificationTokenHash = hashVerificationToken(verificationToken);
+    const emailVerificationExpiresAt = new Date(Date.now() + EMAIL_VERIFICATION_TTL_MINUTES * 60 * 1000);
 
-    return res.status(201).json({ message: "User registered successfully" });
+    await User.create({
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      email: normalizedEmail,
+      passwordHash,
+      emailVerified: false,
+      emailVerificationTokenHash: verificationTokenHash,
+      emailVerificationExpiresAt,
+    });
+
+    try {
+      await sendVerificationEmail(normalizedEmail, firstName.trim(), verificationToken);
+      return res.status(201).json({ message: "Registration successful. Check your email to verify your account." });
+    } catch (emailError) {
+      console.error("Verification email delivery failed after registration:", emailError);
+      return res.status(201).json({
+        message: "Registration successful, but we could not send the verification email yet. Please use resend verification from the verification page.",
+        emailDeliveryFailed: true,
+      });
+    }
   } catch (error) {
     console.error("Error registering user:", error);
 
@@ -116,6 +181,71 @@ app.post("/register", async (req, res) => {
     }
 
     return res.status(500).json({ error: "Server error while registering user" });
+  }
+});
+
+app.get("/verify-email", async (req, res) => {
+  try {
+    const email = (req.query.email || "").toString().toLowerCase().trim();
+    const token = (req.query.token || "").toString().trim();
+
+    if (!email || !token) {
+      return res.status(400).send("Invalid verification link.");
+    }
+
+    const tokenHash = hashVerificationToken(token);
+
+    const user = await User.findOne({
+      email,
+      emailVerificationTokenHash: tokenHash,
+      emailVerificationExpiresAt: { $gt: new Date() },
+    });
+
+    if (!user) {
+      return res.status(400).send("This verification link is invalid or expired.");
+    }
+
+    user.emailVerified = true;
+    user.emailVerificationTokenHash = null;
+    user.emailVerificationExpiresAt = null;
+    user.emailVerifiedAt = new Date();
+    await user.save();
+
+    return res.status(200).send("Email verified successfully. You can now log in.");
+  } catch (error) {
+    console.error("Error verifying email:", error);
+    return res.status(500).send("Server error while verifying email.");
+  }
+});
+
+app.post("/resend-verification", async (req, res) => {
+  try {
+    const normalizedEmail = (req.body.email || "").toLowerCase().trim();
+    if (!normalizedEmail) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+
+    const user = await User.findOne({ email: normalizedEmail });
+
+    if (!user) {
+      return res.json({ message: "If that account exists, a verification email has been sent." });
+    }
+
+    if (user.emailVerified !== false) {
+      return res.json({ message: "Your email is already verified." });
+    }
+
+    const verificationToken = generateVerificationToken();
+    user.emailVerificationTokenHash = hashVerificationToken(verificationToken);
+    user.emailVerificationExpiresAt = new Date(Date.now() + EMAIL_VERIFICATION_TTL_MINUTES * 60 * 1000);
+    await user.save();
+
+    await sendVerificationEmail(user.email, user.firstName, verificationToken);
+
+    return res.json({ message: "Verification email sent." });
+  } catch (error) {
+    console.error("Error resending verification email:", error);
+    return res.status(500).json({ error: "Unable to resend verification email" });
   }
 });
 
