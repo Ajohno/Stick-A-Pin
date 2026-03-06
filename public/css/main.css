@@ -108,20 +108,34 @@ img, svg, canvas, video{
 #verification-status-page{
   text-align: center;
   max-width: fit-content;
-  width: clamp(320px, 42vw, 430px);
+  width: clamp(360px, 50vw, 520px);
+  min-height: clamp(320px, 42vh, 420px);
   justify-self: center;
 }
 
 .verification-status-page .paper-content{
   width: 100%;
+  gap: 16px;
+  align-items: center;
 }
 
-.verification-status-page .paper-form{
+.verification-status-page .paper-header{
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.verification-status-page #verificationStatusEmail{
+  margin-top: 0;
+}
+
+.verification-status-page #resendVerificationBtn{
   margin-top: 4px;
 }
 
 .verification-status-page .paper-footer{
   text-align: center;
+  margin-top: 6px;
 }
 
 /* =========================================================
