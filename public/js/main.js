@@ -526,8 +526,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 // Check if registration went alright
                 if (response.ok) {
-                    alert("Registration successful! Please log in.");
-                    Toast.show({ message: "Registration Sucessful", type: "success", duration: 2000 });
+                    if (data?.emailDeliveryFailed) {
+                        alert(data.message || "Registration worked, but we could not send the verification email. Please use resend verification on the login page.");
+                        Toast.show({ message: "Registered, but verification email failed", type: "warning", duration: 3000 });
+                    } else {
+                        alert("Registration successful! Please check your email to verify your account before logging in.");
+                        Toast.show({ message: "Registration successful", type: "success", duration: 2000 });
+                    }
                     window.location.href = "/login.html";
                 } else {
                     alert("Registration failed: " + (data.error || "Unknown error"));
