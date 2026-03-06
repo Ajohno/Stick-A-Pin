@@ -173,12 +173,14 @@
   }
 
   .nav-right {
-    flex-shrink: 0;
+    flex: 1 1 auto;
+    min-width: 0;
   }
 
   .nav-status {
     align-items: flex-end;
     text-align: right;
+    max-width: 100%;
   }
 
   .tasks-count {
@@ -193,10 +195,12 @@
 
   .nav-welcome {
     font-size: 12px;
-    max-width: 30ch;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    max-width: min(32ch, 52vw);
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    word-break: break-word;
+    line-height: 1.2;
   }
 
   #nav-drawer {
@@ -250,6 +254,6 @@
   }
 
   .nav-welcome {
-    max-width: 18ch;
+    max-width: min(30ch, 58vw);
   }
 }

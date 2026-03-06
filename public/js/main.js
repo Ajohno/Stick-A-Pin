@@ -1559,7 +1559,7 @@ document.addEventListener("DOMContentLoaded", () => {
 // ----------------------------
 document.addEventListener("DOMContentLoaded", () => {
   const compactView = window.matchMedia("(max-width: 1023px), (hover: none) and (pointer: coarse)");
-  const stickyNotes = Array.from(document.querySelectorAll(".board-grid .sticky-note"));
+  const stickyNotes = Array.from(document.querySelectorAll(".corkboard .sticky-note"));
   if (stickyNotes.length === 0) return;
 
   let rafId = null;
