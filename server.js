@@ -20,6 +20,7 @@ const app = express();
 const port = process.env.PORT || 3000;
 const REMEMBER_ME_MS = 14 * 24 * 60 * 60 * 1000;
 const EMAIL_VERIFICATION_TTL_MINUTES = Number(process.env.EMAIL_VERIFICATION_TTL_MINUTES || 60);
+const PASSWORD_RESET_TTL_MINUTES = Number(process.env.PASSWORD_RESET_TTL_MINUTES || 30);
 const APP_BASE_URL = process.env.APP_BASE_URL || `http://localhost:${port}`;
 const EMAIL_FROM = process.env.EMAIL_FROM || "Stick A Pin <no-reply@mail.stickapin.app>";
 
@@ -80,6 +81,38 @@ async function sendVerificationEmail(email, firstName, token) {
         <p>Thanks for registering. Click the link below to verify your email address:</p>
         <p><a href="${verificationUrl}">Verify my email</a></p>
         <p>If you did not sign up, you can ignore this message.</p>
+      `,
+    }),
+  });
+
+  if (!response.ok) {
+    const failure = await response.text();
+    throw new Error(`Resend API request failed (${response.status}): ${failure}`);
+  }
+}
+
+async function sendPasswordResetEmail(email, firstName, token) {
+  if (!process.env.RESEND_API_KEY) {
+    throw new Error("RESEND_API_KEY is not configured");
+  }
+
+  const resetUrl = `${APP_BASE_URL}/reset-password.html?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: EMAIL_FROM,
+      to: [email],
+      subject: "Reset your Stick A Pin password",
+      html: `
+        <p>Hi ${firstName || "there"},</p>
+        <p>We received a request to reset your password.</p>
+        <p><a href="${resetUrl}">Reset password</a></p>
+        <p>If you did not request this, you can ignore this email.</p>
       `,
     }),
   });
@@ -246,6 +279,71 @@ app.post("/resend-verification", async (req, res) => {
   } catch (error) {
     console.error("Error resending verification email:", error);
     return res.status(500).json({ error: "Unable to resend verification email" });
+  }
+});
+
+
+
+app.post("/forgot-password", async (req, res) => {
+  try {
+    const normalizedEmail = (req.body.email || "").toLowerCase().trim();
+    if (!normalizedEmail) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+
+    const user = await User.findOne({ email: normalizedEmail });
+
+    if (!user) {
+      return res.json({ message: "If that account exists, a password reset email has been sent." });
+    }
+
+    const resetToken = generateVerificationToken();
+    user.passwordResetTokenHash = hashVerificationToken(resetToken);
+    user.passwordResetExpiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MINUTES * 60 * 1000);
+    user.passwordResetRequestedAt = new Date();
+    await user.save();
+
+    await sendPasswordResetEmail(user.email, user.firstName, resetToken);
+
+    return res.json({ message: "If that account exists, a password reset email has been sent." });
+  } catch (error) {
+    console.error("Error requesting password reset:", error);
+    return res.status(500).json({ error: "Unable to process password reset request" });
+  }
+});
+
+app.post("/reset-password", async (req, res) => {
+  try {
+    const normalizedEmail = (req.body.email || "").toLowerCase().trim();
+    const token = (req.body.token || "").toString().trim();
+    const newPassword = (req.body.newPassword || "").toString();
+
+    if (!normalizedEmail || !token || !newPassword) {
+      return res.status(400).json({ error: "Email, token, and new password are required" });
+    }
+
+    const tokenHash = hashVerificationToken(token);
+
+    const user = await User.findOne({
+      email: normalizedEmail,
+      passwordResetTokenHash: tokenHash,
+      passwordResetExpiresAt: { $gt: new Date() },
+    });
+
+    if (!user) {
+      return res.status(400).json({ error: "This password reset link is invalid or expired." });
+    }
+
+    user.passwordHash = await bcrypt.hash(newPassword, 10);
+    user.passwordResetTokenHash = null;
+    user.passwordResetExpiresAt = null;
+    user.passwordResetRequestedAt = null;
+    await user.save();
+
+    return res.json({ message: "Password reset successful. You can now log in." });
+  } catch (error) {
+    console.error("Error resetting password:", error);
+    return res.status(500).json({ error: "Unable to reset password" });
   }
 });
 

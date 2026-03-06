@@ -21,6 +21,10 @@ const UserSchema = new mongoose.Schema(
     emailVerificationExpiresAt: { type: Date, default: null },
     emailVerifiedAt: { type: Date, default: null },
 
+    passwordResetTokenHash: { type: String, default: null },
+    passwordResetExpiresAt: { type: Date, default: null },
+    passwordResetRequestedAt: { type: Date, default: null },
+
     settings: {
       rememberMe: { type: Boolean, default: false },
       dailyEmail: { type: Boolean, default: true },

@@ -593,6 +593,90 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+
+    const forgotPasswordForm = document.getElementById("forgotPasswordForm");
+    if (forgotPasswordForm) {
+        forgotPasswordForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const email = document.getElementById("forgotPasswordEmail")?.value.trim();
+
+            if (!email) {
+                alert("Please enter your email.");
+                return;
+            }
+
+            try {
+                const response = await fetch("/forgot-password", {
+                    credentials: "include",
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email })
+                });
+
+                const data = await parseApiResponse(response);
+                if (response.ok) {
+                    alert(data.message || "If that account exists, a password reset email has been sent.");
+                    Toast.show({ message: "Reset email request sent", type: "success", duration: 2400 });
+                } else {
+                    alert(data.error || "Could not process reset request.");
+                }
+            } catch (error) {
+                console.error("Forgot password request failed:", error);
+                alert("Network error while requesting password reset.");
+            }
+        });
+    }
+
+    const resetPasswordForm = document.getElementById("resetPasswordForm");
+    if (resetPasswordForm) {
+        const params = new URLSearchParams(window.location.search);
+        const emailInput = document.getElementById("resetPasswordEmail");
+        const tokenInput = document.getElementById("resetPasswordToken");
+
+        if (emailInput && params.get("email")) emailInput.value = params.get("email");
+        if (tokenInput && params.get("token")) tokenInput.value = params.get("token");
+
+        resetPasswordForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+
+            const email = emailInput?.value.trim();
+            const token = tokenInput?.value.trim();
+            const newPassword = document.getElementById("resetPasswordNew")?.value || "";
+            const confirmPassword = document.getElementById("resetPasswordConfirm")?.value || "";
+
+            if (!email || !token || !newPassword) {
+                alert("Please complete all required fields.");
+                return;
+            }
+
+            if (newPassword !== confirmPassword) {
+                alert("Passwords do not match.");
+                return;
+            }
+
+            try {
+                const response = await fetch("/reset-password", {
+                    credentials: "include",
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email, token, newPassword })
+                });
+
+                const data = await parseApiResponse(response);
+                if (response.ok) {
+                    alert(data.message || "Password reset successful.");
+                    Toast.show({ message: "Password updated", type: "success", duration: 2200 });
+                    window.location.href = "/login.html";
+                } else {
+                    alert(data.error || "Unable to reset password.");
+                }
+            } catch (error) {
+                console.error("Reset password request failed:", error);
+                alert("Network error while resetting password.");
+            }
+        });
+    }
+
     // Login handler (used on login.html)
     const loginForm = document.getElementById("loginForm");
     if (loginForm) {
