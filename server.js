@@ -152,9 +152,16 @@ app.post("/register", async (req, res) => {
       emailVerificationExpiresAt,
     });
 
-    await sendVerificationEmail(normalizedEmail, firstName.trim(), verificationToken);
-
-    return res.status(201).json({ message: "Registration successful. Check your email to verify your account." });
+    try {
+      await sendVerificationEmail(normalizedEmail, firstName.trim(), verificationToken);
+      return res.status(201).json({ message: "Registration successful. Check your email to verify your account." });
+    } catch (emailError) {
+      console.error("Verification email delivery failed after registration:", emailError);
+      return res.status(201).json({
+        message: "Registration successful, but we could not send the verification email yet. Please use resend verification after RESEND_API_KEY is configured.",
+        emailDeliveryFailed: true,
+      });
+    }
   } catch (error) {
     console.error("Error registering user:", error);
 
