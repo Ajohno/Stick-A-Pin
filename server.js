@@ -21,7 +21,7 @@ const port = process.env.PORT || 3000;
 const REMEMBER_ME_MS = 14 * 24 * 60 * 60 * 1000;
 const EMAIL_VERIFICATION_TTL_MINUTES = Number(process.env.EMAIL_VERIFICATION_TTL_MINUTES || 60);
 const PASSWORD_RESET_TTL_MINUTES = Number(process.env.PASSWORD_RESET_TTL_MINUTES || 30);
-const APP_BASE_URL = process.env.APP_BASE_URL || `http://localhost:${port}`;
+const APP_BASE_URL = process.env.APP_BASE_URL;
 const EMAIL_FROM = process.env.EMAIL_FROM || "Stick A Pin <no-reply@mail.stickapin.app>";
 
 let appdata = [];
@@ -64,7 +64,7 @@ async function sendVerificationEmail(email, firstName, token) {
     throw new Error("RESEND_API_KEY is not configured");
   }
 
-  const verificationUrl = `${APP_BASE_URL}/verify-email?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
+  const verificationUrl = `${resolveBaseUrl()}/verify-email?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -96,7 +96,7 @@ async function sendPasswordResetEmail(email, firstName, token) {
     throw new Error("RESEND_API_KEY is not configured");
   }
 
-  const resetUrl = `${APP_BASE_URL}/reset-password.html?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
+  const resetUrl = `${resolveBaseUrl()}/reset-password.html?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -121,6 +121,18 @@ async function sendPasswordResetEmail(email, firstName, token) {
     const failure = await response.text();
     throw new Error(`Resend API request failed (${response.status}): ${failure}`);
   }
+}
+
+function resolveBaseUrl() {
+  if (APP_BASE_URL) {
+    return APP_BASE_URL;
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("APP_BASE_URL must be configured in production");
+  }
+
+  return `http://localhost:${port}`;
 }
 
 // Session Handling
