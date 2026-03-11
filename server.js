@@ -59,12 +59,12 @@ function generateVerificationToken() {
   return crypto.randomBytes(32).toString("hex");
 }
 
-async function sendVerificationEmail(email, firstName, token) {
+async function sendVerificationEmail(email, firstName, token, baseUrl) {
   if (!process.env.RESEND_API_KEY) {
     throw new Error("RESEND_API_KEY is not configured");
   }
 
-  const verificationUrl = `${resolveBaseUrl()}/verify-email?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
+  const verificationUrl = `${baseUrl}/verify-email?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -91,12 +91,12 @@ async function sendVerificationEmail(email, firstName, token) {
   }
 }
 
-async function sendPasswordResetEmail(email, firstName, token) {
+async function sendPasswordResetEmail(email, firstName, token, baseUrl) {
   if (!process.env.RESEND_API_KEY) {
     throw new Error("RESEND_API_KEY is not configured");
   }
 
-  const resetUrl = `${resolveBaseUrl()}/reset-password.html?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
+  const resetUrl = `${baseUrl}/reset-password.html?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -123,13 +123,17 @@ async function sendPasswordResetEmail(email, firstName, token) {
   }
 }
 
-function resolveBaseUrl() {
+function resolveBaseUrl(req) {
   if (APP_BASE_URL) {
-    return APP_BASE_URL;
+    return APP_BASE_URL.replace(/\/$/, "");
   }
 
-  if (process.env.NODE_ENV === "production") {
-    throw new Error("APP_BASE_URL must be configured in production");
+  const forwardedProto = req?.headers?.["x-forwarded-proto"];
+  const protocol = (forwardedProto ? forwardedProto.split(",")[0] : req?.protocol || "http").trim();
+  const host = req?.get?.("host") || req?.headers?.host;
+
+  if (host) {
+    return `${protocol}://${host}`.replace(/\/$/, "");
   }
 
   return `http://localhost:${port}`;
@@ -198,7 +202,7 @@ app.post("/register", async (req, res) => {
     });
 
     try {
-      await sendVerificationEmail(normalizedEmail, firstName.trim(), verificationToken);
+      await sendVerificationEmail(normalizedEmail, firstName.trim(), verificationToken, resolveBaseUrl(req));
       return res.status(201).json({ message: "Registration successful. Check your email to verify your account." });
     } catch (emailError) {
       console.error("Verification email delivery failed after registration:", emailError);
@@ -285,7 +289,7 @@ app.post("/resend-verification", async (req, res) => {
     user.emailVerificationExpiresAt = new Date(Date.now() + EMAIL_VERIFICATION_TTL_MINUTES * 60 * 1000);
     await user.save();
 
-    await sendVerificationEmail(user.email, user.firstName, verificationToken);
+    await sendVerificationEmail(user.email, user.firstName, verificationToken, resolveBaseUrl(req));
 
     return res.json({ message: "Verification email sent." });
   } catch (error) {
@@ -315,7 +319,7 @@ app.post("/forgot-password", async (req, res) => {
     user.passwordResetRequestedAt = new Date();
     await user.save();
 
-    await sendPasswordResetEmail(user.email, user.firstName, resetToken);
+    await sendPasswordResetEmail(user.email, user.firstName, resetToken, resolveBaseUrl(req));
 
     return res.json({ message: "If that account exists, a password reset email has been sent." });
   } catch (error) {
