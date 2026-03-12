@@ -124,6 +124,7 @@ function updateFocusModeControls({ running, hasTask } = {}) {
     const taskListEl = document.getElementById("focusTaskList");
     const startBtn = document.getElementById("focusStartBtn");
     const stopBtn = document.getElementById("focusStopBtn");
+    const completeBtn = document.getElementById("focusCompleteBtn");
     const canStart = typeof hasTask === "boolean"
         ? hasTask
         : Boolean(selectEl?.value);
@@ -145,6 +146,10 @@ function updateFocusModeControls({ running, hasTask } = {}) {
     if (stopBtn) {
         stopBtn.hidden = !Boolean(running);
         stopBtn.disabled = !Boolean(running);
+    }
+    if (completeBtn) {
+        completeBtn.hidden = !Boolean(running);
+        completeBtn.disabled = !Boolean(running);
     }
 }
 
@@ -187,6 +192,11 @@ function updateFocusTaskOptions(tasks) {
         return;
     }
 
+    const placeholderOption = document.createElement("option");
+    placeholderOption.value = "";
+    placeholderOption.textContent = "Select a task";
+    selectEl.appendChild(placeholderOption);
+
     filteredTasks.forEach((task) => {
         const option = document.createElement("option");
         const taskId = String(task._id);
@@ -201,59 +211,6 @@ function updateFocusTaskOptions(tasks) {
             item.setAttribute("role", "option");
             item.setAttribute("aria-selected", "false");
 
-            const completeInput = document.createElement("input");
-            completeInput.type = "checkbox";
-            completeInput.className = "task-check big-three-check focus-task-check";
-            completeInput.checked = false;
-            completeInput.setAttribute("aria-label", `Mark task complete: ${task.description || "Untitled task"}`);
-            completeInput.addEventListener("click", (event) => {
-                event.stopPropagation();
-            });
-            completeInput.addEventListener("change", async () => {
-                if (!completeInput.checked) return;
-
-                completeInput.disabled = true;
-                optionButton.disabled = true;
-
-                const payload = { status: "completed" };
-                if (Boolean(task.isBigThree)) {
-                    payload.isBigThree = false;
-                }
-
-                try {
-                    const updateResponse = await fetch(`/tasks/${taskId}`, {
-                        method: "PUT",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(payload)
-                    });
-
-                    const updateData = await parseApiResponse(updateResponse);
-                    if (!updateResponse.ok) {
-                        completeInput.checked = false;
-                        Toast.show({
-                            message: updateData?.error || "Could not complete task.",
-                            type: "error",
-                            duration: 3000
-                        });
-                        return;
-                    }
-
-                    if (focusState.taskId && String(focusState.taskId) === taskId) {
-                        await stopFocusSession("completed_task");
-                    }
-
-                    await loadFocusTasks();
-                } catch (error) {
-                    console.error("Completing focus-list task failed:", error);
-                    completeInput.checked = false;
-                    Toast.show({ message: "Could not complete task.", type: "error", duration: 3000 });
-                } finally {
-                    if (!focusState.taskId) {
-                        updateFocusModeControls({ running: false, hasTask: Boolean(selectEl.value) });
-                    }
-                }
-            });
-
             const optionButton = document.createElement("button");
             optionButton.type = "button";
             optionButton.className = "focus-task-option";
@@ -265,17 +222,18 @@ function updateFocusTaskOptions(tasks) {
                 updateFocusModeControls({ running: false, hasTask: true });
             });
 
-            item.append(completeInput, optionButton);
+            item.append(optionButton);
             taskListEl.appendChild(item);
         }
     });
 
-    if (previousValue && filteredTasks.some((task) => String(task._id) === previousValue)) {
+    const runningTaskId = String(focusState.taskId || "");
+    if (runningTaskId && filteredTasks.some((task) => String(task._id) === runningTaskId)) {
+        selectEl.value = runningTaskId;
+    } else if (previousValue && filteredTasks.some((task) => String(task._id) === previousValue)) {
         selectEl.value = previousValue;
-    }
-
-    if (!selectEl.value && filteredTasks.length > 0) {
-        selectEl.value = String(filteredTasks[0]._id);
+    } else {
+        selectEl.value = "";
     }
 
     const hasSelectedTaskInAnyList = focusState.allTasks.some(
@@ -469,12 +427,41 @@ async function stopFocusSession(reason = "manual_stop") {
     }
 }
 
+
+async function completeTask(taskId) {
+    if (!taskId) return { ok: false, error: "Select a task first." };
+
+    const task = focusState.allTasks.find((entry) => String(entry?._id) === String(taskId));
+    const payload = { status: "completed" };
+    if (Boolean(task?.isBigThree)) {
+        payload.isBigThree = false;
+    }
+
+    try {
+        const updateResponse = await fetch(`/tasks/${taskId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+        const updateData = await parseApiResponse(updateResponse);
+        if (!updateResponse.ok) {
+            return { ok: false, error: updateData?.error || "Could not complete task." };
+        }
+
+        return { ok: true };
+    } catch (error) {
+        console.error("Completing focus task failed:", error);
+        return { ok: false, error: "Could not complete task." };
+    }
+}
+
 async function initFocusMode() {
     const selectEl = document.getElementById("focusTaskSelect");
     const startBtn = document.getElementById("focusStartBtn");
     const stopBtn = document.getElementById("focusStopBtn");
+    const completeBtn = document.getElementById("focusCompleteBtn");
     const statusEl = document.getElementById("focus-status");
-    if (!selectEl || !startBtn || !stopBtn || !statusEl) return;
+    if (!selectEl || !startBtn || !stopBtn || !completeBtn || !statusEl) return;
 
     bindFocusFilterTabs();
 
@@ -536,6 +523,23 @@ async function initFocusMode() {
 
     stopBtn.addEventListener("click", async () => {
         await stopFocusSession("manual_stop");
+    });
+
+    completeBtn.addEventListener("click", async () => {
+        if (!focusState.taskId) return;
+
+        completeBtn.disabled = true;
+        stopBtn.disabled = true;
+
+        const completion = await completeTask(focusState.taskId);
+        if (!completion.ok) {
+            Toast.show({ message: completion.error, type: "error", duration: 3000 });
+            updateFocusModeControls({ running: Boolean(focusState.taskId), hasTask: Boolean(selectEl.value) });
+            return;
+        }
+
+        await stopFocusSession("completed_task");
+        await loadFocusTasks();
     });
 }
 
