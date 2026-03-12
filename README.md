@@ -33,3 +33,30 @@ Donezo is an application for making and storing a list of task for the user to k
 - Provide easily identifiable feedback (This is done by using the alert function in the browser)
 
 - Associate a label with every form control
+
+## Resend Email Verification Setup
+
+The app now sends a verification email after registration and requires a verified email before login.
+
+- Existing accounts are treated as verified by default (legacy-safe), while new registrations are explicitly created as unverified until they verify by email.
+
+1. In Resend, keep your sending domain as `mail.stickapin.app`.
+2. Create an API key in Resend.
+3. Add these environment variables to your local `.env` and deployment secrets:
+
+```env
+RESEND_API_KEY=re_xxxxxxxxx
+EMAIL_FROM=Stick A Pin <no-reply@mail.stickapin.app>
+APP_BASE_URL=http://localhost:3000  # optional; set explicitly to your deployed app URL in production
+EMAIL_VERIFICATION_TTL_MINUTES=60
+PASSWORD_RESET_TTL_MINUTES=30
+```
+
+### What to do with your API key
+
+- Put the key in `RESEND_API_KEY` only (never hardcode it in source files).
+- For local development, place it in `.env`.
+- For production, set it in your hosting provider's secret/environment settings.
+
+
+Forgot password flow uses `POST /forgot-password` and `POST /reset-password` with reset links sent through Resend. If `APP_BASE_URL` is unset, links are derived from the incoming request host/protocol.

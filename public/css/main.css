@@ -99,7 +99,112 @@ img, svg, canvas, video{
   justify-self: center;
 }
 
+#forgot-password-page,
+#reset-password-page,
+#verification-success-page{
+  text-align: center;
+  max-width: fit-content;
+  width: clamp(300px, 40vw, 420px);
+  justify-self: center;
+}
 
+
+
+
+
+.verification-success-page .paper-content{
+  width: 100%;
+  text-align: center;
+}
+
+.verification-success-page h1{
+  font-size: clamp(24px, 4.6vw, 38px);
+  text-decoration: none;
+}
+
+.verification-success-page #verificationSuccessMessage{
+  margin: 0;
+  width: 100%;
+  text-align: center;
+}
+
+.verification-success-page .paper-footer{
+  text-align: center;
+}
+/* =========================================================
+   Verification Status Page
+   ========================================================= */
+#verification-status-page{
+  text-align: center;
+  max-width: fit-content;
+  width: clamp(320px, 42vw, 430px);
+  justify-self: center;
+}
+
+.verification-status-page .paper-content{
+  width: 100%;
+}
+
+.verification-status-page .paper-form{
+  margin-top: 4px;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  padding: 0;
+}
+
+
+.verification-status-page #verificationStatusMessage{
+  font-size: clamp(24px, 5.2vw, 36px);
+  line-height: 1.2;
+}
+
+.verification-status-page #verificationStatusEmail{
+  margin-top: 14px;
+  margin-bottom: 14px;
+}
+
+.verification-status-page .paper-footer{
+  text-align: center;
+}
+
+
+/* =========================================================
+   Verification Status Page
+   ========================================================= */
+#verification-status-page{
+  text-align: center;
+  max-width: fit-content;
+  width: clamp(320px, 42vw, 430px);
+  justify-self: center;
+}
+
+.verification-status-page .paper-content{
+  width: 100%;
+}
+
+.verification-status-page .paper-form{
+  margin-top: 4px;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  padding: 0;
+}
+
+
+.verification-status-page #verificationStatusMessage{
+  font-size: clamp(24px, 5.2vw, 36px);
+  line-height: 1.2;
+}
+
+.verification-status-page #verificationStatusEmail{
+  margin-top: 14px;
+  margin-bottom: 14px;
+}
+
+.verification-status-page .paper-footer{
+  text-align: center;
+}
 
 /* =========================================================
    TEXT STYLES
