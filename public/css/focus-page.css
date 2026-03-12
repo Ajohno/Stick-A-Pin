@@ -160,14 +160,11 @@
 }
 
 .focus-task-list-item.big-three-item {
-  grid-template-columns: 1.35rem 1fr;
-  gap: 0.45rem;
+  grid-template-columns: 1fr;
+  gap: 0.35rem;
   align-items: start;
 }
 
-.focus-task-check {
-  margin-top: 0.18rem;
-}
 
 .focus-task-option {
   display: block;
