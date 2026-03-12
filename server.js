@@ -887,7 +887,7 @@ app.get("/settings/daily-email", ensureAuthenticated, authenticatedLimiter, asyn
   }
 });
 
-app.put("/settings/daily-email", ensureAuthenticated, async (req, res) => {
+app.put("/settings/daily-email", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
   try {
     const dailyEmail = Boolean(req.body.dailyEmail);
     const requestedTime = String(req.body.dailyEmailTime || "").trim();
