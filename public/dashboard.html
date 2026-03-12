@@ -89,10 +89,19 @@
           <div>
             <!-- Task List -->
             <div id="task-list-widget" class="sticky-note thumbtack task-note">
-              <h2 class="widget-title highlight-on-parent-hover">
-                <i class="fa-solid fa-list" style="color: #c6534e"></i>
-                Task List
-              </h2>
+              <div class="task-list-header">
+                <h2 class="widget-title highlight-on-parent-hover">
+                  <i class="fa-solid fa-list" style="color: #c6534e"></i>
+                  Task List
+                </h2>
+                <button
+                  id="clear-completed-tasks-btn"
+                  class="task-action-btn clear-completed-button"
+                  type="button"
+                >
+                  Clear Completed
+                </button>
+              </div>
 
               <ul class="task-list scrollable"></ul>
               <template id="task-template">
