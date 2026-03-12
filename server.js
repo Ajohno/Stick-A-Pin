@@ -905,9 +905,15 @@ app.put("/settings/daily-email", ensureAuthenticated, async (req, res) => {
 
 app.post("/settings/daily-email/test", ensureAuthenticated, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select("email firstName");
+    const user = await User.findById(req.user.id).select("email firstName settings.dailyEmail");
     if (!user) {
       return res.status(404).json({ error: "User not found" });
+    }
+
+    if (user.settings?.dailyEmail === false) {
+      return res.status(403).json({
+        error: 'Unable to send daily reflection. Turn on "Daily Reflection" in settings to receive daily reflection emails.',
+      });
     }
 
     const emailData = await buildDailyReflectionEmailData(req.user.id);

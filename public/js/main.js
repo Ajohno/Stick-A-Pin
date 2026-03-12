@@ -872,6 +872,16 @@ async function initDailyEmailSettings() {
   timeEl.addEventListener("change", saveSettings);
 
   testBtn.addEventListener("click", async () => {
+    if (!toggleEl.checked) {
+      Toast.show({
+        message:
+          'Unable to send daily reflection. Turn on "Daily Reflection" in settings to receive daily reflection emails.',
+        type: "error",
+        duration: 3200,
+      });
+      return;
+    }
+
     testBtn.disabled = true;
 
     try {
@@ -882,7 +892,7 @@ async function initDailyEmailSettings() {
 
       const data = await parseApiResponse(response);
       if (!response.ok) {
-        throw new Error(data?.error || "Unable to send test email.");
+        throw new Error(data?.error || "Unable to send daily reflection. Turn on \"Daily Reflection\" in settings to receive daily reflection emails.");
       }
 
       Toast.show({
