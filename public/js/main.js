@@ -798,6 +798,112 @@ async function initFocusMode() {
   });
 }
 
+async function initDailyEmailSettings() {
+  const toggleEl = document.getElementById("dailyEmailToggle");
+  const timeEl = document.getElementById("dailyEmailTime");
+  const testBtn = document.getElementById("dailyEmailTestBtn");
+
+  if (!toggleEl || !timeEl || !testBtn) return;
+
+  const setInputsDisabled = (disabled) => {
+    toggleEl.disabled = disabled;
+    timeEl.disabled = disabled;
+    testBtn.disabled = disabled;
+  };
+
+  const saveSettings = async () => {
+    try {
+      const response = await fetch("/settings/daily-email", {
+        credentials: "include",
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dailyEmail: toggleEl.checked,
+          dailyEmailTime: timeEl.value || "18:00",
+        }),
+      });
+
+      const data = await parseApiResponse(response);
+      if (!response.ok) {
+        throw new Error(data?.error || "Unable to save daily email settings.");
+      }
+
+      Toast.show({
+        message: "Daily reflection settings saved",
+        type: "success",
+        duration: 1800,
+      });
+    } catch (error) {
+      console.error("Saving daily email settings failed:", error);
+      Toast.show({
+        message: error.message || "Could not save daily reflection settings.",
+        type: "error",
+        duration: 2600,
+      });
+    }
+  };
+
+  try {
+    setInputsDisabled(true);
+    const response = await fetch("/settings/daily-email", {
+      credentials: "include",
+      cache: "no-store",
+    });
+
+    const data = await parseApiResponse(response);
+    if (!response.ok) {
+      throw new Error(data?.error || "Unable to load daily email settings.");
+    }
+
+    toggleEl.checked = Boolean(data?.dailyEmail);
+    timeEl.value = typeof data?.dailyEmailTime === "string" ? data.dailyEmailTime : "18:00";
+  } catch (error) {
+    console.error("Loading daily email settings failed:", error);
+    Toast.show({
+      message: "Could not load daily reflection settings.",
+      type: "error",
+      duration: 2600,
+    });
+  } finally {
+    setInputsDisabled(false);
+  }
+
+  toggleEl.addEventListener("change", saveSettings);
+  timeEl.addEventListener("change", saveSettings);
+
+  testBtn.addEventListener("click", async () => {
+    testBtn.disabled = true;
+
+    try {
+      const response = await fetch("/settings/daily-email/test", {
+        credentials: "include",
+        method: "POST",
+      });
+
+      const data = await parseApiResponse(response);
+      if (!response.ok) {
+        throw new Error(data?.error || "Unable to send test email.");
+      }
+
+      Toast.show({
+        message: "Test daily reflection email sent",
+        type: "success",
+        duration: 2600,
+      });
+    } catch (error) {
+      console.error("Sending daily email test failed:", error);
+      Toast.show({
+        message: error.message || "Could not send test daily reflection email.",
+        type: "error",
+        duration: 3000,
+      });
+    } finally {
+      testBtn.disabled = false;
+    }
+  });
+}
+
+
 document.addEventListener("DOMContentLoaded", () => {
   console.log("DOM Fully Loaded - JavaScript Running");
 
@@ -1130,6 +1236,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   bindDashboardTaskFilterTabs();
+  initDailyEmailSettings();
 
   checkAuthStatus({ isLoginPage, isRegisterPage, isProtectedPage, isHomePage }); // Check authentication status on page load
   initFocusMode();
