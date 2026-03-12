@@ -1,6 +1,6 @@
-## Donezo
+## Stick A Pin
 
-Link: https://donezo-sooty.vercel.app/
+Link: www.stickapin.app
 
 Donezo is an application for making and storing a list of task for the user to keep track of. Donezo opens to the user authentication screen where the user is able to either register for an account or log in with an existing username and password. I encountered some issues with the dynamic updating of the task list however I was able to fix the issues. I used the passport local strategy as it seemed the easiest to understand as a first time user. I tried to implement Material Tailwind as I was interested in seeing how it functioned as I have used Tailwind before, however it interfered with my implemented CSS styling and so I was not able to completely implement it.
 
