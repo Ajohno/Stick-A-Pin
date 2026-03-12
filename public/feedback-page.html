@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <title>Stick A Pin</title>
@@ -7,7 +7,11 @@
     <script src="js/notification.js" defer></script>
     <script src="js/main.js" defer></script>
     <link rel="icon" type="image/png" href="/assets/image/donezo-logo.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/assets/image/donezo-logo.png" />
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="/assets/image/donezo-logo.png"
+    />
     <link rel="manifest" href="/site.webmanifest" />
     <meta name="theme-color" content="#f5ecd7" />
     <link rel="stylesheet" href="css/main.css" />
@@ -20,7 +24,7 @@
       href="https://fonts.googleapis.com/css2?family=Gochi+Hand&family=Itim&family=Quantico:ital,wght@0,400;0,700;1,400;1,700&display=swap"
       rel="stylesheet"
     />
-        <link
+    <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.5.2/css/all.min.css"
     />
@@ -28,14 +32,20 @@
   <body>
     <nav class="navbar">
       <div class="nav-left">
-        <button class="nav__toggle" type="button" aria-label="Open menu" aria-controls="nav-drawer" aria-expanded="false">
+        <button
+          class="nav__toggle"
+          type="button"
+          aria-label="Open menu"
+          aria-controls="nav-drawer"
+          aria-expanded="false"
+        >
           <i class="fa-solid fa-bars" aria-hidden="true"></i>
           <span class="sr-only">Menu</span>
         </button>
         <div class="logo-container">
           <div class="logo-sticky">
             <div class="thumbtack">
-              <i class="fa-solid fa-thumbtack" style="color:#c6534e;"></i>
+              <i class="fa-solid fa-thumbtack" style="color: #c6534e"></i>
             </div>
           </div>
           <span class="brand-name">Stick A Pin</span>
@@ -44,7 +54,9 @@
       <ul class="nav-links" id="nav-drawer">
         <li><a href="/dashboard.html" class="nav-item">Board</a></li>
         <li><a href="/calendar-page.html" class="nav-item">Calendar</a></li>
-        <li><a href="/feedback-page.html" class="nav-item active">Feedback</a></li>
+        <li>
+          <a href="/feedback-page.html" class="nav-item active">Feedback</a>
+        </li>
         <li><a href="/settings-page.html" class="nav-item">Settings</a></li>
         <li><a href="/profile-page.html" class="nav-item">Profile</a></li>
         <li><a href="#" id="logoutBtn" class="nav-item">Logout</a></li>
@@ -61,23 +73,46 @@
     </nav>
     <div id="nav-backdrop" aria-hidden="true"></div>
 
-    <main class="corkboard" style="max-width: 1100px; margin: 2rem auto;">
-      <section class="sticky-note thumbtack" style="padding: 1.25rem;">
-        <h1 class="widget-title">
-          <i class="fa-solid fa-comment-dots" style="color: #c6534e;"></i>
+    <main
+      class="corkboard placeholder-board"
+      style="max-width: 1100px; margin: 0 auto"
+    >
+      <section
+        class="sticky-note orange caution-tape page-placeholder"
+        aria-label="Feedback page coming soon"
+      >
+        <h2 class="widget-title">
+          <i class="fa-solid fa-comment-dots" style="color: #c6534e"></i>
           Feedback
-        </h1>
-        <p>We value your feedback. Please share ideas and suggestions with the team.</p>
+        </h2>
+        <p>
+          This page is currently in progress. Check back soon for feedback tools
+          and updates.
+        </p>
       </section>
     </main>
 
-    <div id="toast" class="toast toast--default" role="status" aria-live="polite" aria-atomic="true" hidden>
+    <div
+      id="toast"
+      class="toast toast--default"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      hidden
+    >
       <div class="toast__icon" aria-hidden="true">i</div>
       <div class="toast__content">
         <div id="toastTitle" class="toast__title" hidden></div>
         <div id="toastMessage" class="toast__message"></div>
       </div>
-      <button id="toastClose" class="toast__close" type="button" aria-label="Close notification">×</button>
+      <button
+        id="toastClose"
+        class="toast__close"
+        type="button"
+        aria-label="Close notification"
+      >
+        ×
+      </button>
       <div class="toast__progress"></div>
     </div>
   </body>
