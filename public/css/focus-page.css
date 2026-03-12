@@ -115,8 +115,6 @@
   display: none !important;
 }
 
-
-
 .focus-task-tabs {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -169,7 +167,6 @@
   gap: 0.35rem;
   align-items: start;
 }
-
 
 .focus-task-option {
   display: block;
@@ -269,6 +266,7 @@
   text-align: center;
   font-size: 1.05rem;
   color: #5d4037;
+  min-height: 1.35em;
 }
 
 @media (max-width: 768px), (hover: none) and (pointer: coarse) {

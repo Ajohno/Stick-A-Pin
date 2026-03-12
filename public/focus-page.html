@@ -75,7 +75,11 @@
     <div id="nav-backdrop" aria-hidden="true"></div>
 
     <main class="corkboard" style="max-width: 1200px; margin: 0 auto">
-      <section id="focus-mode-widget" class="focus-board" aria-label="Focus mode board">
+      <section
+        id="focus-mode-widget"
+        class="focus-board"
+        aria-label="Focus mode board"
+      >
         <div class="focus-column focus-column-left">
           <article class="sticky-note yellow tape focus-card focus-log-card">
             <h2 class="focus-log-title">Focus Log</h2>
@@ -94,16 +98,30 @@
               Pick a task and start a focus session.
             </p>
             <div class="focus-session-center">
-              <span id="focusTimer" class="focus-timer" aria-live="polite">00:00</span>
+              <span id="focusTimer" class="focus-timer" aria-live="polite"
+                >00:00</span
+              >
             </div>
             <div class="focus-controls">
               <button id="focusStartBtn" class="paper-button" type="button">
                 Start
               </button>
-              <button id="focusStopBtn" class="paper-button" type="button" hidden disabled>
+              <button
+                id="focusStopBtn"
+                class="paper-button"
+                type="button"
+                hidden
+                disabled
+              >
                 Stop
               </button>
-              <button id="focusCompleteBtn" class="paper-button" type="button" hidden disabled>
+              <button
+                id="focusCompleteBtn"
+                class="paper-button"
+                type="button"
+                hidden
+                disabled
+              >
                 Complete Task
               </button>
             </div>
@@ -113,18 +131,57 @@
         <div class="focus-column focus-column-right">
           <article class="sticky-note blue tape focus-card focus-task-card">
             <div class="paper-field">
-              <label id="focusTaskLabel" for="focusTaskSelect">What should we focus on right now?</label>
-              <div class="focus-task-tabs" role="tablist" aria-label="Filter focus tasks">
-                <button id="focusTabBigThree" class="focus-task-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="focusTaskList" data-filter="big-three">Big 3</button>
-                <button id="focusTabTaskList" class="focus-task-tab" type="button" role="tab" aria-selected="false" aria-controls="focusTaskList" data-filter="task-list">Task List</button>
-                <button id="focusTabEffort" class="focus-task-tab" type="button" role="tab" aria-selected="false" aria-controls="focusTaskList" data-filter="effort">Effort</button>
+              <label id="focusTaskLabel" for="focusTaskSelect"
+                >What should we focus on right now?</label
+              >
+              <div
+                class="focus-task-tabs"
+                role="tablist"
+                aria-label="Filter focus tasks"
+              >
+                <button
+                  id="focusTabBigThree"
+                  class="focus-task-tab is-active"
+                  type="button"
+                  role="tab"
+                  aria-selected="true"
+                  aria-controls="focusTaskList"
+                  data-filter="big-three"
+                >
+                  Big 3
+                </button>
+                <button
+                  id="focusTabTaskList"
+                  class="focus-task-tab"
+                  type="button"
+                  role="tab"
+                  aria-selected="false"
+                  aria-controls="focusTaskList"
+                  data-filter="task-list"
+                >
+                  Task List
+                </button>
+                <button
+                  id="focusTabEffort"
+                  class="focus-task-tab"
+                  type="button"
+                  role="tab"
+                  aria-selected="false"
+                  aria-controls="focusTaskList"
+                  data-filter="effort"
+                >
+                  Effort
+                </button>
               </div>
               <select
                 id="focusTaskSelect"
                 aria-label="Select a task to focus on"
                 hidden
               ></select>
-              <div class="handdrawn-divider focus-task-divider" aria-hidden="true"></div>
+              <div
+                class="handdrawn-divider focus-task-divider"
+                aria-hidden="true"
+              ></div>
               <ul
                 id="focusTaskList"
                 class="big-three-list focus-task-list"
@@ -135,7 +192,11 @@
           </article>
 
           <article class="sticky-note pink tape focus-card focus-quote-card">
-            <p class="focus-quote-text">Put a encouraging quote here</p>
+            <p
+              id="focusQuoteText"
+              class="focus-quote-text"
+              aria-live="polite"
+            ></p>
           </article>
         </div>
       </section>
