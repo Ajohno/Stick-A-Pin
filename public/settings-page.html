@@ -74,21 +74,39 @@
     <div id="nav-backdrop" aria-hidden="true"></div>
 
     <main
-      class="corkboard placeholder-board"
+      class="corkboard placeholder-board settings-board"
       style="max-width: 1100px; margin: 0 auto"
     >
-      <section
-        class="sticky-note orange caution-tape page-placeholder"
-        aria-label="Settings page coming soon"
-      >
+      <section class="sticky-note orange caution-tape settings-panel">
         <h2 class="widget-title">
           <i class="fa-solid fa-gear" style="color: #c6534e"></i>
           Settings
         </h2>
-        <p>
-          This page is currently in progress. Check back soon for your settings
-          controls.
-        </p>
+
+        <section class="daily-reflection-card" aria-label="Daily reflection email settings">
+          <h2 class="daily-reflection-title">Daily Reflection:</h2>
+
+          <div class="daily-email-settings">
+            <div class="daily-email-row daily-email-toggle-row">
+              <label for="dailyEmailToggle" class="daily-email-label"
+                >Receive Daily Reflection:</label
+              >
+              <label class="toggle-switch" for="dailyEmailToggle">
+                <input type="checkbox" id="dailyEmailToggle" />
+                <span class="toggle-slider" aria-hidden="true"></span>
+              </label>
+            </div>
+
+            <div class="daily-email-row daily-email-time-row">
+              <label for="dailyEmailTime" class="daily-email-time-label"
+                >Send Time:</label
+              >
+              <input type="time" id="dailyEmailTime" value="18:00" />
+            </div>
+
+            <button id="dailyEmailTestBtn" class="btn" type="button">Test</button>
+          </div>
+        </section>
       </section>
     </main>
 
