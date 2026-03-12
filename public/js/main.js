@@ -16,6 +16,57 @@ async function parseApiResponse(response) {
   return { error: text || "Unexpected server response" };
 }
 
+
+let csrfTokenPromise = null;
+
+function shouldAttachCsrf(method = "GET") {
+  const normalizedMethod = String(method || "GET").toUpperCase();
+  return !["GET", "HEAD", "OPTIONS"].includes(normalizedMethod);
+}
+
+async function getCsrfToken() {
+  if (!csrfTokenPromise) {
+    csrfTokenPromise = (async () => {
+      const response = await fetch("/csrf-token", { credentials: "include" });
+      const data = await parseApiResponse(response);
+
+      if (!response.ok || !data.csrfToken) {
+        throw new Error(data.error || "Unable to retrieve CSRF token");
+      }
+
+      return data.csrfToken;
+    })().catch((error) => {
+      csrfTokenPromise = null;
+      throw error;
+    });
+  }
+
+  return csrfTokenPromise;
+}
+
+async function apiFetch(url, options = {}, retryOnCsrfFailure = true) {
+  const method = String(options.method || "GET").toUpperCase();
+  const headers = new Headers(options.headers || {});
+
+  if (shouldAttachCsrf(method) && !headers.has("x-csrf-token")) {
+    const csrfToken = await getCsrfToken();
+    headers.set("x-csrf-token", csrfToken);
+  }
+
+  const response = await fetch(url, {
+    credentials: "include",
+    ...options,
+    headers,
+  });
+
+  if (response.status === 403 && shouldAttachCsrf(method) && retryOnCsrfFailure) {
+    csrfTokenPromise = null;
+    return apiFetch(url, options, false);
+  }
+
+  return response;
+}
+
 const focusState = {
   taskId: null,
   sessionId: null,
@@ -444,7 +495,7 @@ function updateFocusTaskOptions(tasks) {
 }
 
 async function loadFocusTasks() {
-  const response = await fetch("/tasks", { credentials: "include" });
+  const response = await apiFetch("/tasks", { credentials: "include" });
   if (!response.ok) {
     focusState.allTasks = [];
     updateFocusTaskOptions([]);
@@ -536,7 +587,7 @@ async function updateFocusLogWidget() {
   const query = new URLSearchParams({ from, to }).toString();
 
   try {
-    const response = await fetch(`/focus-sessions?${query}`, {
+    const response = await apiFetch(`/focus-sessions?${query}`, {
       credentials: "include",
       cache: "no-store",
     });
@@ -604,7 +655,7 @@ async function stopFocusSession(reason = "manual_stop") {
 
   if (isRunning) {
     try {
-      const response = await fetch("/focus-sessions/stop", {
+      const response = await apiFetch("/focus-sessions/stop", {
         credentials: "include",
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -663,7 +714,7 @@ async function completeTask(taskId) {
   }
 
   try {
-    const updateResponse = await fetch(`/tasks/${taskId}`, {
+    const updateResponse = await apiFetch(`/tasks/${taskId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -725,7 +776,7 @@ async function initFocusMode() {
     startBtn.disabled = true;
 
     try {
-      const response = await fetch("/focus-sessions/start", {
+      const response = await apiFetch("/focus-sessions/start", {
         credentials: "include",
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -813,7 +864,7 @@ async function initDailyEmailSettings() {
 
   const saveSettings = async () => {
     try {
-      const response = await fetch("/settings/daily-email", {
+      const response = await apiFetch("/settings/daily-email", {
         credentials: "include",
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -845,7 +896,7 @@ async function initDailyEmailSettings() {
 
   try {
     setInputsDisabled(true);
-    const response = await fetch("/settings/daily-email", {
+    const response = await apiFetch("/settings/daily-email", {
       credentials: "include",
       cache: "no-store",
     });
@@ -885,7 +936,7 @@ async function initDailyEmailSettings() {
     testBtn.disabled = true;
 
     try {
-      const response = await fetch("/settings/daily-email/test", {
+      const response = await apiFetch("/settings/daily-email/test", {
         credentials: "include",
         method: "POST",
       });
@@ -959,7 +1010,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       try {
-        const response = await fetch("/register", {
+        const response = await apiFetch("/register", {
           credentials: "include",
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1015,7 +1066,7 @@ document.addEventListener("DOMContentLoaded", () => {
       resendBtn.disabled = true;
 
       try {
-        const response = await fetch("/resend-verification", {
+        const response = await apiFetch("/resend-verification", {
           credentials: "include",
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1061,7 +1112,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       try {
-        const response = await fetch("/forgot-password", {
+        const response = await apiFetch("/forgot-password", {
           credentials: "include",
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1121,7 +1172,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       try {
-        const response = await fetch("/reset-password", {
+        const response = await apiFetch("/reset-password", {
           credentials: "include",
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1159,7 +1210,7 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("rememberMe")?.checked || false;
 
       try {
-        const response = await fetch("/login", {
+        const response = await apiFetch("/login", {
           credentials: "include",
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1204,7 +1255,7 @@ document.addEventListener("DOMContentLoaded", () => {
       event.preventDefault();
 
       try {
-        const response = await fetch("/logout", {
+        const response = await apiFetch("/logout", {
           credentials: "include",
           method: "POST",
         });
@@ -1257,7 +1308,7 @@ async function updateNavTaskCounter() {
   if (!counters.length) return;
 
   try {
-    const response = await fetch("/tasks", { credentials: "include" });
+    const response = await apiFetch("/tasks", { credentials: "include" });
     if (!response.ok) return;
 
     const tasks = await response.json();
@@ -1288,7 +1339,7 @@ async function checkAuthStatus({
   let data = { loggedIn: false };
 
   try {
-    const response = await fetch("/auth-status", {
+    const response = await apiFetch("/auth-status", {
       credentials: "include",
       cache: "no-store",
     });
@@ -1366,7 +1417,7 @@ async function checkAuthStatus({
 
 // Function to get the tasks for the logged in user
 async function fetchTasks() {
-  const response = await fetch("/tasks", { credentials: "include" });
+  const response = await apiFetch("/tasks", { credentials: "include" });
   const tasks = await response.json();
 
   if (response.ok) {
@@ -1388,7 +1439,7 @@ async function clearCompletedTasks() {
   }
 
   try {
-    const response = await fetch("/tasks", { credentials: "include" });
+    const response = await apiFetch("/tasks", { credentials: "include" });
     const tasks = await parseApiResponse(response);
 
     if (!response.ok) {
@@ -1415,7 +1466,7 @@ async function clearCompletedTasks() {
 
     const deleteResults = await Promise.allSettled(
       completedTasks.map((task) =>
-        fetch(`/tasks/${task._id}`, { method: "DELETE" }),
+        apiFetch(`/tasks/${task._id}`, { method: "DELETE" }),
       ),
     );
 
@@ -1483,7 +1534,7 @@ const submit = async function (event) {
   }
 
   // Send task data to the server
-  const response = await fetch("/tasks", {
+  const response = await apiFetch("/tasks", {
     credentials: "include",
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1736,7 +1787,7 @@ async function updateTaskCompletionStatus(
       payload.isBigThree = false;
     }
 
-    const updateResponse = await fetch(`/tasks/${task._id}`, {
+    const updateResponse = await apiFetch(`/tasks/${task._id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -2128,7 +2179,7 @@ function updateTaskList(tasks) {
       if (bigThreeButton) bigThreeButton.disabled = true;
 
       try {
-        const updateResponse = await fetch(`/tasks/${task._id}`, {
+        const updateResponse = await apiFetch(`/tasks/${task._id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ isBigThree: nextIsBigThree }),
@@ -2170,7 +2221,7 @@ function updateTaskList(tasks) {
     bigThreeButton?.addEventListener("click", toggleBigThree);
 
     const saveTaskEdits = async (updates) => {
-      const updateResponse = await fetch(`/tasks/${task._id}`, {
+      const updateResponse = await apiFetch(`/tasks/${task._id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),
@@ -2201,7 +2252,7 @@ function updateTaskList(tasks) {
         "Are you sure you want to delete this task?",
       );
       if (confirmDelete) {
-        const deleteResponse = await fetch(`/tasks/${task._id}`, {
+        const deleteResponse = await apiFetch(`/tasks/${task._id}`, {
           method: "DELETE",
         });
 
