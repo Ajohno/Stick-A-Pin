@@ -868,7 +868,7 @@ app.get("/focus-sessions", ensureAuthenticated, async (req, res) => {
 
 
 
-app.get("/settings/daily-email", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
+app.get("/settings/daily-email", authenticatedLimiter, ensureAuthenticated, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("settings.dailyEmail settings.dailyEmailTime");
     if (!user) {
@@ -887,7 +887,7 @@ app.get("/settings/daily-email", ensureAuthenticated, authenticatedLimiter, asyn
   }
 });
 
-app.put("/settings/daily-email", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
+app.put("/settings/daily-email", authenticatedLimiter, ensureAuthenticated, async (req, res) => {
   try {
     const dailyEmail = Boolean(req.body.dailyEmail);
     const requestedTime = String(req.body.dailyEmailTime || "").trim();
@@ -919,7 +919,7 @@ app.put("/settings/daily-email", ensureAuthenticated, authenticatedLimiter, asyn
   }
 });
 
-app.post("/settings/daily-email/test", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
+app.post("/settings/daily-email/test", authenticatedLimiter, ensureAuthenticated, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("email firstName settings.dailyEmail");
     if (!user) {
