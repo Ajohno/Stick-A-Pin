@@ -10,6 +10,7 @@ const bcrypt = require("bcryptjs"); // Used to hash passwords
 const User = require("./config/models/user"); // User model for the database
 const Task = require("./config/models/task"); // Task model for the database
 const FocusSession = require("./config/models/focusSession"); // FocusSession model for tracking focus sessions
+const csrf = require("lusca").csrf; // CSRF protection middleware
 const rateLimit = require("express-rate-limit"); // Rate limiting middleware
 const MongoStore = require("connect-mongo").default; // Store sessions in MongoDB
 
@@ -276,9 +277,16 @@ app.use(session({
   }
 }));
 
+// CSRF protection for routes using cookie-based sessions
+app.use(csrf());
 
 app.use(passport.initialize());
 app.use(passport.session()); // Enables persistent login sessions
+
+// Endpoint for clients to retrieve a CSRF token
+app.get("/csrf-token", (req, res) => {
+  res.json({ csrfToken: req.csrfToken() });
+});
 
 app.use(express.json()); // Middleware to parse JSON request body
 app.use(express.urlencoded({ extended: false })); // Parses form data
