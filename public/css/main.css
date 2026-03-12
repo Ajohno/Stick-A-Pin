@@ -100,7 +100,8 @@ img, svg, canvas, video{
 }
 
 #forgot-password-page,
-#reset-password-page{
+#reset-password-page,
+#verification-success-page{
   text-align: center;
   max-width: fit-content;
   width: clamp(300px, 40vw, 420px);

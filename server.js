@@ -260,7 +260,7 @@ app.get("/verify-email", async (req, res) => {
     user.emailVerifiedAt = new Date();
     await user.save();
 
-    return res.status(200).send("Email verified successfully. You can now log in.");
+    return res.redirect("/verification-success.html");
   } catch (error) {
     console.error("Error verifying email:", error);
     return res.status(500).send("Server error while verifying email.");
