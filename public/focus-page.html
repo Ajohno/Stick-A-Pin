@@ -110,7 +110,12 @@
         <div class="focus-column focus-column-right">
           <article class="sticky-note blue tape focus-card focus-task-card">
             <div class="paper-field">
-              <label id="focusTaskLabel" for="focusTaskSelect">Task</label>
+              <label id="focusTaskLabel" for="focusTaskSelect">What should we focus on right now?</label>
+              <div class="focus-task-tabs" role="tablist" aria-label="Filter focus tasks">
+                <button id="focusTabBigThree" class="focus-task-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="focusTaskList" data-filter="big-three">Big 3</button>
+                <button id="focusTabTaskList" class="focus-task-tab" type="button" role="tab" aria-selected="false" aria-controls="focusTaskList" data-filter="task-list">Task List</button>
+                <button id="focusTabEffort" class="focus-task-tab" type="button" role="tab" aria-selected="false" aria-controls="focusTaskList" data-filter="effort">Effort</button>
+              </div>
               <select
                 id="focusTaskSelect"
                 aria-label="Select a task to focus on"

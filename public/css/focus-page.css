@@ -115,6 +115,38 @@
   display: none !important;
 }
 
+
+
+.focus-task-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+
+.focus-task-tab {
+  border: 1px solid rgba(93, 64, 55, 0.35);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.42);
+  color: #5d4037;
+  font: inherit;
+  font-size: 0.82rem;
+  line-height: 1.2;
+  padding: 0.32rem 0.3rem;
+  cursor: pointer;
+}
+
+.focus-task-tab.is-active {
+  border-color: rgba(198, 83, 78, 0.7);
+  background: rgba(247, 204, 220, 0.55);
+  color: #8b3a2e;
+  font-weight: 700;
+}
+
+.focus-task-tab:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
 .focus-task-list {
   margin-top: 0.3rem;
   max-height: 240px;
