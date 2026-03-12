@@ -10,6 +10,7 @@ const bcrypt = require("bcryptjs"); // Used to hash passwords
 const User = require("./config/models/user"); // User model for the database
 const Task = require("./config/models/task"); // Task model for the database
 const FocusSession = require("./config/models/focusSession"); // FocusSession model for tracking focus sessions
+const csrf = require("lusca").csrf; // CSRF protection middleware
 const rateLimit = require("express-rate-limit"); // Rate limiting middleware
 const MongoStore = require("connect-mongo").default; // Store sessions in MongoDB
 
@@ -24,6 +25,14 @@ const EMAIL_VERIFICATION_TTL_MINUTES = Number(process.env.EMAIL_VERIFICATION_TTL
 const PASSWORD_RESET_TTL_MINUTES = Number(process.env.PASSWORD_RESET_TTL_MINUTES || 30);
 const APP_BASE_URL = process.env.APP_BASE_URL;
 const EMAIL_FROM = process.env.EMAIL_FROM || "Stick A Pin <no-reply@mail.stickapin.app>";
+
+// Rate limiter for authenticated routes to protect expensive operations
+const authenticatedLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+});
 
 let appdata = [];
 
@@ -140,6 +149,121 @@ function resolveBaseUrl(req) {
   return `http://localhost:${port}`;
 }
 
+
+function isValidTimeInput(value) {
+  return typeof value === "string" && /^([01]\d|2[0-3]):([0-5]\d)$/.test(value);
+}
+
+function formatDurationFromMs(durationMs) {
+  const safeDurationMs = Math.max(0, Number(durationMs) || 0);
+  const totalMinutes = Math.floor(safeDurationMs / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours === 0) {
+    return `${minutes}m`;
+  }
+
+  if (minutes === 0) {
+    return `${hours}h`;
+  }
+
+  return `${hours}h ${minutes}m`;
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function getTodayBounds() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { start, end };
+}
+
+async function buildDailyReflectionEmailData(userId) {
+  const { start, end } = getTodayBounds();
+
+  const [completedToday, tasksCreatedToday, sessionsToday] = await Promise.all([
+    Task.find({
+      userId,
+      status: "completed",
+      completedAt: { $gte: start, $lt: end },
+    }).sort({ completedAt: 1 }),
+    Task.countDocuments({
+      userId,
+      createdAt: { $gte: start, $lt: end },
+    }),
+    FocusSession.find({
+      userId,
+      startedAt: { $gte: start, $lt: end },
+      durationMs: { $gt: 0 },
+    }).select("durationMs"),
+  ]);
+
+  const totalFocusMs = sessionsToday.reduce((sum, session) => sum + (Number(session.durationMs) || 0), 0);
+  const completionRate = tasksCreatedToday > 0
+    ? Math.round((completedToday.length / tasksCreatedToday) * 100)
+    : 0;
+
+  const completedTaskNames = completedToday.map((task) => {
+    const title = String(task.title || "").trim();
+    return title || String(task.description || "").trim() || "Untitled task";
+  });
+
+  return {
+    completedTaskNames,
+    totalFocusMs,
+    completionRate,
+    dateLabel: start.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }),
+  };
+}
+
+async function sendDailyReflectionEmail(user, emailData) {
+  if (!process.env.RESEND_API_KEY) {
+    throw new Error("RESEND_API_KEY is not configured");
+  }
+
+  const subject = "Your Daily Reflection";
+
+  const tasksHtml = emailData.completedTaskNames.length > 0
+    ? `<ul>${emailData.completedTaskNames.map((taskName) => `<li>${escapeHtml(taskName)}</li>`).join("")}</ul>`
+    : "<p>No tasks were completed today.</p>";
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: EMAIL_FROM,
+      to: [user.email],
+      subject,
+      html: `
+        <p>Hi ${escapeHtml(user.firstName || "there")},</p>
+        <p>Here is your daily reflection for ${escapeHtml(emailData.dateLabel)}.</p>
+        <p><strong>Completed tasks:</strong></p>
+        ${tasksHtml}
+        <p><strong>Total focus time:</strong> ${escapeHtml(formatDurationFromMs(emailData.totalFocusMs))}</p>
+        <p><strong>Task completion rate:</strong> ${escapeHtml(String(emailData.completionRate))}%</p>
+      `,
+    }),
+  });
+
+  if (!response.ok) {
+    const failure = await response.text();
+    throw new Error(`Resend API request failed (${response.status}): ${failure}`);
+  }
+}
+
 // Session Handling
 app.set("trust proxy", 1); // important on Vercel / proxies
 
@@ -161,9 +285,16 @@ app.use(session({
   }
 }));
 
+// CSRF protection for routes using cookie-based sessions
+app.use(csrf());
 
 app.use(passport.initialize());
 app.use(passport.session()); // Enables persistent login sessions
+
+// Endpoint for clients to retrieve a CSRF token
+app.get("/csrf-token", (req, res) => {
+  res.json({ csrfToken: req.csrfToken() });
+});
 
 app.use(express.json()); // Middleware to parse JSON request body
 app.use(express.urlencoded({ extended: false })); // Parses form data
@@ -735,6 +866,81 @@ app.get("/focus-sessions", ensureAuthenticated, async (req, res) => {
 
 
 
+
+
+app.get("/settings/daily-email", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select("settings.dailyEmail settings.dailyEmailTime");
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    return res.json({
+      dailyEmail: user.settings?.dailyEmail !== false,
+      dailyEmailTime: isValidTimeInput(user.settings?.dailyEmailTime)
+        ? user.settings.dailyEmailTime
+        : "18:00",
+    });
+  } catch (error) {
+    console.error("Error loading daily email settings:", error);
+    return res.status(500).json({ error: "Unable to load daily email settings" });
+  }
+});
+
+app.put("/settings/daily-email", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
+  try {
+    const dailyEmail = Boolean(req.body.dailyEmail);
+    const requestedTime = String(req.body.dailyEmailTime || "").trim();
+    const dailyEmailTime = isValidTimeInput(requestedTime) ? requestedTime : "18:00";
+
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user.id,
+      {
+        $set: {
+          "settings.dailyEmail": dailyEmail,
+          "settings.dailyEmailTime": dailyEmailTime,
+        },
+      },
+      { new: true, runValidators: true }
+    ).select("settings.dailyEmail settings.dailyEmailTime");
+
+    if (!updatedUser) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    return res.json({
+      message: "Daily email settings updated",
+      dailyEmail: updatedUser.settings?.dailyEmail !== false,
+      dailyEmailTime: updatedUser.settings?.dailyEmailTime || "18:00",
+    });
+  } catch (error) {
+    console.error("Error saving daily email settings:", error);
+    return res.status(500).json({ error: "Unable to save daily email settings" });
+  }
+});
+
+app.post("/settings/daily-email/test", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select("email firstName settings.dailyEmail");
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    if (user.settings?.dailyEmail === false) {
+      return res.status(403).json({
+        error: 'Unable to send daily reflection. Turn on "Daily Reflection" in settings to receive daily reflection emails.',
+      });
+    }
+
+    const emailData = await buildDailyReflectionEmailData(req.user.id);
+    await sendDailyReflectionEmail(user, emailData);
+
+    return res.json({ message: "Daily reflection test email sent" });
+  } catch (error) {
+    console.error("Error sending daily reflection test email:", error);
+    return res.status(500).json({ error: "Unable to send daily reflection test email" });
+  }
+});
 
 
 // Route to check user authentication status
