@@ -147,6 +147,11 @@
   opacity: 0.7;
   cursor: not-allowed;
 }
+.focus-task-divider {
+  margin-top: 0.38rem;
+  margin-bottom: 0.22rem;
+}
+
 .focus-task-list {
   margin-top: 0.3rem;
   max-height: 240px;

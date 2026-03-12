@@ -832,6 +832,55 @@ input:focus{
   border-radius: 1px;
 }
 
+
+.handdrawn-divider {
+  height: 3px;
+  width: 100%;
+  margin: 0.35rem 0 0.45rem;
+  border-radius: 999px;
+  background:
+    repeating-linear-gradient(
+      92deg,
+      rgba(93, 64, 55, 0.52) 0,
+      rgba(93, 64, 55, 0.52) 8px,
+      rgba(93, 64, 55, 0.2) 8px,
+      rgba(93, 64, 55, 0.2) 12px
+    );
+  transform: rotate(-0.35deg);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.task-list-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.35rem;
+  margin-top: 0.1rem;
+}
+
+.task-list-tab {
+  border: 1px solid rgba(93, 64, 55, 0.35);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.42);
+  color: #5d4037;
+  font: inherit;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  padding: 0.3rem 0.25rem;
+  cursor: pointer;
+}
+
+.task-list-tab.is-active {
+  border-color: rgba(198, 83, 78, 0.7);
+  background: rgba(247, 204, 220, 0.55);
+  color: #8b3a2e;
+  font-weight: 700;
+}
+
+.task-list-divider {
+  margin-top: 0.35rem;
+  margin-bottom: 0.4rem;
+}
+
 .task-list{
   list-style: none;
   padding: 0;

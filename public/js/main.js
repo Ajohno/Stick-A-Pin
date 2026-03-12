@@ -25,6 +25,12 @@ const focusState = {
     allTasks: []
 };
 
+const dashboardTaskState = {
+    filter: "task-list",
+    allTasks: []
+};
+
+
 function formatFocusDuration(totalSeconds) {
     const safeSeconds = Math.max(0, parseInt(totalSeconds, 10) || 0);
     const minutes = Math.floor(safeSeconds / 60);
@@ -831,6 +837,8 @@ document.addEventListener("DOMContentLoaded", () => {
         clearCompletedButton.addEventListener("click", clearCompletedTasks);
     }
 
+    bindDashboardTaskFilterTabs();
+
     checkAuthStatus({ isLoginPage, isRegisterPage, isProtectedPage, isHomePage }); // Check authentication status on page load
     initFocusMode();
 });
@@ -949,7 +957,8 @@ async function fetchTasks() {
     const tasks = await response.json();
 
     if (response.ok) {
-        updateTaskList(tasks);
+        dashboardTaskState.allTasks = Array.isArray(tasks) ? tasks : [];
+        updateTaskList(dashboardTaskState.allTasks);
     } else {
         console.error("Error fetching tasks:", tasks.error);
         alert("Please log in to see your tasks.");
@@ -1443,14 +1452,17 @@ function openTaskDetailPanel(task, handlers) {
     document.body.classList.add("task-panel-open");
 }
 
-// Function to update the UI with fetched tasks
-function updateTaskList(tasks) {
-    const listOfTasks = document.querySelector(".task-list");
-    const taskTemplate = document.querySelector("#task-template");
-    const bigThreeInteractions = new Map();
-    tasks = Array.isArray(tasks) ? tasks : [];
+function getTaskDueSortTimestamp(dueDate) {
+    if (!dueDate) return Number.POSITIVE_INFINITY;
+    const parsedDate = new Date(dueDate);
+    if (Number.isNaN(parsedDate.getTime())) return Number.POSITIVE_INFINITY;
+    return parsedDate.getTime();
+}
 
-    const sortedTasks = tasks.slice().sort((a, b) => {
+function getDashboardTasksByFilter(tasks, filter = "task-list") {
+    const safeTasks = Array.isArray(tasks) ? tasks.slice() : [];
+
+    return safeTasks.sort((a, b) => {
         const aCompleted = a.status === "completed";
         const bCompleted = b.status === "completed";
 
@@ -1458,10 +1470,60 @@ function updateTaskList(tasks) {
             return aCompleted ? 1 : -1;
         }
 
-        const aCreated = new Date(a.createdAt || 0).getTime();
-        const bCreated = new Date(b.createdAt || 0).getTime();
+        if (filter === "effort") {
+            const effortA = Number(a?.effortLevel) || 5;
+            const effortB = Number(b?.effortLevel) || 5;
+            if (effortA !== effortB) return effortA - effortB;
+        } else if (filter === "due-date") {
+            const dueA = getTaskDueSortTimestamp(a?.dueDate);
+            const dueB = getTaskDueSortTimestamp(b?.dueDate);
+            if (dueA !== dueB) return dueA - dueB;
+        }
+
+        const aCreated = new Date(a?.createdAt || 0).getTime();
+        const bCreated = new Date(b?.createdAt || 0).getTime();
         return bCreated - aCreated;
     });
+}
+
+function updateDashboardTaskFilterTabs(selectedFilter) {
+    const tabButtons = document.querySelectorAll(".task-list-tab");
+    if (!tabButtons.length) return;
+
+    tabButtons.forEach((buttonEl) => {
+        const isActive = buttonEl.dataset.filter === selectedFilter;
+        buttonEl.classList.toggle("is-active", isActive);
+        buttonEl.setAttribute("aria-selected", isActive ? "true" : "false");
+    });
+}
+
+function bindDashboardTaskFilterTabs() {
+    const tabButtons = document.querySelectorAll(".task-list-tab");
+    if (!tabButtons.length) return;
+
+    tabButtons.forEach((buttonEl) => {
+        buttonEl.addEventListener("click", () => {
+            const filter = buttonEl.dataset.filter || "task-list";
+            if (filter === dashboardTaskState.filter) return;
+
+            dashboardTaskState.filter = filter;
+            updateTaskList(dashboardTaskState.allTasks);
+        });
+    });
+
+    updateDashboardTaskFilterTabs(dashboardTaskState.filter);
+}
+
+// Function to update the UI with fetched tasks
+function updateTaskList(tasks) {
+    const listOfTasks = document.querySelector(".task-list");
+    const taskTemplate = document.querySelector("#task-template");
+    const bigThreeInteractions = new Map();
+    tasks = Array.isArray(tasks) ? tasks : [];
+    dashboardTaskState.allTasks = tasks;
+
+    const baseSortedTasks = getDashboardTasksByFilter(tasks, "task-list");
+    const sortedTasks = getDashboardTasksByFilter(tasks, dashboardTaskState.filter);
 
     if (!listOfTasks) {
         return; // Avoid errors on pages without the dashboard
@@ -1667,8 +1729,8 @@ function updateTaskList(tasks) {
         listOfTasks.appendChild(clone);
     });
 
-    updateFocusTaskOptions(sortedTasks);
-    updateBigThreeWidget(sortedTasks, bigThreeInteractions);
+    updateFocusTaskOptions(baseSortedTasks);
+    updateBigThreeWidget(baseSortedTasks, bigThreeInteractions);
 
     // Update the task counter
     document.querySelectorAll(".item-counter").forEach((el) => {
@@ -1679,6 +1741,8 @@ function updateTaskList(tasks) {
     el.textContent = String(activeCount);
     });
 
+    updateDashboardTaskFilterTabs(dashboardTaskState.filter);
+
     const clearCompletedButton = document.getElementById("clear-completed-tasks-btn");
     if (clearCompletedButton) {
         const hasCompletedTasks = Array.isArray(tasks) && tasks.some((task) => task.status === "completed");
@@ -1686,7 +1750,7 @@ function updateTaskList(tasks) {
     }
 
     // If no tasks, show a friendly message
-    if (tasks.length === 0) {
+    if (sortedTasks.length === 0) {
         listOfTasks.innerHTML = "<p>No tasks found. Add a new task to get started!</p>";
     }
 }
