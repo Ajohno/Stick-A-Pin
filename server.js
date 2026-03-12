@@ -10,6 +10,7 @@ const bcrypt = require("bcryptjs"); // Used to hash passwords
 const User = require("./config/models/user"); // User model for the database
 const Task = require("./config/models/task"); // Task model for the database
 const FocusSession = require("./config/models/focusSession"); // FocusSession model for tracking focus sessions
+const rateLimit = require("express-rate-limit"); // Rate limiting middleware
 const MongoStore = require("connect-mongo").default; // Store sessions in MongoDB
 
 
@@ -172,6 +173,14 @@ app.use(express.static("public"));
 
 // ROUTES -----------------------------------------------------------------------------------
 
+// Rate limiter for email verification-related routes
+const emailVerificationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // limit each IP to 20 requests per window for verification actions
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Register Route
 app.post("/register", async (req, res) => {
   try {
@@ -233,7 +242,7 @@ app.post("/register", async (req, res) => {
   }
 });
 
-app.get("/verify-email", async (req, res) => {
+app.get("/verify-email", emailVerificationLimiter, async (req, res) => {
   try {
     const email = (req.query.email || "").toString().toLowerCase().trim();
     const token = (req.query.token || "").toString().trim();
@@ -267,7 +276,7 @@ app.get("/verify-email", async (req, res) => {
   }
 });
 
-app.post("/resend-verification", async (req, res) => {
+app.post("/resend-verification", emailVerificationLimiter, async (req, res) => {
   try {
     const normalizedEmail = (req.body.email || "").toLowerCase().trim();
     if (!normalizedEmail) {
@@ -298,9 +307,12 @@ app.post("/resend-verification", async (req, res) => {
   }
 });
 
+const passwordResetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // limit each IP to 5 password reset attempts per window
+});
 
-
-app.post("/forgot-password", async (req, res) => {
+app.post("/forgot-password", passwordResetLimiter, async (req, res) => {
   try {
     const normalizedEmail = (req.body.email || "").toLowerCase().trim();
     if (!normalizedEmail) {
@@ -328,7 +340,7 @@ app.post("/forgot-password", async (req, res) => {
   }
 });
 
-app.post("/reset-password", async (req, res) => {
+app.post("/reset-password", passwordResetLimiter, async (req, res) => {
   try {
     const normalizedEmail = (req.body.email || "").toLowerCase().trim();
     const token = (req.body.token || "").toString().trim();
