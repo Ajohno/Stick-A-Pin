@@ -20,7 +20,9 @@ const focusState = {
     taskId: null,
     sessionId: null,
     startedAt: null,
-    timerIntervalId: null
+    timerIntervalId: null,
+    filter: "big-three",
+    allTasks: []
 };
 
 function formatFocusDuration(totalSeconds) {
@@ -58,6 +60,65 @@ function stopFocusTimer() {
     }
 }
 
+function getFocusTasksByFilter(tasks, filter) {
+    const activeTasks = Array.isArray(tasks)
+        ? tasks.filter((task) => task.status === "active")
+        : [];
+
+    if (filter === "big-three") {
+        return activeTasks.filter((task) => Boolean(task.isBigThree)).slice(0, 3);
+    }
+
+    if (filter === "effort") {
+        return [...activeTasks].sort((a, b) => {
+            const effortA = Number(a?.effortLevel) || 5;
+            const effortB = Number(b?.effortLevel) || 5;
+            if (effortA !== effortB) return effortA - effortB;
+
+            const createdA = new Date(a?.createdAt || 0).getTime();
+            const createdB = new Date(b?.createdAt || 0).getTime();
+            return createdB - createdA;
+        });
+    }
+
+    return [...activeTasks].sort((a, b) => {
+        const createdA = new Date(a?.createdAt || 0).getTime();
+        const createdB = new Date(b?.createdAt || 0).getTime();
+        return createdB - createdA;
+    });
+}
+
+function updateFocusFilterTabs(selectedFilter, { running = false } = {}) {
+    const tabButtons = document.querySelectorAll(".focus-task-tab");
+    if (!tabButtons.length) return;
+
+    tabButtons.forEach((buttonEl) => {
+        const isActive = buttonEl.dataset.filter === selectedFilter;
+        buttonEl.classList.toggle("is-active", isActive);
+        buttonEl.setAttribute("aria-selected", isActive ? "true" : "false");
+        buttonEl.disabled = Boolean(running);
+    });
+}
+
+function bindFocusFilterTabs() {
+    const tabButtons = document.querySelectorAll(".focus-task-tab");
+    if (!tabButtons.length) return;
+
+    tabButtons.forEach((buttonEl) => {
+        buttonEl.addEventListener("click", () => {
+            if (focusState.taskId) return;
+
+            const filter = buttonEl.dataset.filter || "big-three";
+            if (filter === focusState.filter) return;
+
+            focusState.filter = filter;
+            updateFocusTaskOptions(focusState.allTasks);
+        });
+    });
+
+    updateFocusFilterTabs(focusState.filter, { running: Boolean(focusState.taskId) });
+}
+
 function updateFocusModeControls({ running, hasTask } = {}) {
     const selectEl = document.getElementById("focusTaskSelect");
     const taskListEl = document.getElementById("focusTaskList");
@@ -74,6 +135,9 @@ function updateFocusModeControls({ running, hasTask } = {}) {
             buttonEl.disabled = Boolean(running);
         });
     }
+
+    updateFocusFilterTabs(focusState.filter, { running: Boolean(running) });
+
     if (startBtn) {
         startBtn.hidden = Boolean(running);
         startBtn.disabled = Boolean(running) || !canStart;
@@ -100,15 +164,13 @@ function updateFocusTaskOptions(tasks) {
     const taskListEl = document.getElementById("focusTaskList");
     if (!selectEl) return;
 
-    const activeTasks = Array.isArray(tasks)
-        ? tasks.filter((task) => task.status === "active")
-        : [];
-
     const previousValue = selectEl.value;
+    const filteredTasks = getFocusTasksByFilter(tasks, focusState.filter);
+
     selectEl.innerHTML = "";
     if (taskListEl) taskListEl.innerHTML = "";
 
-    if (activeTasks.length === 0) {
+    if (filteredTasks.length === 0) {
         const option = document.createElement("option");
         option.value = "";
         option.textContent = "No active tasks";
@@ -125,7 +187,7 @@ function updateFocusTaskOptions(tasks) {
         return;
     }
 
-    activeTasks.forEach((task) => {
+    filteredTasks.forEach((task) => {
         const option = document.createElement("option");
         const taskId = String(task._id);
         option.value = taskId;
@@ -208,15 +270,18 @@ function updateFocusTaskOptions(tasks) {
         }
     });
 
-    if (previousValue && activeTasks.some((task) => String(task._id) === previousValue)) {
+    if (previousValue && filteredTasks.some((task) => String(task._id) === previousValue)) {
         selectEl.value = previousValue;
     }
 
-    if (!selectEl.value && activeTasks.length > 0) {
-        selectEl.value = String(activeTasks[0]._id);
+    if (!selectEl.value && filteredTasks.length > 0) {
+        selectEl.value = String(filteredTasks[0]._id);
     }
 
-    if (focusState.taskId && !activeTasks.some((task) => String(task._id) === String(focusState.taskId))) {
+    const hasSelectedTaskInAnyList = focusState.allTasks.some(
+        (task) => task.status === "active" && String(task._id) === String(focusState.taskId)
+    );
+    if (focusState.taskId && !hasSelectedTaskInAnyList) {
         void stopFocusSession("task_no_longer_active");
     }
 
@@ -227,13 +292,15 @@ function updateFocusTaskOptions(tasks) {
 async function loadFocusTasks() {
     const response = await fetch("/tasks", { credentials: "include" });
     if (!response.ok) {
+        focusState.allTasks = [];
         updateFocusTaskOptions([]);
         return [];
     }
 
     const tasks = await response.json();
-    updateFocusTaskOptions(tasks);
-    return tasks;
+    focusState.allTasks = Array.isArray(tasks) ? tasks : [];
+    updateFocusTaskOptions(focusState.allTasks);
+    return focusState.allTasks;
 }
 
 function getFocusLogBody() {
@@ -408,6 +475,8 @@ async function initFocusMode() {
     const stopBtn = document.getElementById("focusStopBtn");
     const statusEl = document.getElementById("focus-status");
     if (!selectEl || !startBtn || !stopBtn || !statusEl) return;
+
+    bindFocusFilterTabs();
 
     try {
         await loadFocusTasks();
