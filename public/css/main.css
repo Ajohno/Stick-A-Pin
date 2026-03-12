@@ -111,6 +111,26 @@ img, svg, canvas, video{
 
 
 
+
+.verification-success-page .paper-content{
+  width: 100%;
+  text-align: center;
+}
+
+.verification-success-page h1{
+  font-size: clamp(24px, 4.6vw, 38px);
+  text-decoration: none;
+}
+
+.verification-success-page #verificationSuccessMessage{
+  margin: 0;
+  width: 100%;
+  text-align: center;
+}
+
+.verification-success-page .paper-footer{
+  text-align: center;
+}
 /* =========================================================
    Verification Status Page
    ========================================================= */
