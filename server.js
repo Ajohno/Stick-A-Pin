@@ -21,7 +21,7 @@ const port = process.env.PORT || 3000;
 const REMEMBER_ME_MS = 14 * 24 * 60 * 60 * 1000;
 const EMAIL_VERIFICATION_TTL_MINUTES = Number(process.env.EMAIL_VERIFICATION_TTL_MINUTES || 60);
 const PASSWORD_RESET_TTL_MINUTES = Number(process.env.PASSWORD_RESET_TTL_MINUTES || 30);
-const APP_BASE_URL = process.env.APP_BASE_URL || `http://localhost:${port}`;
+const APP_BASE_URL = process.env.APP_BASE_URL;
 const EMAIL_FROM = process.env.EMAIL_FROM || "Stick A Pin <no-reply@mail.stickapin.app>";
 
 let appdata = [];
@@ -59,12 +59,12 @@ function generateVerificationToken() {
   return crypto.randomBytes(32).toString("hex");
 }
 
-async function sendVerificationEmail(email, firstName, token) {
+async function sendVerificationEmail(email, firstName, token, baseUrl) {
   if (!process.env.RESEND_API_KEY) {
     throw new Error("RESEND_API_KEY is not configured");
   }
 
-  const verificationUrl = `${APP_BASE_URL}/verify-email?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
+  const verificationUrl = `${baseUrl}/verify-email?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -91,12 +91,12 @@ async function sendVerificationEmail(email, firstName, token) {
   }
 }
 
-async function sendPasswordResetEmail(email, firstName, token) {
+async function sendPasswordResetEmail(email, firstName, token, baseUrl) {
   if (!process.env.RESEND_API_KEY) {
     throw new Error("RESEND_API_KEY is not configured");
   }
 
-  const resetUrl = `${APP_BASE_URL}/reset-password.html?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
+  const resetUrl = `${baseUrl}/reset-password.html?email=${encodeURIComponent(email)}&token=${encodeURIComponent(token)}`;
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -121,6 +121,22 @@ async function sendPasswordResetEmail(email, firstName, token) {
     const failure = await response.text();
     throw new Error(`Resend API request failed (${response.status}): ${failure}`);
   }
+}
+
+function resolveBaseUrl(req) {
+  if (APP_BASE_URL) {
+    return APP_BASE_URL.replace(/\/$/, "");
+  }
+
+  const forwardedProto = req?.headers?.["x-forwarded-proto"];
+  const protocol = (forwardedProto ? forwardedProto.split(",")[0] : req?.protocol || "http").trim();
+  const host = req?.get?.("host") || req?.headers?.host;
+
+  if (host) {
+    return `${protocol}://${host}`.replace(/\/$/, "");
+  }
+
+  return `http://localhost:${port}`;
 }
 
 // Session Handling
@@ -186,7 +202,7 @@ app.post("/register", async (req, res) => {
     });
 
     try {
-      await sendVerificationEmail(normalizedEmail, firstName.trim(), verificationToken);
+      await sendVerificationEmail(normalizedEmail, firstName.trim(), verificationToken, resolveBaseUrl(req));
       return res.status(201).json({ message: "Registration successful. Check your email to verify your account." });
     } catch (emailError) {
       console.error("Verification email delivery failed after registration:", emailError);
@@ -244,7 +260,7 @@ app.get("/verify-email", async (req, res) => {
     user.emailVerifiedAt = new Date();
     await user.save();
 
-    return res.status(200).send("Email verified successfully. You can now log in.");
+    return res.redirect("/verification-success.html");
   } catch (error) {
     console.error("Error verifying email:", error);
     return res.status(500).send("Server error while verifying email.");
@@ -273,7 +289,7 @@ app.post("/resend-verification", async (req, res) => {
     user.emailVerificationExpiresAt = new Date(Date.now() + EMAIL_VERIFICATION_TTL_MINUTES * 60 * 1000);
     await user.save();
 
-    await sendVerificationEmail(user.email, user.firstName, verificationToken);
+    await sendVerificationEmail(user.email, user.firstName, verificationToken, resolveBaseUrl(req));
 
     return res.json({ message: "Verification email sent." });
   } catch (error) {
@@ -303,7 +319,7 @@ app.post("/forgot-password", async (req, res) => {
     user.passwordResetRequestedAt = new Date();
     await user.save();
 
-    await sendPasswordResetEmail(user.email, user.firstName, resetToken);
+    await sendPasswordResetEmail(user.email, user.firstName, resetToken, resolveBaseUrl(req));
 
     return res.json({ message: "If that account exists, a password reset email has been sent." });
   } catch (error) {

@@ -47,7 +47,7 @@ The app now sends a verification email after registration and requires a verifie
 ```env
 RESEND_API_KEY=re_xxxxxxxxx
 EMAIL_FROM=Stick A Pin <no-reply@mail.stickapin.app>
-APP_BASE_URL=http://localhost:3000
+APP_BASE_URL=http://localhost:3000  # optional; set explicitly to your deployed app URL in production
 EMAIL_VERIFICATION_TTL_MINUTES=60
 PASSWORD_RESET_TTL_MINUTES=30
 ```
@@ -59,4 +59,4 @@ PASSWORD_RESET_TTL_MINUTES=30
 - For production, set it in your hosting provider's secret/environment settings.
 
 
-Forgot password flow uses `POST /forgot-password` and `POST /reset-password` with reset links sent through Resend.
+Forgot password flow uses `POST /forgot-password` and `POST /reset-password` with reset links sent through Resend. If `APP_BASE_URL` is unset, links are derived from the incoming request host/protocol.

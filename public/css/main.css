@@ -100,7 +100,8 @@ img, svg, canvas, video{
 }
 
 #forgot-password-page,
-#reset-password-page{
+#reset-password-page,
+#verification-success-page{
   text-align: center;
   max-width: fit-content;
   width: clamp(300px, 40vw, 420px);
@@ -110,6 +111,26 @@ img, svg, canvas, video{
 
 
 
+
+.verification-success-page .paper-content{
+  width: 100%;
+  text-align: center;
+}
+
+.verification-success-page h1{
+  font-size: clamp(24px, 4.6vw, 38px);
+  text-decoration: none;
+}
+
+.verification-success-page #verificationSuccessMessage{
+  margin: 0;
+  width: 100%;
+  text-align: center;
+}
+
+.verification-success-page .paper-footer{
+  text-align: center;
+}
 /* =========================================================
    Verification Status Page
    ========================================================= */
