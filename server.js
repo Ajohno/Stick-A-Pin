@@ -919,7 +919,7 @@ app.put("/settings/daily-email", ensureAuthenticated, authenticatedLimiter, asyn
   }
 });
 
-app.post("/settings/daily-email/test", ensureAuthenticated, async (req, res) => {
+app.post("/settings/daily-email/test", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("email firstName settings.dailyEmail");
     if (!user) {
