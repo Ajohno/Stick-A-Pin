@@ -192,6 +192,11 @@ function updateFocusTaskOptions(tasks) {
         return;
     }
 
+    const placeholderOption = document.createElement("option");
+    placeholderOption.value = "";
+    placeholderOption.textContent = "Select a task";
+    selectEl.appendChild(placeholderOption);
+
     filteredTasks.forEach((task) => {
         const option = document.createElement("option");
         const taskId = String(task._id);
@@ -222,12 +227,13 @@ function updateFocusTaskOptions(tasks) {
         }
     });
 
-    if (previousValue && filteredTasks.some((task) => String(task._id) === previousValue)) {
+    const runningTaskId = String(focusState.taskId || "");
+    if (runningTaskId && filteredTasks.some((task) => String(task._id) === runningTaskId)) {
+        selectEl.value = runningTaskId;
+    } else if (previousValue && filteredTasks.some((task) => String(task._id) === previousValue)) {
         selectEl.value = previousValue;
-    }
-
-    if (!selectEl.value && filteredTasks.length > 0) {
-        selectEl.value = String(filteredTasks[0]._id);
+    } else {
+        selectEl.value = "";
     }
 
     const hasSelectedTaskInAnyList = focusState.allTasks.some(
