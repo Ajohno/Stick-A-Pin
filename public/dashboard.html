@@ -103,7 +103,14 @@
                 </button>
               </div>
 
-              <ul class="task-list scrollable"></ul>
+              <div class="task-list-tabs" role="tablist" aria-label="Filter task list">
+                <button id="dashboardTabTaskList" class="task-list-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="dashboardTaskList" data-filter="task-list">Task List</button>
+                <button id="dashboardTabEffort" class="task-list-tab" type="button" role="tab" aria-selected="false" aria-controls="dashboardTaskList" data-filter="effort">Effort</button>
+                <button id="dashboardTabDueDate" class="task-list-tab" type="button" role="tab" aria-selected="false" aria-controls="dashboardTaskList" data-filter="due-date">Due Date</button>
+              </div>
+              <div class="handdrawn-divider task-list-divider" aria-hidden="true"></div>
+
+              <ul id="dashboardTaskList" class="task-list scrollable"></ul>
               <template id="task-template">
                 <li class="task-item">
                   <label
