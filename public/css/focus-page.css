@@ -147,6 +147,11 @@
   opacity: 0.7;
   cursor: not-allowed;
 }
+.focus-task-divider {
+  margin-top: 0.38rem;
+  margin-bottom: 0.22rem;
+}
+
 .focus-task-list {
   margin-top: 0.3rem;
   max-height: 240px;
@@ -160,14 +165,11 @@
 }
 
 .focus-task-list-item.big-three-item {
-  grid-template-columns: 1.35rem 1fr;
-  gap: 0.45rem;
+  grid-template-columns: 1fr;
+  gap: 0.35rem;
   align-items: start;
 }
 
-.focus-task-check {
-  margin-top: 0.18rem;
-}
 
 .focus-task-option {
   display: block;
