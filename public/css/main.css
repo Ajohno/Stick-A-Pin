@@ -1868,8 +1868,9 @@ body.task-panel-open {
 
 .daily-reflection-title {
   margin: 0;
-  font-family: "Gochi Hand", cursive;
-  font-size: 1.4rem;
+  font-family: "Itim", cursive;
+  font-size: 1.1rem;
+  font-weight: 700;
   color: #3f2c20;
 }
 
@@ -1899,7 +1900,10 @@ body.task-panel-open {
 
 .daily-email-label,
 .daily-email-time-label {
-  font-weight: 700;
+  font-family: "Gochi Hand", cursive;
+  font-size: 1.4rem;
+  font-weight: 400;
+  color: #3f2c20;
 }
 
 #dailyEmailTime {
