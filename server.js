@@ -26,6 +26,14 @@ const PASSWORD_RESET_TTL_MINUTES = Number(process.env.PASSWORD_RESET_TTL_MINUTES
 const APP_BASE_URL = process.env.APP_BASE_URL;
 const EMAIL_FROM = process.env.EMAIL_FROM || "Stick A Pin <no-reply@mail.stickapin.app>";
 
+// Rate limiter for authenticated routes to protect expensive operations
+const authenticatedLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+});
+
 let appdata = [];
 
 if (!process.env.SESSION_SECRET) {
@@ -860,7 +868,7 @@ app.get("/focus-sessions", ensureAuthenticated, async (req, res) => {
 
 
 
-app.get("/settings/daily-email", ensureAuthenticated, async (req, res) => {
+app.get("/settings/daily-email", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("settings.dailyEmail settings.dailyEmailTime");
     if (!user) {
