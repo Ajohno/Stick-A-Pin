@@ -1783,39 +1783,6 @@ body.task-panel-open {
   display: none !important;
 }
 
-.settings-panel {
-  width: min(920px, 96%);
-}
-
-.daily-email-settings {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  margin-top: 1rem;
-}
-
-.daily-email-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem;
-  font-family: "Itim", cursive;
-  font-size: 1.1rem;
-}
-
-.daily-email-label,
-.daily-email-time-label {
-  font-weight: 700;
-}
-
-#dailyEmailTime {
-  border: 2px solid #c6534e;
-  border-radius: 8px;
-  padding: 0.35rem 0.45rem;
-  font-family: "Quantico", sans-serif;
-  background: #fff7ee;
-}
-
 .toggle-switch {
   position: relative;
   display: inline-flex;
@@ -1874,4 +1841,77 @@ body.task-panel-open {
 #dailyEmailTestBtn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+
+.corkboard.placeholder-board.settings-board {
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 2rem;
+}
+
+.settings-panel {
+  width: min(920px, 96%);
+}
+
+.daily-reflection-card {
+  margin-top: 1rem;
+  background: #fff;
+  border: 2px solid #f1e2ba;
+  border-radius: 6px 14px 8px 12px;
+  box-shadow:
+    0 3px 8px rgba(0, 0, 0, 0.18),
+    inset 0 -8px 10px rgba(0, 0, 0, 0.04);
+  padding: 1rem 1.1rem;
+  transform: rotate(-0.3deg);
+}
+
+.daily-reflection-title {
+  margin: 0;
+  font-family: "Gochi Hand", cursive;
+  font-size: 1.4rem;
+  color: #3f2c20;
+}
+
+.daily-email-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  margin-top: 0.9rem;
+}
+
+.daily-email-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  font-family: "Itim", cursive;
+  font-size: 1.1rem;
+}
+
+.daily-email-toggle-row {
+  justify-content: flex-start;
+}
+
+.daily-email-time-row {
+  padding-left: 0;
+}
+
+.daily-email-label,
+.daily-email-time-label {
+  font-weight: 700;
+}
+
+#dailyEmailTime {
+  border: 2px solid #c6534e;
+  border-radius: 8px;
+  padding: 0.35rem 0.45rem;
+  font-family: "Quantico", sans-serif;
+  background: #fff7ee;
+}
+
+@media (min-width: 768px) {
+  .daily-email-time-row {
+    padding-left: 0.15rem;
+  }
 }
