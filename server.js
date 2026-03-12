@@ -222,11 +222,7 @@ async function sendDailyReflectionEmail(user, emailData) {
     throw new Error("RESEND_API_KEY is not configured");
   }
 
-  const taskListLabel = emailData.completedTaskNames.length > 0
-    ? emailData.completedTaskNames.join(", ")
-    : "No completed tasks";
-
-  const subject = `Daily Reflection — ${taskListLabel}`.slice(0, 220);
+  const subject = "Your Daily Reflection";
 
   const tasksHtml = emailData.completedTaskNames.length > 0
     ? `<ul>${emailData.completedTaskNames.map((taskName) => `<li>${escapeHtml(taskName)}</li>`).join("")}</ul>`
