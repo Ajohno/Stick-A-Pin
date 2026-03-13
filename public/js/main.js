@@ -1457,6 +1457,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // }
   const taskForm = document.getElementById("taskForm");
   if (taskForm) {
+    taskForm.setAttribute("novalidate", "novalidate");
     taskForm.addEventListener("submit", submit);
   }
 
@@ -1708,32 +1709,42 @@ const submit = async function (event) {
     return;
   }
 
-  // Send task data to the server
-  const response = await apiFetch("/tasks", {
-    credentials: "include",
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(json),
-  });
+  try {
+    // Send task data to the server
+    const response = await apiFetch("/tasks", {
+      credentials: "include",
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(json),
+    });
 
-  const data = await response.json();
+    const data = await parseApiResponse(response);
 
-  if (response.ok) {
-    console.log("Task added successfully:", data);
-    updateTaskList(data); // Refresh task list
-    Toast.show({ message: "Task Submitted", type: "success", duration: 2000 });
-  } else {
-    console.error("Task Submission Error:", data.error);
+    if (response.ok) {
+      console.log("Task added successfully:", data);
+      updateTaskList(data); // Refresh task list
+      Toast.show({ message: "Task Submitted", type: "success", duration: 2000 });
+
+      // Clear input fields after successful submission
+      taskInput.value = "";
+      dateInput.value = "";
+      return;
+    }
+
+    console.error("Task Submission Error:", data?.error);
     Toast.show({
-      message: data?.error || "You must be logged in to submit tasks.",
+      message: data?.error || "Could not submit task.",
+      type: "error",
+      duration: 3000,
+    });
+  } catch (error) {
+    console.error("Task submission failed:", error);
+    Toast.show({
+      message: "Could not submit task.",
       type: "error",
       duration: 3000,
     });
   }
-
-  // Clear input fields after submission
-  taskInput.value = "";
-  dateInput.value = "";
 };
 
 function setBigThreeButtonState(button, isBigThree) {
