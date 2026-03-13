@@ -1851,7 +1851,7 @@ body.task-panel-open {
 }
 
 .settings-panel {
-  width: min(920px, 96%);
+  width: min(860px, 94%);
 }
 
 .daily-reflection-card {
@@ -1896,6 +1896,8 @@ body.task-panel-open {
 
 .daily-email-time-row {
   padding-left: 0;
+  flex-wrap: nowrap;
+  align-items: center;
 }
 
 .daily-email-label,
@@ -1906,16 +1908,85 @@ body.task-panel-open {
   color: #3f2c20;
 }
 
+.daily-email-time-label {
+  white-space: nowrap;
+}
+
 #dailyEmailTime {
   border: 2px solid #c6534e;
   border-radius: 8px;
   padding: 0.35rem 0.45rem;
   font-family: "Quantico", sans-serif;
   background: #fff7ee;
+  margin-left: 0;
+  flex: 0 0 auto;
+  width: 8.5rem;
+}
+
+.daily-reflection-today {
+  margin-top: 0.45rem;
+  padding: 0;
+  font-family: "Gochi Hand", cursive;
+  color: #3f2c20;
+}
+
+.daily-reflection-today-date {
+  margin: 0 0 0.28rem;
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.daily-reflection-metrics {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.12rem;
+  font-size: 1.02rem;
+  opacity: 0.82;
+}
+
+.daily-reflection-metrics li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.daily-reflection-metric-label {
+  font-weight: 400;
+}
+
+.daily-reflection-metric-value {
+  font-weight: 400;
 }
 
 @media (min-width: 768px) {
   .daily-email-time-row {
     padding-left: 0.15rem;
+  }
+}
+
+
+@media (max-width: 767px) {
+  .daily-email-time-row {
+    gap: 0.45rem;
+  }
+
+  #dailyEmailTime {
+    width: 6.9rem;
+    min-width: 0;
+    padding: 0.3rem 0.35rem;
+  }
+
+  .daily-reflection-today {
+    padding: 0;
+  }
+
+  .daily-reflection-today-date {
+    font-size: 1.25rem;
+  }
+
+  .daily-reflection-metrics {
+    font-size: 0.98rem;
   }
 }

@@ -411,13 +411,23 @@ function updateFocusTaskOptions(tasks) {
   if (filteredTasks.length === 0) {
     const option = document.createElement("option");
     option.value = "";
-    option.textContent = "No active tasks";
+    option.textContent = "You have no active tasks. Make one now!";
     selectEl.appendChild(option);
 
     if (taskListEl) {
       const emptyItem = document.createElement("li");
-      emptyItem.className = "big-three-item focus-task-empty";
-      emptyItem.textContent = "No active tasks";
+      emptyItem.className = "big-three-item focus-task-list-item focus-task-empty";
+
+      const sentence = document.createElement("span");
+      sentence.textContent = "You have no active tasks. ";
+
+      const createTaskLink = document.createElement("a");
+      createTaskLink.href = "/dashboard.html";
+      createTaskLink.className = "focus-task-empty-link highlight-on-parent-hover";
+      createTaskLink.textContent = "Make one now!";
+
+      sentence.append(createTaskLink);
+      emptyItem.append(sentence);
       taskListEl.appendChild(emptyItem);
     }
 
@@ -847,6 +857,159 @@ async function initFocusMode() {
     await stopFocusSession("completed_task");
     await loadFocusTasks();
   });
+}
+
+function getTodayDateRangeIso() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { startIso: start.toISOString(), endIso: end.toISOString() };
+}
+
+function formatFocusDuration(durationMs) {
+  const totalMinutes = Math.round((Number(durationMs) || 0) / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours <= 0) return `${minutes} min`;
+  if (minutes <= 0) return `${hours} hr`;
+  return `${hours} hr ${minutes} min`;
+}
+
+function renderDailyReflectionStats({
+  dateLabel,
+  tasksFocused = "—",
+  focusTimeLabel = "—",
+  completionRate = "—",
+} = {}) {
+  const dateEl = document.getElementById("dailyReflectionDate");
+  const tasksEl = document.getElementById("dailyReflectionTasksFocused");
+  const timeEl = document.getElementById("dailyReflectionFocusTime");
+  const completionEl = document.getElementById("dailyReflectionCompletionRate");
+
+  if (!dateEl || !tasksEl || !timeEl || !completionEl) return;
+
+  dateEl.textContent = dateLabel || new Date().toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  tasksEl.textContent = String(tasksFocused);
+  timeEl.textContent = String(focusTimeLabel);
+  completionEl.textContent = String(completionRate);
+}
+
+async function refreshDailyReflectionStats() {
+  const dateEl = document.getElementById("dailyReflectionDate");
+  const tasksEl = document.getElementById("dailyReflectionTasksFocused");
+  const timeEl = document.getElementById("dailyReflectionFocusTime");
+  const completionEl = document.getElementById("dailyReflectionCompletionRate");
+
+  if (!dateEl || !tasksEl || !timeEl || !completionEl) return;
+
+  const todayLabel = new Date().toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+
+  renderDailyReflectionStats({
+    dateLabel: todayLabel,
+    tasksFocused: "…",
+    focusTimeLabel: "…",
+    completionRate: "…",
+  });
+
+  try {
+    const { startIso, endIso } = getTodayDateRangeIso();
+    const focusQuery = new URLSearchParams({ from: startIso, to: endIso }).toString();
+
+    const [tasksResponse, sessionsResponse] = await Promise.all([
+      apiFetch("/tasks", { credentials: "include", cache: "no-store" }),
+      apiFetch(`/focus-sessions?${focusQuery}`, {
+        credentials: "include",
+        cache: "no-store",
+      }),
+    ]);
+
+    const [tasksData, sessionsData] = await Promise.all([
+      parseApiResponse(tasksResponse),
+      parseApiResponse(sessionsResponse),
+    ]);
+
+    if (!tasksResponse.ok) {
+      throw new Error(tasksData?.error || "Could not load tasks");
+    }
+    if (!sessionsResponse.ok) {
+      throw new Error(sessionsData?.error || "Could not load focus sessions");
+    }
+
+    const tasks = Array.isArray(tasksData) ? tasksData : [];
+    const sessions = Array.isArray(sessionsData) ? sessionsData : [];
+
+    const focusedTaskIds = new Set(
+      sessions
+        .map((session) => session?.taskId)
+        .filter((taskId) => taskId !== null && taskId !== undefined)
+        .map((taskId) => String(taskId)),
+    );
+
+    const totalFocusMs = sessions.reduce(
+      (sum, session) => sum + (Number(session?.durationMs) || 0),
+      0,
+    );
+
+    const todayStart = new Date(startIso).getTime();
+    const todayEnd = new Date(endIso).getTime();
+
+    const tasksCreatedToday = tasks.filter((task) => {
+      const createdAtMs = new Date(task?.createdAt || "").getTime();
+      return Number.isFinite(createdAtMs) && createdAtMs >= todayStart && createdAtMs < todayEnd;
+    }).length;
+
+    const completedToday = tasks.filter((task) => {
+      if (task?.status !== "completed") return false;
+      const completedAtMs = new Date(task?.completedAt || "").getTime();
+      return Number.isFinite(completedAtMs) && completedAtMs >= todayStart && completedAtMs < todayEnd;
+    }).length;
+
+    const completionRate = tasksCreatedToday > 0
+      ? `${Math.round((completedToday / tasksCreatedToday) * 100)}%`
+      : "0%";
+
+    renderDailyReflectionStats({
+      dateLabel: todayLabel,
+      tasksFocused: focusedTaskIds.size,
+      focusTimeLabel: formatFocusDuration(totalFocusMs),
+      completionRate,
+    });
+  } catch (error) {
+    console.error("Could not refresh daily reflection stats:", error);
+    renderDailyReflectionStats({
+      dateLabel: todayLabel,
+      tasksFocused: "—",
+      focusTimeLabel: "—",
+      completionRate: "—",
+    });
+  }
+}
+
+function initDailyReflectionStatsWidget() {
+  const dateEl = document.getElementById("dailyReflectionDate");
+  if (!dateEl) return;
+
+  refreshDailyReflectionStats();
+
+  window.setInterval(refreshDailyReflectionStats, 60000);
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) refreshDailyReflectionStats();
+  });
+
+  window.addEventListener("focus", refreshDailyReflectionStats);
 }
 
 async function initDailyEmailSettings() {
@@ -1298,6 +1461,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   bindDashboardTaskFilterTabs();
   initDailyEmailSettings();
+  initDailyReflectionStatsWidget();
 
   checkAuthStatus({ isLoginPage, isRegisterPage, isProtectedPage, isHomePage }); // Check authentication status on page load
   initFocusMode();
