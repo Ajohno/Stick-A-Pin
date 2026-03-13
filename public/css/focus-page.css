@@ -59,6 +59,9 @@
   font-size: 0.95rem;
   line-height: 1.3;
   overflow-wrap: anywhere;
+  width: 100%;
+  text-align: center;
+  align-self: center;
 }
 
 .focus-session-center {
@@ -196,6 +199,17 @@
 
 .focus-task-empty {
   opacity: 0.8;
+  text-align: center;
+}
+
+.focus-task-empty > span {
+  display: inline;
+}
+
+.focus-task-empty-link {
+  color: inherit;
+  text-decoration: none;
+  font-weight: 700;
 }
 
 .focus-task-list[aria-disabled="true"] .focus-task-option {
