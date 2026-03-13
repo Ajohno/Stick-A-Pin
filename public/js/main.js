@@ -71,6 +71,7 @@ const focusState = {
   taskId: null,
   sessionId: null,
   startedAt: null,
+  elapsedSeconds: 0,
   timerIntervalId: null,
   quoteTimeoutIds: [],
   quoteTypingIntervalId: null,
@@ -139,21 +140,29 @@ function renderFocusTimer() {
   const timerEl = document.getElementById("focusTimer");
   if (!timerEl) return;
 
-  if (!focusState.startedAt) {
-    timerEl.textContent = "00:00";
-    return;
-  }
-
-  const elapsedSeconds = Math.floor((Date.now() - focusState.startedAt) / 1000);
-  timerEl.textContent = formatFocusDuration(elapsedSeconds);
+  timerEl.textContent = formatFocusDuration(focusState.elapsedSeconds);
 }
 
 function startFocusTimer() {
   if (focusState.timerIntervalId) {
     window.clearInterval(focusState.timerIntervalId);
   }
+
+  if (focusState.startedAt) {
+    focusState.elapsedSeconds = Math.max(
+      0,
+      Math.floor((Date.now() - focusState.startedAt) / 1000),
+    );
+  } else {
+    focusState.elapsedSeconds = 0;
+  }
+
   renderFocusTimer();
-  focusState.timerIntervalId = window.setInterval(renderFocusTimer, 1000);
+
+  focusState.timerIntervalId = window.setInterval(() => {
+    focusState.elapsedSeconds += 1;
+    renderFocusTimer();
+  }, 1000);
 }
 
 function stopFocusTimer() {
@@ -687,6 +696,7 @@ async function stopFocusSession(reason = "manual_stop") {
   focusState.taskId = null;
   focusState.sessionId = null;
   focusState.startedAt = null;
+  focusState.elapsedSeconds = 0;
   updateFocusModeControls({ running: false });
   renderFocusTimer();
 
