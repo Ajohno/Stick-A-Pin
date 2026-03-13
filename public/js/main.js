@@ -760,6 +760,46 @@ async function completeTask(taskId) {
   }
 }
 
+async function restoreActiveFocusSession(statusEl) {
+  try {
+    const response = await apiFetch("/focus-sessions/active", {
+      credentials: "include",
+    });
+    const payload = await parseApiResponse(response);
+
+    if (!response.ok) {
+      return;
+    }
+
+    const activeSession = payload?.session || null;
+    if (!activeSession?.taskId) {
+      renderFocusTimer();
+      return;
+    }
+
+    const parsedStartedAt = new Date(activeSession.startedAt || Date.now());
+    focusState.sessionId = activeSession._id || null;
+    focusState.taskId = String(activeSession.taskId);
+    focusState.startedAt = Number.isNaN(parsedStartedAt.getTime())
+      ? Date.now()
+      : parsedStartedAt.getTime();
+
+    updateFocusTaskOptions(focusState.allTasks);
+    updateFocusModeControls({ running: true, hasTask: true });
+    startFocusTimer();
+    scheduleSessionNudges();
+
+    const activeTask = focusState.allTasks.find(
+      (task) => String(task?._id) === String(focusState.taskId),
+    );
+    const activeTaskLabel =
+      activeTask?.description || activeSession.taskDescription || "your task";
+    statusEl.textContent = `Focused on: ${activeTaskLabel}`;
+  } catch (error) {
+    console.error("Failed to restore active focus session:", error);
+  }
+}
+
 async function initFocusMode() {
   const selectEl = document.getElementById("focusTaskSelect");
   const startBtn = document.getElementById("focusStartBtn");
@@ -777,6 +817,8 @@ async function initFocusMode() {
     console.error("Focus task preload failed:", error);
     updateFocusTaskOptions([]);
   }
+
+  await restoreActiveFocusSession(statusEl);
 
   window.setTimeout(() => {
     showFocusQuoteByCategory("general");

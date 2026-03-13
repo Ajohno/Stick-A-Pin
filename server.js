@@ -829,6 +829,30 @@ app.post("/focus-sessions/stop", ensureAuthenticated, async (req, res) => {
   }
 });
 
+// Get the active focus session for the current user
+app.get("/focus-sessions/active", ensureAuthenticated, async (req, res) => {
+  try {
+    const openSession = await FocusSession.findOne({
+      userId: req.user.id,
+      endedAt: null
+    })
+      .sort({ startedAt: -1 })
+      .populate({
+        path: "taskId",
+        select: "description"
+      });
+
+    if (!openSession) {
+      return res.json({ session: null });
+    }
+
+    return res.json({ session: toFocusSessionResponse(openSession) });
+  } catch (err) {
+    console.error("Error fetching active focus session:", err);
+    return res.status(500).json({ error: "Server error while loading active focus session" });
+  }
+});
+
 // Query focus sessions by date range (used by reflections)
 app.get("/focus-sessions", ensureAuthenticated, async (req, res) => {
   try {
