@@ -878,7 +878,7 @@ function getTodayDateRangeIso() {
   return { startIso: start.toISOString(), endIso: end.toISOString() };
 }
 
-function formatFocusDuration(durationMs) {
+function formatDailyFocusDuration(durationMs) {
   const totalMinutes = Math.round((Number(durationMs) || 0) / 60000);
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
@@ -994,7 +994,7 @@ async function refreshDailyReflectionStats() {
     renderDailyReflectionStats({
       dateLabel: todayLabel,
       tasksFocused: focusedTaskIds.size,
-      focusTimeLabel: formatFocusDuration(totalFocusMs),
+      focusTimeLabel: formatDailyFocusDuration(totalFocusMs),
       completionRate,
     });
   } catch (error) {
