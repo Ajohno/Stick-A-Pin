@@ -1920,7 +1920,46 @@ body.task-panel-open {
   background: #fff7ee;
   margin-left: 0;
   flex: 0 0 auto;
-  width: clamp(7.75rem, 34vw, 10.5rem);
+  width: 8.5rem;
+}
+
+.daily-reflection-today {
+  margin-top: 0.7rem;
+  border: 1px dashed rgba(198, 83, 78, 0.45);
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem;
+  background: rgba(255, 247, 238, 0.7);
+  font-family: "Gochi Hand", cursive;
+  color: #3f2c20;
+}
+
+.daily-reflection-today-date {
+  margin: 0 0 0.28rem;
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.daily-reflection-metrics {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.12rem;
+  font-size: 1.25rem;
+}
+
+.daily-reflection-metrics li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.daily-reflection-metric-label {
+  font-weight: 700;
+}
+
+.daily-reflection-metric-value {
+  font-weight: 600;
 }
 
 @media (min-width: 768px) {
@@ -1936,7 +1975,20 @@ body.task-panel-open {
   }
 
   #dailyEmailTime {
-    width: 8rem;
+    width: 6.9rem;
     min-width: 0;
+    padding: 0.3rem 0.35rem;
+  }
+
+  .daily-reflection-today {
+    padding: 0.58rem 0.62rem;
+  }
+
+  .daily-reflection-today-date {
+    font-size: 1.25rem;
+  }
+
+  .daily-reflection-metrics {
+    font-size: 1.12rem;
   }
 }
