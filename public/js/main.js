@@ -411,13 +411,22 @@ function updateFocusTaskOptions(tasks) {
   if (filteredTasks.length === 0) {
     const option = document.createElement("option");
     option.value = "";
-    option.textContent = "No active tasks";
+    option.textContent = "You have no active tasks. Make one now!";
     selectEl.appendChild(option);
 
     if (taskListEl) {
       const emptyItem = document.createElement("li");
       emptyItem.className = "big-three-item focus-task-empty";
-      emptyItem.textContent = "No active tasks";
+
+      const message = document.createElement("span");
+      message.textContent = "You have no active tasks. ";
+
+      const createTaskLink = document.createElement("a");
+      createTaskLink.href = "/dashboard.html";
+      createTaskLink.className = "focus-task-empty-link highlight-on-parent-hover";
+      createTaskLink.textContent = "Make one now!";
+
+      emptyItem.append(message, createTaskLink);
       taskListEl.appendChild(emptyItem);
     }
 
