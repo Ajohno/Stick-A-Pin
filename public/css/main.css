@@ -1924,11 +1924,8 @@ body.task-panel-open {
 }
 
 .daily-reflection-today {
-  margin-top: 0.7rem;
-  border: 1px dashed rgba(198, 83, 78, 0.45);
-  border-radius: 10px;
-  padding: 0.65rem 0.75rem;
-  background: rgba(255, 247, 238, 0.7);
+  margin-top: 0.45rem;
+  padding: 0;
   font-family: "Gochi Hand", cursive;
   color: #3f2c20;
 }
@@ -1945,7 +1942,8 @@ body.task-panel-open {
   list-style: none;
   display: grid;
   gap: 0.12rem;
-  font-size: 1.25rem;
+  font-size: 1.02rem;
+  opacity: 0.82;
 }
 
 .daily-reflection-metrics li {
@@ -1955,11 +1953,11 @@ body.task-panel-open {
 }
 
 .daily-reflection-metric-label {
-  font-weight: 700;
+  font-weight: 400;
 }
 
 .daily-reflection-metric-value {
-  font-weight: 600;
+  font-weight: 400;
 }
 
 @media (min-width: 768px) {
@@ -1981,7 +1979,7 @@ body.task-panel-open {
   }
 
   .daily-reflection-today {
-    padding: 0.58rem 0.62rem;
+    padding: 0;
   }
 
   .daily-reflection-today-date {
@@ -1989,6 +1987,6 @@ body.task-panel-open {
   }
 
   .daily-reflection-metrics {
-    font-size: 1.12rem;
+    font-size: 0.98rem;
   }
 }
