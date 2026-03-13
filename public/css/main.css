@@ -1851,7 +1851,7 @@ body.task-panel-open {
 }
 
 .settings-panel {
-  width: min(920px, 96%);
+  width: min(860px, 94%);
 }
 
 .daily-reflection-card {
@@ -1896,6 +1896,8 @@ body.task-panel-open {
 
 .daily-email-time-row {
   padding-left: 0;
+  flex-wrap: nowrap;
+  align-items: center;
 }
 
 .daily-email-label,
@@ -1912,10 +1914,24 @@ body.task-panel-open {
   padding: 0.35rem 0.45rem;
   font-family: "Quantico", sans-serif;
   background: #fff7ee;
+  width: auto;
+  max-width: 10.5rem;
 }
 
 @media (min-width: 768px) {
   .daily-email-time-row {
     padding-left: 0.15rem;
+  }
+}
+
+
+@media (max-width: 767px) {
+  .daily-email-time-row {
+    gap: 0.45rem;
+  }
+
+  #dailyEmailTime {
+    max-width: 9.75rem;
+    min-width: 0;
   }
 }
