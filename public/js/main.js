@@ -778,7 +778,7 @@ async function initFocusMode() {
       selectEl.options[selectEl.selectedIndex]?.text || "";
     if (!selectedTaskId) {
       Toast.show({
-        message: "Select a task before starting focus mode.",
+        message: "Decide what we should focus on first!",
         type: "error",
         duration: 2500,
       });
