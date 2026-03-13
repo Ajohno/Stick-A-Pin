@@ -356,9 +356,6 @@ function updateFocusModeControls({ running, hasTask } = {}) {
   const startBtn = document.getElementById("focusStartBtn");
   const stopBtn = document.getElementById("focusStopBtn");
   const completeBtn = document.getElementById("focusCompleteBtn");
-  const canStart =
-    typeof hasTask === "boolean" ? hasTask : Boolean(selectEl?.value);
-
   if (selectEl) selectEl.disabled = running;
   if (taskListEl) {
     taskListEl.setAttribute(
@@ -374,7 +371,7 @@ function updateFocusModeControls({ running, hasTask } = {}) {
 
   if (startBtn) {
     startBtn.hidden = Boolean(running);
-    startBtn.disabled = Boolean(running) || !canStart;
+    startBtn.disabled = Boolean(running);
   }
   if (stopBtn) {
     stopBtn.hidden = !Boolean(running);
