@@ -1908,14 +1908,19 @@ body.task-panel-open {
   color: #3f2c20;
 }
 
+.daily-email-time-label {
+  white-space: nowrap;
+}
+
 #dailyEmailTime {
   border: 2px solid #c6534e;
   border-radius: 8px;
   padding: 0.35rem 0.45rem;
   font-family: "Quantico", sans-serif;
   background: #fff7ee;
-  width: auto;
-  max-width: 10.5rem;
+  margin-left: 0;
+  flex: 0 0 auto;
+  width: clamp(7.75rem, 34vw, 10.5rem);
 }
 
 @media (min-width: 768px) {
@@ -1931,7 +1936,7 @@ body.task-panel-open {
   }
 
   #dailyEmailTime {
-    max-width: 9.75rem;
+    width: 8rem;
     min-width: 0;
   }
 }
