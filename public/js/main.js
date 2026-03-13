@@ -707,6 +707,12 @@ async function stopFocusSession(reason = "manual_stop") {
     statusEl.textContent = "Focus session stopped.";
   }
 
+  Toast.show({
+    message: "Focus timer ended.",
+    type: "success",
+    duration: 2500,
+  });
+
   if (stopError) {
     Toast.show({ message: stopError, type: "error", duration: 3000 });
   }
@@ -816,6 +822,11 @@ async function initFocusMode() {
       showFocusQuoteByCategory(quoteCategory);
       scheduleSessionNudges();
       statusEl.textContent = `Focused on: ${selectedTaskLabel}`;
+      Toast.show({
+        message: "Focus timer started.",
+        type: "success",
+        duration: 2500,
+      });
       await updateFocusLogWidget();
     } catch (error) {
       console.error("Start focus session request failed:", error);
@@ -983,7 +994,7 @@ async function refreshDailyReflectionStats() {
     renderDailyReflectionStats({
       dateLabel: todayLabel,
       tasksFocused: focusedTaskIds.size,
-      focusTimeLabel: formatFocusDuration(totalFocusMs),
+      focusTimeLabel: formatFocusDuration(Math.round(totalFocusMs / 1000)),
       completionRate,
     });
   } catch (error) {
