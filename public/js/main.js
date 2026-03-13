@@ -356,9 +356,6 @@ function updateFocusModeControls({ running, hasTask } = {}) {
   const startBtn = document.getElementById("focusStartBtn");
   const stopBtn = document.getElementById("focusStopBtn");
   const completeBtn = document.getElementById("focusCompleteBtn");
-  const canStart =
-    typeof hasTask === "boolean" ? hasTask : Boolean(selectEl?.value);
-
   if (selectEl) selectEl.disabled = running;
   if (taskListEl) {
     taskListEl.setAttribute(
@@ -374,7 +371,7 @@ function updateFocusModeControls({ running, hasTask } = {}) {
 
   if (startBtn) {
     startBtn.hidden = Boolean(running);
-    startBtn.disabled = Boolean(running) || !canStart;
+    startBtn.disabled = Boolean(running);
   }
   if (stopBtn) {
     stopBtn.hidden = !Boolean(running);
@@ -707,6 +704,12 @@ async function stopFocusSession(reason = "manual_stop") {
     statusEl.textContent = "Focus session stopped.";
   }
 
+  Toast.show({
+    message: "Focus timer ended.",
+    type: "success",
+    duration: 2500,
+  });
+
   if (stopError) {
     Toast.show({ message: stopError, type: "error", duration: 3000 });
   }
@@ -772,7 +775,7 @@ async function initFocusMode() {
       selectEl.options[selectEl.selectedIndex]?.text || "";
     if (!selectedTaskId) {
       Toast.show({
-        message: "Select a task before starting focus mode.",
+        message: "Decide what we should focus on first!",
         type: "error",
         duration: 2500,
       });
@@ -816,6 +819,11 @@ async function initFocusMode() {
       showFocusQuoteByCategory(quoteCategory);
       scheduleSessionNudges();
       statusEl.textContent = `Focused on: ${selectedTaskLabel}`;
+      Toast.show({
+        message: "Focus timer started.",
+        type: "success",
+        duration: 2500,
+      });
       await updateFocusLogWidget();
     } catch (error) {
       console.error("Start focus session request failed:", error);
@@ -867,7 +875,7 @@ function getTodayDateRangeIso() {
   return { startIso: start.toISOString(), endIso: end.toISOString() };
 }
 
-function formatFocusDuration(durationMs) {
+function formatDailyFocusDuration(durationMs) {
   const totalMinutes = Math.round((Number(durationMs) || 0) / 60000);
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
@@ -983,7 +991,7 @@ async function refreshDailyReflectionStats() {
     renderDailyReflectionStats({
       dateLabel: todayLabel,
       tasksFocused: focusedTaskIds.size,
-      focusTimeLabel: formatFocusDuration(totalFocusMs),
+      focusTimeLabel: formatDailyFocusDuration(totalFocusMs),
       completionRate,
     });
   } catch (error) {
@@ -1449,6 +1457,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // }
   const taskForm = document.getElementById("taskForm");
   if (taskForm) {
+    taskForm.setAttribute("novalidate", "novalidate");
     taskForm.addEventListener("submit", submit);
   }
 
@@ -1675,7 +1684,6 @@ async function clearCompletedTasks() {
 
 // Function to submit a task (User must be logged in)
 const submit = async function (event) {
-  Toast.show({ message: "Task Submitted", type: "success", duration: 2000 });
   event.preventDefault(); // Stop default form submission behavior
 
   const taskInput = document.querySelector("#taskDescription");
@@ -1693,31 +1701,50 @@ const submit = async function (event) {
   };
 
   if (!json.description) {
-    alert("Please enter a task description.");
+    Toast.show({
+      message: "You should probably write down a task first!",
+      type: "error",
+      duration: 2500,
+    });
     return;
   }
 
-  // Send task data to the server
-  const response = await apiFetch("/tasks", {
-    credentials: "include",
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(json),
-  });
+  try {
+    // Send task data to the server
+    const response = await apiFetch("/tasks", {
+      credentials: "include",
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(json),
+    });
 
-  const data = await response.json();
+    const data = await parseApiResponse(response);
 
-  if (response.ok) {
-    console.log("Task added successfully:", data);
-    updateTaskList(data); // Refresh task list
-  } else {
-    console.error("Task Submission Error:", data.error);
-    alert("You must be logged in to submit tasks.");
+    if (response.ok) {
+      console.log("Task added successfully:", data);
+      updateTaskList(data); // Refresh task list
+      Toast.show({ message: "Task Submitted", type: "success", duration: 2000 });
+
+      // Clear input fields after successful submission
+      taskInput.value = "";
+      dateInput.value = "";
+      return;
+    }
+
+    console.error("Task Submission Error:", data?.error);
+    Toast.show({
+      message: data?.error || "Could not submit task.",
+      type: "error",
+      duration: 3000,
+    });
+  } catch (error) {
+    console.error("Task submission failed:", error);
+    Toast.show({
+      message: "Could not submit task.",
+      type: "error",
+      duration: 3000,
+    });
   }
-
-  // Clear input fields after submission
-  taskInput.value = "";
-  dateInput.value = "";
 };
 
 function setBigThreeButtonState(button, isBigThree) {
