@@ -1683,7 +1683,6 @@ async function clearCompletedTasks() {
 
 // Function to submit a task (User must be logged in)
 const submit = async function (event) {
-  Toast.show({ message: "Task Submitted", type: "success", duration: 2000 });
   event.preventDefault(); // Stop default form submission behavior
 
   const taskInput = document.querySelector("#taskDescription");
@@ -1701,7 +1700,11 @@ const submit = async function (event) {
   };
 
   if (!json.description) {
-    alert("Please enter a task description.");
+    Toast.show({
+      message: "You should probably write down a task first!",
+      type: "error",
+      duration: 2500,
+    });
     return;
   }
 
@@ -1718,9 +1721,14 @@ const submit = async function (event) {
   if (response.ok) {
     console.log("Task added successfully:", data);
     updateTaskList(data); // Refresh task list
+    Toast.show({ message: "Task Submitted", type: "success", duration: 2000 });
   } else {
     console.error("Task Submission Error:", data.error);
-    alert("You must be logged in to submit tasks.");
+    Toast.show({
+      message: data?.error || "You must be logged in to submit tasks.",
+      type: "error",
+      duration: 3000,
+    });
   }
 
   // Clear input fields after submission
