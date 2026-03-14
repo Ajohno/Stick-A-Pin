@@ -1896,7 +1896,7 @@ body.task-panel-open {
 
 .daily-email-time-row {
   padding-left: 0;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
 }
 
@@ -1921,6 +1921,7 @@ body.task-panel-open {
   margin-left: 0;
   flex: 0 0 auto;
   width: 8.5rem;
+  max-width: 100%;
 }
 
 .daily-reflection-today {
