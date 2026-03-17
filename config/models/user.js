@@ -14,7 +14,20 @@ const UserSchema = new mongoose.Schema(
       trim: true,
     },
 
-    passwordHash: { type: String, required: true },
+    passwordHash: { type: String, default: null },
+
+    authProviders: {
+      google: {
+        id: { type: String, default: null },
+        email: { type: String, default: null, lowercase: true, trim: true },
+      },
+      apple: {
+        id: { type: String, default: null },
+        email: { type: String, default: null, lowercase: true, trim: true },
+      },
+    },
+
+    avatarUrl: { type: String, default: null },
 
     emailVerified: { type: Boolean, default: true },
     emailVerificationTokenHash: { type: String, default: null },
@@ -38,5 +51,8 @@ const UserSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+UserSchema.index({ "authProviders.google.id": 1 }, { unique: true, sparse: true });
+UserSchema.index({ "authProviders.apple.id": 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model("User", UserSchema);
