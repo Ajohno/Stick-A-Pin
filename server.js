@@ -321,10 +321,9 @@ async function buildDailySummary(userId, daysAgo = 0, includeTaskNames = false) 
 }
 
 async function buildDailyReflectionEmailData(userId) {
-  const [today, yesterday, twoDaysAgo] = await Promise.all([
+  const [today, yesterday] = await Promise.all([
     buildDailySummary(userId, 0, true),
     buildDailySummary(userId, 1, false),
-    buildDailySummary(userId, 2, false),
   ]);
 
   return {
@@ -332,10 +331,7 @@ async function buildDailyReflectionEmailData(userId) {
     trend: {
       completedVsYesterday: today.completedCount - yesterday.completedCount,
       focusVsYesterdayMs: today.totalFocusMs - yesterday.totalFocusMs,
-      completedVsTwoDaysAgo: today.completedCount - twoDaysAgo.completedCount,
-      focusVsTwoDaysAgoMs: today.totalFocusMs - twoDaysAgo.totalFocusMs,
       yesterdayLabel: yesterday.dateLabel,
-      twoDaysAgoLabel: twoDaysAgo.dateLabel,
     },
   };
 }
@@ -373,11 +369,6 @@ async function sendDailyReflectionEmail(user, emailData) {
         <ul>
           <li>Tasks completed: ${escapeHtml(formatSignedDelta(emailData.trend.completedVsYesterday))}</li>
           <li>Focus time: ${escapeHtml(formatSignedDelta(Math.round(emailData.trend.focusVsYesterdayMs / 60000)))} min</li>
-        </ul>
-        <p><strong>Trend vs ${escapeHtml(emailData.trend.twoDaysAgoLabel)}:</strong></p>
-        <ul>
-          <li>Tasks completed: ${escapeHtml(formatSignedDelta(emailData.trend.completedVsTwoDaysAgo))}</li>
-          <li>Focus time: ${escapeHtml(formatSignedDelta(Math.round(emailData.trend.focusVsTwoDaysAgoMs / 60000)))} min</li>
         </ul>
       `,
     }),
