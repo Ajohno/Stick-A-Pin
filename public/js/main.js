@@ -889,14 +889,12 @@ function renderDailyReflectionStats({
   dateLabel,
   tasksFocused = "—",
   focusTimeLabel = "—",
-  completionRate = "—",
 } = {}) {
   const dateEl = document.getElementById("dailyReflectionDate");
   const tasksEl = document.getElementById("dailyReflectionTasksFocused");
   const timeEl = document.getElementById("dailyReflectionFocusTime");
-  const completionEl = document.getElementById("dailyReflectionCompletionRate");
 
-  if (!dateEl || !tasksEl || !timeEl || !completionEl) return;
+  if (!dateEl || !tasksEl || !timeEl) return;
 
   dateEl.textContent = dateLabel || new Date().toLocaleDateString(undefined, {
     weekday: "long",
@@ -906,16 +904,14 @@ function renderDailyReflectionStats({
   });
   tasksEl.textContent = String(tasksFocused);
   timeEl.textContent = String(focusTimeLabel);
-  completionEl.textContent = String(completionRate);
 }
 
 async function refreshDailyReflectionStats() {
   const dateEl = document.getElementById("dailyReflectionDate");
   const tasksEl = document.getElementById("dailyReflectionTasksFocused");
   const timeEl = document.getElementById("dailyReflectionFocusTime");
-  const completionEl = document.getElementById("dailyReflectionCompletionRate");
 
-  if (!dateEl || !tasksEl || !timeEl || !completionEl) return;
+  if (!dateEl || !tasksEl || !timeEl) return;
 
   const todayLabel = new Date().toLocaleDateString(undefined, {
     weekday: "long",
@@ -928,34 +924,23 @@ async function refreshDailyReflectionStats() {
     dateLabel: todayLabel,
     tasksFocused: "…",
     focusTimeLabel: "…",
-    completionRate: "…",
   });
 
   try {
     const { startIso, endIso } = getTodayDateRangeIso();
     const focusQuery = new URLSearchParams({ from: startIso, to: endIso }).toString();
 
-    const [tasksResponse, sessionsResponse] = await Promise.all([
-      apiFetch("/tasks", { credentials: "include", cache: "no-store" }),
-      apiFetch(`/focus-sessions?${focusQuery}`, {
-        credentials: "include",
-        cache: "no-store",
-      }),
-    ]);
+    const sessionsResponse = await apiFetch(`/focus-sessions?${focusQuery}`, {
+      credentials: "include",
+      cache: "no-store",
+    });
 
-    const [tasksData, sessionsData] = await Promise.all([
-      parseApiResponse(tasksResponse),
-      parseApiResponse(sessionsResponse),
-    ]);
+    const sessionsData = await parseApiResponse(sessionsResponse);
 
-    if (!tasksResponse.ok) {
-      throw new Error(tasksData?.error || "Could not load tasks");
-    }
     if (!sessionsResponse.ok) {
       throw new Error(sessionsData?.error || "Could not load focus sessions");
     }
 
-    const tasks = Array.isArray(tasksData) ? tasksData : [];
     const sessions = Array.isArray(sessionsData) ? sessionsData : [];
 
     const focusedTaskIds = new Set(
@@ -970,29 +955,10 @@ async function refreshDailyReflectionStats() {
       0,
     );
 
-    const todayStart = new Date(startIso).getTime();
-    const todayEnd = new Date(endIso).getTime();
-
-    const tasksCreatedToday = tasks.filter((task) => {
-      const createdAtMs = new Date(task?.createdAt || "").getTime();
-      return Number.isFinite(createdAtMs) && createdAtMs >= todayStart && createdAtMs < todayEnd;
-    }).length;
-
-    const completedToday = tasks.filter((task) => {
-      if (task?.status !== "completed") return false;
-      const completedAtMs = new Date(task?.completedAt || "").getTime();
-      return Number.isFinite(completedAtMs) && completedAtMs >= todayStart && completedAtMs < todayEnd;
-    }).length;
-
-    const completionRate = tasksCreatedToday > 0
-      ? `${Math.round((completedToday / tasksCreatedToday) * 100)}%`
-      : "0%";
-
     renderDailyReflectionStats({
       dateLabel: todayLabel,
       tasksFocused: focusedTaskIds.size,
       focusTimeLabel: formatDailyFocusDuration(totalFocusMs),
-      completionRate,
     });
   } catch (error) {
     console.error("Could not refresh daily reflection stats:", error);
@@ -1000,7 +966,6 @@ async function refreshDailyReflectionStats() {
       dateLabel: todayLabel,
       tasksFocused: "—",
       focusTimeLabel: "—",
-      completionRate: "—",
     });
   }
 }
