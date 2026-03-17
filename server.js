@@ -26,6 +26,9 @@ const PASSWORD_RESET_TTL_MINUTES = Number(process.env.PASSWORD_RESET_TTL_MINUTES
 const APP_BASE_URL = process.env.APP_BASE_URL;
 const EMAIL_FROM = process.env.EMAIL_FROM || "Stick A Pin <no-reply@mail.stickapin.app>";
 
+const DAILY_EMAIL_SCHEDULER_INTERVAL_MS = Number(process.env.DAILY_EMAIL_SCHEDULER_INTERVAL_MS || 60 * 1000);
+let dailyEmailSchedulerStarted = false;
+
 // Rate limiter for authenticated routes to protect expensive operations
 const authenticatedLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -180,27 +183,121 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
+function formatDateInTimezone(date, timezone) {
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(date);
+  } catch (error) {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "UTC",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(date);
+  }
+}
+
+function getCurrentTimeInTimezone(timezone) {
+  try {
+    return new Intl.DateTimeFormat("en-GB", {
+      timeZone: timezone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(new Date());
+  } catch (error) {
+    return new Intl.DateTimeFormat("en-GB", {
+      timeZone: "UTC",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(new Date());
+  }
+}
+
+async function runDailyReflectionSchedulerTick() {
+  try {
+    const now = new Date();
+    const users = await User.find({
+      "settings.dailyEmail": { $ne: false },
+      emailVerified: { $ne: false },
+    }).select("email firstName settings.dailyEmail settings.dailyEmailTime settings.dailyEmailLastSentOn settings.timezone");
+
+    for (const user of users) {
+      const timezone = String(user.settings?.timezone || "UTC").trim() || "UTC";
+      const scheduledTime = isValidTimeInput(user.settings?.dailyEmailTime)
+        ? user.settings.dailyEmailTime
+        : "18:00";
+      const currentTime = getCurrentTimeInTimezone(timezone);
+
+      if (currentTime !== scheduledTime) {
+        continue;
+      }
+
+      const todayInTimezone = formatDateInTimezone(now, timezone);
+      if (user.settings?.dailyEmailLastSentOn === todayInTimezone) {
+        continue;
+      }
+
+      try {
+        const emailData = await buildDailyReflectionEmailData(user._id);
+        await sendDailyReflectionEmail(user, emailData);
+
+        await User.updateOne(
+          { _id: user._id },
+          { $set: { "settings.dailyEmailLastSentOn": todayInTimezone } }
+        );
+      } catch (emailError) {
+        console.error(`Failed daily reflection send for user ${user._id}:`, emailError);
+      }
+    }
+  } catch (error) {
+    console.error("Daily reflection scheduler tick failed:", error);
+  }
+}
+
+function startDailyReflectionScheduler() {
+  if (dailyEmailSchedulerStarted) {
+    return;
+  }
+
+  dailyEmailSchedulerStarted = true;
+  runDailyReflectionSchedulerTick();
+  setInterval(runDailyReflectionSchedulerTick, DAILY_EMAIL_SCHEDULER_INTERVAL_MS);
+}
+
 function getTodayBounds() {
+  return getDayBounds(0);
+}
+
+function getDayBounds(daysAgo = 0) {
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  start.setDate(start.getDate() - Math.max(0, Number(daysAgo) || 0));
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
   return { start, end };
 }
 
-async function buildDailyReflectionEmailData(userId) {
-  const { start, end } = getTodayBounds();
+function formatSignedDelta(value) {
+  const numeric = Number(value) || 0;
+  if (numeric > 0) return `+${numeric}`;
+  return String(numeric);
+}
 
-  const [completedToday, tasksCreatedToday, sessionsToday] = await Promise.all([
+async function buildDailySummary(userId, daysAgo = 0, includeTaskNames = false) {
+  const { start, end } = getDayBounds(daysAgo);
+
+  const [completedTasks, sessions] = await Promise.all([
     Task.find({
       userId,
       status: "completed",
       completedAt: { $gte: start, $lt: end },
     }).sort({ completedAt: 1 }),
-    Task.countDocuments({
-      userId,
-      createdAt: { $gte: start, $lt: end },
-    }),
     FocusSession.find({
       userId,
       startedAt: { $gte: start, $lt: end },
@@ -208,21 +305,34 @@ async function buildDailyReflectionEmailData(userId) {
     }).select("durationMs"),
   ]);
 
-  const totalFocusMs = sessionsToday.reduce((sum, session) => sum + (Number(session.durationMs) || 0), 0);
-  const completionRate = tasksCreatedToday > 0
-    ? Math.round((completedToday.length / tasksCreatedToday) * 100)
-    : 0;
-
-  const completedTaskNames = completedToday.map((task) => {
-    const title = String(task.title || "").trim();
-    return title || String(task.description || "").trim() || "Untitled task";
-  });
+  const totalFocusMs = sessions.reduce((sum, session) => sum + (Number(session.durationMs) || 0), 0);
 
   return {
-    completedTaskNames,
-    totalFocusMs,
-    completionRate,
     dateLabel: start.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }),
+    completedCount: completedTasks.length,
+    totalFocusMs,
+    completedTaskNames: includeTaskNames
+      ? completedTasks.map((task) => {
+        const title = String(task.title || "").trim();
+        return title || String(task.description || "").trim() || "Untitled task";
+      })
+      : [],
+  };
+}
+
+async function buildDailyReflectionEmailData(userId) {
+  const [today, yesterday] = await Promise.all([
+    buildDailySummary(userId, 0, true),
+    buildDailySummary(userId, 1, false),
+  ]);
+
+  return {
+    ...today,
+    trend: {
+      completedVsYesterday: today.completedCount - yesterday.completedCount,
+      focusVsYesterdayMs: today.totalFocusMs - yesterday.totalFocusMs,
+      yesterdayLabel: yesterday.dateLabel,
+    },
   };
 }
 
@@ -249,11 +359,17 @@ async function sendDailyReflectionEmail(user, emailData) {
       subject,
       html: `
         <p>Hi ${escapeHtml(user.firstName || "there")},</p>
-        <p>Here is your daily reflection for ${escapeHtml(emailData.dateLabel)}.</p>
-        <p><strong>Completed tasks:</strong></p>
+        <p>Here is your daily performance trend for ${escapeHtml(emailData.dateLabel)}.</p>
+        <p><strong>Today you completed:</strong> ${escapeHtml(String(emailData.completedCount))} task(s)</p>
+        <p><strong>Today you focused for:</strong> ${escapeHtml(formatDurationFromMs(emailData.totalFocusMs))}</p>
+        <p><strong>Completed tasks today:</strong></p>
         ${tasksHtml}
-        <p><strong>Total focus time:</strong> ${escapeHtml(formatDurationFromMs(emailData.totalFocusMs))}</p>
-        <p><strong>Task completion rate:</strong> ${escapeHtml(String(emailData.completionRate))}%</p>
+        <hr />
+        <p><strong>Trend vs ${escapeHtml(emailData.trend.yesterdayLabel)}:</strong></p>
+        <ul>
+          <li>Tasks completed: ${escapeHtml(formatSignedDelta(emailData.trend.completedVsYesterday))}</li>
+          <li>Focus time: ${escapeHtml(formatSignedDelta(Math.round(emailData.trend.focusVsYesterdayMs / 60000)))} min</li>
+        </ul>
       `,
     }),
   });
@@ -969,6 +1085,8 @@ app.get("/:file", (req, res) => {
         res.status(404).send("404 Error: File Not Found");
     }
 });
+
+startDailyReflectionScheduler();
 
 if (require.main === module) {
     // Only execute when this file is run directly (local dev)
