@@ -26,6 +26,9 @@ const PASSWORD_RESET_TTL_MINUTES = Number(process.env.PASSWORD_RESET_TTL_MINUTES
 const APP_BASE_URL = process.env.APP_BASE_URL;
 const EMAIL_FROM = process.env.EMAIL_FROM || "Stick A Pin <no-reply@mail.stickapin.app>";
 
+const DAILY_EMAIL_SCHEDULER_INTERVAL_MS = Number(process.env.DAILY_EMAIL_SCHEDULER_INTERVAL_MS || 60 * 1000);
+let dailyEmailSchedulerStarted = false;
+
 // Rate limiter for authenticated routes to protect expensive operations
 const authenticatedLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -178,6 +181,93 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function formatDateInTimezone(date, timezone) {
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(date);
+  } catch (error) {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "UTC",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(date);
+  }
+}
+
+function getCurrentTimeInTimezone(timezone) {
+  try {
+    return new Intl.DateTimeFormat("en-GB", {
+      timeZone: timezone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(new Date());
+  } catch (error) {
+    return new Intl.DateTimeFormat("en-GB", {
+      timeZone: "UTC",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(new Date());
+  }
+}
+
+async function runDailyReflectionSchedulerTick() {
+  try {
+    const now = new Date();
+    const users = await User.find({
+      "settings.dailyEmail": { $ne: false },
+      emailVerified: { $ne: false },
+    }).select("email firstName settings.dailyEmail settings.dailyEmailTime settings.dailyEmailLastSentOn settings.timezone");
+
+    for (const user of users) {
+      const timezone = String(user.settings?.timezone || "UTC").trim() || "UTC";
+      const scheduledTime = isValidTimeInput(user.settings?.dailyEmailTime)
+        ? user.settings.dailyEmailTime
+        : "18:00";
+      const currentTime = getCurrentTimeInTimezone(timezone);
+
+      if (currentTime !== scheduledTime) {
+        continue;
+      }
+
+      const todayInTimezone = formatDateInTimezone(now, timezone);
+      if (user.settings?.dailyEmailLastSentOn === todayInTimezone) {
+        continue;
+      }
+
+      try {
+        const emailData = await buildDailyReflectionEmailData(user._id);
+        await sendDailyReflectionEmail(user, emailData);
+
+        await User.updateOne(
+          { _id: user._id },
+          { $set: { "settings.dailyEmailLastSentOn": todayInTimezone } }
+        );
+      } catch (emailError) {
+        console.error(`Failed daily reflection send for user ${user._id}:`, emailError);
+      }
+    }
+  } catch (error) {
+    console.error("Daily reflection scheduler tick failed:", error);
+  }
+}
+
+function startDailyReflectionScheduler() {
+  if (dailyEmailSchedulerStarted) {
+    return;
+  }
+
+  dailyEmailSchedulerStarted = true;
+  runDailyReflectionSchedulerTick();
+  setInterval(runDailyReflectionSchedulerTick, DAILY_EMAIL_SCHEDULER_INTERVAL_MS);
 }
 
 function getTodayBounds() {
@@ -969,6 +1059,8 @@ app.get("/:file", (req, res) => {
         res.status(404).send("404 Error: File Not Found");
     }
 });
+
+startDailyReflectionScheduler();
 
 if (require.main === module) {
     // Only execute when this file is run directly (local dev)
