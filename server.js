@@ -10,6 +10,7 @@ const bcrypt = require("bcryptjs"); // Used to hash passwords
 const User = require("./config/models/user"); // User model for the database
 const Task = require("./config/models/task"); // Task model for the database
 const FocusSession = require("./config/models/focusSession"); // FocusSession model for tracking focus sessions
+const csrf = require("lusca").csrf; // CSRF protection middleware
 const rateLimit = require("express-rate-limit"); // Rate limiting middleware
 const MongoStore = require("connect-mongo").default; // Store sessions in MongoDB
 
@@ -24,6 +25,14 @@ const EMAIL_VERIFICATION_TTL_MINUTES = Number(process.env.EMAIL_VERIFICATION_TTL
 const PASSWORD_RESET_TTL_MINUTES = Number(process.env.PASSWORD_RESET_TTL_MINUTES || 30);
 const APP_BASE_URL = process.env.APP_BASE_URL;
 const EMAIL_FROM = process.env.EMAIL_FROM || "Stick A Pin <no-reply@mail.stickapin.app>";
+
+// Rate limiter for authenticated routes to protect expensive operations
+const authenticatedLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+});
 
 let appdata = [];
 
@@ -276,9 +285,16 @@ app.use(session({
   }
 }));
 
+// CSRF protection for routes using cookie-based sessions
+app.use(csrf());
 
 app.use(passport.initialize());
 app.use(passport.session()); // Enables persistent login sessions
+
+// Endpoint for clients to retrieve a CSRF token
+app.get("/csrf-token", (req, res) => {
+  res.json({ csrfToken: req.csrfToken() });
+});
 
 app.use(express.json()); // Middleware to parse JSON request body
 app.use(express.urlencoded({ extended: false })); // Parses form data
@@ -852,7 +868,7 @@ app.get("/focus-sessions", ensureAuthenticated, async (req, res) => {
 
 
 
-app.get("/settings/daily-email", ensureAuthenticated, async (req, res) => {
+app.get("/settings/daily-email", authenticatedLimiter, ensureAuthenticated, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("settings.dailyEmail settings.dailyEmailTime");
     if (!user) {
@@ -871,7 +887,7 @@ app.get("/settings/daily-email", ensureAuthenticated, async (req, res) => {
   }
 });
 
-app.put("/settings/daily-email", ensureAuthenticated, async (req, res) => {
+app.put("/settings/daily-email", authenticatedLimiter, ensureAuthenticated, async (req, res) => {
   try {
     const dailyEmail = Boolean(req.body.dailyEmail);
     const requestedTime = String(req.body.dailyEmailTime || "").trim();
@@ -903,7 +919,7 @@ app.put("/settings/daily-email", ensureAuthenticated, async (req, res) => {
   }
 });
 
-app.post("/settings/daily-email/test", ensureAuthenticated, async (req, res) => {
+app.post("/settings/daily-email/test", authenticatedLimiter, ensureAuthenticated, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("email firstName settings.dailyEmail");
     if (!user) {

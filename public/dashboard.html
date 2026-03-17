@@ -51,14 +51,14 @@
             <span class="sr-only">Menu</span>
           </button>
 
-          <div class="logo-container">
+          <a href="/dashboard.html" class="logo-container brand-link" aria-label="Go to dashboard">
             <div class="logo-sticky">
               <div class="thumbtack">
                 <i class="fa-solid fa-thumbtack" style="color: #c6534e"></i>
               </div>
             </div>
             <span class="brand-name">Stick A Pin</span>
-          </div>
+        </a>
         </div>
 
         <ul class="nav-links" id="nav-drawer">
@@ -90,7 +90,7 @@
             <!-- Task List -->
             <div id="task-list-widget" class="sticky-note thumbtack task-note">
               <div class="task-list-header">
-                <h2 class="widget-title highlight-on-parent-hover">
+                <h2 class="widget-title">
                   <i class="fa-solid fa-list" style="color: #c6534e"></i>
                   Task List
                 </h2>
@@ -219,7 +219,7 @@
             <!-- Big 3 Tasks -->
             <div id="big-3-tasks" class="sticky-note pink thumbtack">
               <!-- Title -->
-              <h2 class="widget-title highlight-on-parent-hover">
+              <h2 class="widget-title">
                 <i class="fa-solid fa-star" style="color: #c6534e"></i>
                 Big 3 Tasks
               </h2>
@@ -246,13 +246,30 @@
             <div id="reflection-section">
               <!-- Daily Reflection -->
               <div id="daily-reflection" class="sticky-note white tape">
-                <h3 class="widget-title highlight-on-parent-hover">
-                  Daily Relfection
+                <h3 class="widget-title">
+                  Daily Reflection
                 </h3>
+                <section class="daily-reflection-today" aria-live="polite" aria-label="Today's reflection stats">
+                  <p id="dailyReflectionDate" class="daily-reflection-today-date"></p>
+                  <ul class="daily-reflection-metrics" role="list">
+                    <li>
+                      <span class="daily-reflection-metric-label">Tasks focused on:</span>
+                      <span id="dailyReflectionTasksFocused" class="daily-reflection-metric-value">—</span>
+                    </li>
+                    <li>
+                      <span class="daily-reflection-metric-label">Task focus time:</span>
+                      <span id="dailyReflectionFocusTime" class="daily-reflection-metric-value">—</span>
+                    </li>
+                    <li>
+                      <span class="daily-reflection-metric-label">Task completion rate:</span>
+                      <span id="dailyReflectionCompletionRate" class="daily-reflection-metric-value">—</span>
+                    </li>
+                  </ul>
+                </section>
               </div>
               <!-- Weekly Reflection -->
               <div id="weekly-reflection" class="sticky-note white tape">
-                <h3 class="widget-title highlight-on-parent-hover">
+                <h3 class="widget-title">
                   Weekly Reflection
                 </h3>
               </div>

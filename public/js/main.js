@@ -16,6 +16,57 @@ async function parseApiResponse(response) {
   return { error: text || "Unexpected server response" };
 }
 
+
+let csrfTokenPromise = null;
+
+function shouldAttachCsrf(method = "GET") {
+  const normalizedMethod = String(method || "GET").toUpperCase();
+  return !["GET", "HEAD", "OPTIONS"].includes(normalizedMethod);
+}
+
+async function getCsrfToken() {
+  if (!csrfTokenPromise) {
+    csrfTokenPromise = (async () => {
+      const response = await fetch("/csrf-token", { credentials: "include" });
+      const data = await parseApiResponse(response);
+
+      if (!response.ok || !data.csrfToken) {
+        throw new Error(data.error || "Unable to retrieve CSRF token");
+      }
+
+      return data.csrfToken;
+    })().catch((error) => {
+      csrfTokenPromise = null;
+      throw error;
+    });
+  }
+
+  return csrfTokenPromise;
+}
+
+async function apiFetch(url, options = {}, retryOnCsrfFailure = true) {
+  const method = String(options.method || "GET").toUpperCase();
+  const headers = new Headers(options.headers || {});
+
+  if (shouldAttachCsrf(method) && !headers.has("x-csrf-token")) {
+    const csrfToken = await getCsrfToken();
+    headers.set("x-csrf-token", csrfToken);
+  }
+
+  const response = await fetch(url, {
+    credentials: "include",
+    ...options,
+    headers,
+  });
+
+  if (response.status === 403 && shouldAttachCsrf(method) && retryOnCsrfFailure) {
+    csrfTokenPromise = null;
+    return apiFetch(url, options, false);
+  }
+
+  return response;
+}
+
 const focusState = {
   taskId: null,
   sessionId: null,
@@ -305,9 +356,6 @@ function updateFocusModeControls({ running, hasTask } = {}) {
   const startBtn = document.getElementById("focusStartBtn");
   const stopBtn = document.getElementById("focusStopBtn");
   const completeBtn = document.getElementById("focusCompleteBtn");
-  const canStart =
-    typeof hasTask === "boolean" ? hasTask : Boolean(selectEl?.value);
-
   if (selectEl) selectEl.disabled = running;
   if (taskListEl) {
     taskListEl.setAttribute(
@@ -323,7 +371,7 @@ function updateFocusModeControls({ running, hasTask } = {}) {
 
   if (startBtn) {
     startBtn.hidden = Boolean(running);
-    startBtn.disabled = Boolean(running) || !canStart;
+    startBtn.disabled = Boolean(running);
   }
   if (stopBtn) {
     stopBtn.hidden = !Boolean(running);
@@ -360,13 +408,23 @@ function updateFocusTaskOptions(tasks) {
   if (filteredTasks.length === 0) {
     const option = document.createElement("option");
     option.value = "";
-    option.textContent = "No active tasks";
+    option.textContent = "You have no active tasks. Make one now!";
     selectEl.appendChild(option);
 
     if (taskListEl) {
       const emptyItem = document.createElement("li");
-      emptyItem.className = "big-three-item focus-task-empty";
-      emptyItem.textContent = "No active tasks";
+      emptyItem.className = "big-three-item focus-task-list-item focus-task-empty";
+
+      const sentence = document.createElement("span");
+      sentence.textContent = "You have no active tasks. ";
+
+      const createTaskLink = document.createElement("a");
+      createTaskLink.href = "/dashboard.html";
+      createTaskLink.className = "focus-task-empty-link highlight-on-parent-hover";
+      createTaskLink.textContent = "Make one now!";
+
+      sentence.append(createTaskLink);
+      emptyItem.append(sentence);
       taskListEl.appendChild(emptyItem);
     }
 
@@ -444,7 +502,7 @@ function updateFocusTaskOptions(tasks) {
 }
 
 async function loadFocusTasks() {
-  const response = await fetch("/tasks", { credentials: "include" });
+  const response = await apiFetch("/tasks", { credentials: "include" });
   if (!response.ok) {
     focusState.allTasks = [];
     updateFocusTaskOptions([]);
@@ -536,7 +594,7 @@ async function updateFocusLogWidget() {
   const query = new URLSearchParams({ from, to }).toString();
 
   try {
-    const response = await fetch(`/focus-sessions?${query}`, {
+    const response = await apiFetch(`/focus-sessions?${query}`, {
       credentials: "include",
       cache: "no-store",
     });
@@ -604,7 +662,7 @@ async function stopFocusSession(reason = "manual_stop") {
 
   if (isRunning) {
     try {
-      const response = await fetch("/focus-sessions/stop", {
+      const response = await apiFetch("/focus-sessions/stop", {
         credentials: "include",
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -646,6 +704,12 @@ async function stopFocusSession(reason = "manual_stop") {
     statusEl.textContent = "Focus session stopped.";
   }
 
+  Toast.show({
+    message: "Focus timer ended.",
+    type: "success",
+    duration: 2500,
+  });
+
   if (stopError) {
     Toast.show({ message: stopError, type: "error", duration: 3000 });
   }
@@ -663,7 +727,7 @@ async function completeTask(taskId) {
   }
 
   try {
-    const updateResponse = await fetch(`/tasks/${taskId}`, {
+    const updateResponse = await apiFetch(`/tasks/${taskId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -711,7 +775,7 @@ async function initFocusMode() {
       selectEl.options[selectEl.selectedIndex]?.text || "";
     if (!selectedTaskId) {
       Toast.show({
-        message: "Select a task before starting focus mode.",
+        message: "Decide what we should focus on first!",
         type: "error",
         duration: 2500,
       });
@@ -725,7 +789,7 @@ async function initFocusMode() {
     startBtn.disabled = true;
 
     try {
-      const response = await fetch("/focus-sessions/start", {
+      const response = await apiFetch("/focus-sessions/start", {
         credentials: "include",
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -755,6 +819,11 @@ async function initFocusMode() {
       showFocusQuoteByCategory(quoteCategory);
       scheduleSessionNudges();
       statusEl.textContent = `Focused on: ${selectedTaskLabel}`;
+      Toast.show({
+        message: "Focus timer started.",
+        type: "success",
+        duration: 2500,
+      });
       await updateFocusLogWidget();
     } catch (error) {
       console.error("Start focus session request failed:", error);
@@ -798,6 +867,159 @@ async function initFocusMode() {
   });
 }
 
+function getTodayDateRangeIso() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { startIso: start.toISOString(), endIso: end.toISOString() };
+}
+
+function formatDailyFocusDuration(durationMs) {
+  const totalMinutes = Math.round((Number(durationMs) || 0) / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours <= 0) return `${minutes} min`;
+  if (minutes <= 0) return `${hours} hr`;
+  return `${hours} hr ${minutes} min`;
+}
+
+function renderDailyReflectionStats({
+  dateLabel,
+  tasksFocused = "—",
+  focusTimeLabel = "—",
+  completionRate = "—",
+} = {}) {
+  const dateEl = document.getElementById("dailyReflectionDate");
+  const tasksEl = document.getElementById("dailyReflectionTasksFocused");
+  const timeEl = document.getElementById("dailyReflectionFocusTime");
+  const completionEl = document.getElementById("dailyReflectionCompletionRate");
+
+  if (!dateEl || !tasksEl || !timeEl || !completionEl) return;
+
+  dateEl.textContent = dateLabel || new Date().toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  tasksEl.textContent = String(tasksFocused);
+  timeEl.textContent = String(focusTimeLabel);
+  completionEl.textContent = String(completionRate);
+}
+
+async function refreshDailyReflectionStats() {
+  const dateEl = document.getElementById("dailyReflectionDate");
+  const tasksEl = document.getElementById("dailyReflectionTasksFocused");
+  const timeEl = document.getElementById("dailyReflectionFocusTime");
+  const completionEl = document.getElementById("dailyReflectionCompletionRate");
+
+  if (!dateEl || !tasksEl || !timeEl || !completionEl) return;
+
+  const todayLabel = new Date().toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+
+  renderDailyReflectionStats({
+    dateLabel: todayLabel,
+    tasksFocused: "…",
+    focusTimeLabel: "…",
+    completionRate: "…",
+  });
+
+  try {
+    const { startIso, endIso } = getTodayDateRangeIso();
+    const focusQuery = new URLSearchParams({ from: startIso, to: endIso }).toString();
+
+    const [tasksResponse, sessionsResponse] = await Promise.all([
+      apiFetch("/tasks", { credentials: "include", cache: "no-store" }),
+      apiFetch(`/focus-sessions?${focusQuery}`, {
+        credentials: "include",
+        cache: "no-store",
+      }),
+    ]);
+
+    const [tasksData, sessionsData] = await Promise.all([
+      parseApiResponse(tasksResponse),
+      parseApiResponse(sessionsResponse),
+    ]);
+
+    if (!tasksResponse.ok) {
+      throw new Error(tasksData?.error || "Could not load tasks");
+    }
+    if (!sessionsResponse.ok) {
+      throw new Error(sessionsData?.error || "Could not load focus sessions");
+    }
+
+    const tasks = Array.isArray(tasksData) ? tasksData : [];
+    const sessions = Array.isArray(sessionsData) ? sessionsData : [];
+
+    const focusedTaskIds = new Set(
+      sessions
+        .map((session) => session?.taskId)
+        .filter((taskId) => taskId !== null && taskId !== undefined)
+        .map((taskId) => String(taskId)),
+    );
+
+    const totalFocusMs = sessions.reduce(
+      (sum, session) => sum + (Number(session?.durationMs) || 0),
+      0,
+    );
+
+    const todayStart = new Date(startIso).getTime();
+    const todayEnd = new Date(endIso).getTime();
+
+    const tasksCreatedToday = tasks.filter((task) => {
+      const createdAtMs = new Date(task?.createdAt || "").getTime();
+      return Number.isFinite(createdAtMs) && createdAtMs >= todayStart && createdAtMs < todayEnd;
+    }).length;
+
+    const completedToday = tasks.filter((task) => {
+      if (task?.status !== "completed") return false;
+      const completedAtMs = new Date(task?.completedAt || "").getTime();
+      return Number.isFinite(completedAtMs) && completedAtMs >= todayStart && completedAtMs < todayEnd;
+    }).length;
+
+    const completionRate = tasksCreatedToday > 0
+      ? `${Math.round((completedToday / tasksCreatedToday) * 100)}%`
+      : "0%";
+
+    renderDailyReflectionStats({
+      dateLabel: todayLabel,
+      tasksFocused: focusedTaskIds.size,
+      focusTimeLabel: formatDailyFocusDuration(totalFocusMs),
+      completionRate,
+    });
+  } catch (error) {
+    console.error("Could not refresh daily reflection stats:", error);
+    renderDailyReflectionStats({
+      dateLabel: todayLabel,
+      tasksFocused: "—",
+      focusTimeLabel: "—",
+      completionRate: "—",
+    });
+  }
+}
+
+function initDailyReflectionStatsWidget() {
+  const dateEl = document.getElementById("dailyReflectionDate");
+  if (!dateEl) return;
+
+  refreshDailyReflectionStats();
+
+  window.setInterval(refreshDailyReflectionStats, 60000);
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) refreshDailyReflectionStats();
+  });
+
+  window.addEventListener("focus", refreshDailyReflectionStats);
+}
+
 async function initDailyEmailSettings() {
   const toggleEl = document.getElementById("dailyEmailToggle");
   const timeEl = document.getElementById("dailyEmailTime");
@@ -813,7 +1035,7 @@ async function initDailyEmailSettings() {
 
   const saveSettings = async () => {
     try {
-      const response = await fetch("/settings/daily-email", {
+      const response = await apiFetch("/settings/daily-email", {
         credentials: "include",
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -845,7 +1067,7 @@ async function initDailyEmailSettings() {
 
   try {
     setInputsDisabled(true);
-    const response = await fetch("/settings/daily-email", {
+    const response = await apiFetch("/settings/daily-email", {
       credentials: "include",
       cache: "no-store",
     });
@@ -885,7 +1107,7 @@ async function initDailyEmailSettings() {
     testBtn.disabled = true;
 
     try {
-      const response = await fetch("/settings/daily-email/test", {
+      const response = await apiFetch("/settings/daily-email/test", {
         credentials: "include",
         method: "POST",
       });
@@ -959,7 +1181,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       try {
-        const response = await fetch("/register", {
+        const response = await apiFetch("/register", {
           credentials: "include",
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1015,7 +1237,7 @@ document.addEventListener("DOMContentLoaded", () => {
       resendBtn.disabled = true;
 
       try {
-        const response = await fetch("/resend-verification", {
+        const response = await apiFetch("/resend-verification", {
           credentials: "include",
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1061,7 +1283,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       try {
-        const response = await fetch("/forgot-password", {
+        const response = await apiFetch("/forgot-password", {
           credentials: "include",
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1121,7 +1343,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       try {
-        const response = await fetch("/reset-password", {
+        const response = await apiFetch("/reset-password", {
           credentials: "include",
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1159,7 +1381,7 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("rememberMe")?.checked || false;
 
       try {
-        const response = await fetch("/login", {
+        const response = await apiFetch("/login", {
           credentials: "include",
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1204,7 +1426,7 @@ document.addEventListener("DOMContentLoaded", () => {
       event.preventDefault();
 
       try {
-        const response = await fetch("/logout", {
+        const response = await apiFetch("/logout", {
           credentials: "include",
           method: "POST",
         });
@@ -1235,6 +1457,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // }
   const taskForm = document.getElementById("taskForm");
   if (taskForm) {
+    taskForm.setAttribute("novalidate", "novalidate");
     taskForm.addEventListener("submit", submit);
   }
 
@@ -1247,6 +1470,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   bindDashboardTaskFilterTabs();
   initDailyEmailSettings();
+  initDailyReflectionStatsWidget();
 
   checkAuthStatus({ isLoginPage, isRegisterPage, isProtectedPage, isHomePage }); // Check authentication status on page load
   initFocusMode();
@@ -1257,7 +1481,7 @@ async function updateNavTaskCounter() {
   if (!counters.length) return;
 
   try {
-    const response = await fetch("/tasks", { credentials: "include" });
+    const response = await apiFetch("/tasks", { credentials: "include" });
     if (!response.ok) return;
 
     const tasks = await response.json();
@@ -1288,7 +1512,7 @@ async function checkAuthStatus({
   let data = { loggedIn: false };
 
   try {
-    const response = await fetch("/auth-status", {
+    const response = await apiFetch("/auth-status", {
       credentials: "include",
       cache: "no-store",
     });
@@ -1366,7 +1590,7 @@ async function checkAuthStatus({
 
 // Function to get the tasks for the logged in user
 async function fetchTasks() {
-  const response = await fetch("/tasks", { credentials: "include" });
+  const response = await apiFetch("/tasks", { credentials: "include" });
   const tasks = await response.json();
 
   if (response.ok) {
@@ -1388,7 +1612,7 @@ async function clearCompletedTasks() {
   }
 
   try {
-    const response = await fetch("/tasks", { credentials: "include" });
+    const response = await apiFetch("/tasks", { credentials: "include" });
     const tasks = await parseApiResponse(response);
 
     if (!response.ok) {
@@ -1415,7 +1639,7 @@ async function clearCompletedTasks() {
 
     const deleteResults = await Promise.allSettled(
       completedTasks.map((task) =>
-        fetch(`/tasks/${task._id}`, { method: "DELETE" }),
+        apiFetch(`/tasks/${task._id}`, { method: "DELETE" }),
       ),
     );
 
@@ -1460,7 +1684,6 @@ async function clearCompletedTasks() {
 
 // Function to submit a task (User must be logged in)
 const submit = async function (event) {
-  Toast.show({ message: "Task Submitted", type: "success", duration: 2000 });
   event.preventDefault(); // Stop default form submission behavior
 
   const taskInput = document.querySelector("#taskDescription");
@@ -1478,31 +1701,50 @@ const submit = async function (event) {
   };
 
   if (!json.description) {
-    alert("Please enter a task description.");
+    Toast.show({
+      message: "You should probably write down a task first!",
+      type: "error",
+      duration: 2500,
+    });
     return;
   }
 
-  // Send task data to the server
-  const response = await fetch("/tasks", {
-    credentials: "include",
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(json),
-  });
+  try {
+    // Send task data to the server
+    const response = await apiFetch("/tasks", {
+      credentials: "include",
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(json),
+    });
 
-  const data = await response.json();
+    const data = await parseApiResponse(response);
 
-  if (response.ok) {
-    console.log("Task added successfully:", data);
-    updateTaskList(data); // Refresh task list
-  } else {
-    console.error("Task Submission Error:", data.error);
-    alert("You must be logged in to submit tasks.");
+    if (response.ok) {
+      console.log("Task added successfully:", data);
+      updateTaskList(data); // Refresh task list
+      Toast.show({ message: "Task Submitted", type: "success", duration: 2000 });
+
+      // Clear input fields after successful submission
+      taskInput.value = "";
+      dateInput.value = "";
+      return;
+    }
+
+    console.error("Task Submission Error:", data?.error);
+    Toast.show({
+      message: data?.error || "Could not submit task.",
+      type: "error",
+      duration: 3000,
+    });
+  } catch (error) {
+    console.error("Task submission failed:", error);
+    Toast.show({
+      message: "Could not submit task.",
+      type: "error",
+      duration: 3000,
+    });
   }
-
-  // Clear input fields after submission
-  taskInput.value = "";
-  dateInput.value = "";
 };
 
 function setBigThreeButtonState(button, isBigThree) {
@@ -1736,7 +1978,7 @@ async function updateTaskCompletionStatus(
       payload.isBigThree = false;
     }
 
-    const updateResponse = await fetch(`/tasks/${task._id}`, {
+    const updateResponse = await apiFetch(`/tasks/${task._id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -2128,7 +2370,7 @@ function updateTaskList(tasks) {
       if (bigThreeButton) bigThreeButton.disabled = true;
 
       try {
-        const updateResponse = await fetch(`/tasks/${task._id}`, {
+        const updateResponse = await apiFetch(`/tasks/${task._id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ isBigThree: nextIsBigThree }),
@@ -2170,7 +2412,7 @@ function updateTaskList(tasks) {
     bigThreeButton?.addEventListener("click", toggleBigThree);
 
     const saveTaskEdits = async (updates) => {
-      const updateResponse = await fetch(`/tasks/${task._id}`, {
+      const updateResponse = await apiFetch(`/tasks/${task._id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updates),
@@ -2201,7 +2443,7 @@ function updateTaskList(tasks) {
         "Are you sure you want to delete this task?",
       );
       if (confirmDelete) {
-        const deleteResponse = await fetch(`/tasks/${task._id}`, {
+        const deleteResponse = await apiFetch(`/tasks/${task._id}`, {
           method: "DELETE",
         });
 
