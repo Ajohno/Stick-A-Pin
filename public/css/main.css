@@ -453,6 +453,34 @@ p{
   transform: translateY(2px) rotate(0.4deg);
 }
 
+
+.social-auth{
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.social-auth__label{
+  margin: 0 auto;
+  font-size: 16px;
+  color: #7c594c;
+}
+
+.social-button{
+  width: 100%;
+  text-align: center;
+  text-decoration: none;
+}
+
+.social-button--google{
+  background: linear-gradient(180deg, #6f89d8 0%, #4c6ac6 100%);
+}
+
+.social-button--apple{
+  background: linear-gradient(180deg, #595959 0%, #2f2f2f 100%);
+}
+
 /* Footer text under paper form */
 .paper-footer{
   justify-self: center;
