@@ -29,6 +29,7 @@ const UserSchema = new mongoose.Schema(
       rememberMe: { type: Boolean, default: false },
       dailyEmail: { type: Boolean, default: true },
       dailyEmailTime: { type: String, default: "18:00" },
+      dailyEmailLastSentOn: { type: String, default: null },
       weeklyEmail: { type: Boolean, default: true },
       timezone: { type: String, default: "America/Jamaica" },
     },
