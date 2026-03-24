@@ -51,7 +51,7 @@
             />
           </div>
 
-          <div class="paper-actions">
+          <div class="paper-actions paper-actions--stacked">
             <label class="checkbox-container">
               <input id="rememberMe" type="checkbox" class="task-check" />
               <span class="checkmark"></span>
@@ -60,14 +60,15 @@
             <a href="/forgot-password.html">Forgot password?</a>
           </div>
 
+          <div class="hand-drawn-divider" aria-hidden="true"></div>
+
+          <a class="paper-button social-button hand-drawn-google" href="/auth/google" aria-label="Continue with Google">
+            <span class="google-sketch-logo" aria-hidden="true">G</span>
+            <span>Continue with Google</span>
+          </a>
+
           <button class="paper-button" type="submit">Log In</button>
         </form>
-
-        <div class="social-auth" aria-label="Social login options">
-          <p class="social-auth__label">or continue with</p>
-          <a class="paper-button social-button social-button--google" href="/auth/google">Continue with Google</a>
-          <a class="paper-button social-button social-button--apple" href="/auth/apple">Continue with Apple</a>
-        </div>
 
 
         <p class="paper-footer">
