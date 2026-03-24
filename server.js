@@ -455,12 +455,28 @@ function redirectAuthFailure(req, res) {
   return res.redirect("/login.html?error=sso_failed");
 }
 
+
+function getGoogleCallbackUrlForRequest(req) {
+  const configuredCallback = (process.env.GOOGLE_CALLBACK_URL || "").trim();
+  if (configuredCallback) return configuredCallback;
+
+  const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+  const protocol = forwardedProto || req.protocol || (process.env.NODE_ENV === "production" ? "https" : "http");
+  const hostHeader = String(req.headers["x-forwarded-host"] || req.headers.host || "").split(",")[0].trim();
+  const canonicalHost = hostHeader.replace(/^www\./i, "");
+
+  if (!canonicalHost) return "/auth/google/callback";
+
+  return `${protocol}://${canonicalHost}/auth/google/callback`;
+}
+
 app.get("/auth/google", authRateLimiter, (req, res, next) => {
   if (!isStrategyEnabled("google")) {
     return res.status(503).json({ error: "Google login is not configured" });
   }
 
-  passport.authenticate("google", { scope: ["profile", "email"] })(req, res, next);
+  const callbackURL = getGoogleCallbackUrlForRequest(req);
+  passport.authenticate("google", { scope: ["profile", "email"], callbackURL })(req, res, next);
 });
 
 app.get("/auth/google/callback", authRateLimiter, (req, res, next) => {
@@ -468,7 +484,8 @@ app.get("/auth/google/callback", authRateLimiter, (req, res, next) => {
     return redirectAuthFailure(req, res);
   }
 
-  passport.authenticate("google", { failureRedirect: "/login.html?error=sso_failed" })(req, res, (authErr) => {
+  const callbackURL = getGoogleCallbackUrlForRequest(req);
+  passport.authenticate("google", { failureRedirect: "/login.html?error=sso_failed", callbackURL })(req, res, (authErr) => {
     if (authErr) return next(authErr);
     return res.redirect("/dashboard.html");
   });
