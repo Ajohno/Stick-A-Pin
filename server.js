@@ -10,9 +10,8 @@ const bcrypt = require("bcryptjs"); // Used to hash passwords
 const User = require("./config/models/user"); // User model for the database
 const Task = require("./config/models/task"); // Task model for the database
 const FocusSession = require("./config/models/focusSession"); // FocusSession model for tracking focus sessions
-const rateLimit = require("express-rate-limit");
-const csrf = require("lusca").csrf; // CSRF protection middleware
 const rateLimit = require("express-rate-limit"); // Rate limiting middleware
+const csrf = require("lusca").csrf; // CSRF protection middleware
 const MongoStore = require("connect-mongo").default; // Store sessions in MongoDB
 
 
