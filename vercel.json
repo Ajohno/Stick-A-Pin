@@ -1,11 +1,14 @@
 {
-    "version": 2,
-    "builds": [
-      { "src": "server.js", "use": "@vercel/node" }
-    ],
-    "routes": [
-      { "src": "/public/(.*)", "dest": "/public/$1" },
-      { "src": "/(.*)",        "dest": "server.js" }
-    ]
-  }
+  "version": 2,
+  "builds": [
+    { "src": "server.js", "use": "@vercel/node" }
+  ],
+  "routes": [
+    { "src": "/public/(.*)", "dest": "/public/$1" },
+    { "src": "/(.*)", "dest": "server.js" }
+  ],
+  "crons": [
+    { "path": "/api/cron/daily-reflection", "schedule": "* * * * *" }
+  ]
+}
   
