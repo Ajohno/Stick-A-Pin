@@ -1,0 +1,30 @@
+name: Daily Reflection Scheduler Tick
+
+on:
+  schedule:
+    # GitHub Actions' smallest supported cron interval is every 5 minutes.
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  trigger-daily-reflection:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger scheduler endpoint
+        env:
+          APP_BASE_URL: ${{ secrets.APP_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$APP_BASE_URL" ]; then
+            echo "Missing APP_BASE_URL secret."
+            exit 1
+          fi
+
+          if [ -z "$CRON_SECRET" ]; then
+            echo "Missing CRON_SECRET secret."
+            exit 1
+          fi
+
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "$APP_BASE_URL/api/cron/daily-reflection"

@@ -27,6 +27,10 @@ const APP_BASE_URL = process.env.APP_BASE_URL;
 const EMAIL_FROM = process.env.EMAIL_FROM || "Stick A Pin <no-reply@mail.stickapin.app>";
 
 const DAILY_EMAIL_SCHEDULER_INTERVAL_MS = Number(process.env.DAILY_EMAIL_SCHEDULER_INTERVAL_MS || 60 * 1000);
+const DAILY_EMAIL_SCHEDULER_WINDOW_MINUTES = Math.max(
+  1,
+  Number(process.env.DAILY_EMAIL_SCHEDULER_WINDOW_MINUTES || Math.ceil(DAILY_EMAIL_SCHEDULER_INTERVAL_MS / 60000) || 1)
+);
 let dailyEmailSchedulerStarted = false;
 const IS_VERCEL_RUNTIME = Boolean(process.env.VERCEL);
 const CRON_SECRET = process.env.CRON_SECRET;
@@ -221,6 +225,28 @@ function getCurrentTimeInTimezone(timezone) {
   }
 }
 
+function parseTimeToMinutes(value) {
+  if (!isValidTimeInput(value)) {
+    return null;
+  }
+
+  const [hours, minutes] = value.split(":").map((part) => Number(part));
+  return (hours * 60) + minutes;
+}
+
+function isWithinScheduledWindow(currentTime, scheduledTime, windowMinutes) {
+  const currentMinutes = parseTimeToMinutes(currentTime);
+  const scheduledMinutes = parseTimeToMinutes(scheduledTime);
+
+  if (currentMinutes === null || scheduledMinutes === null) {
+    return false;
+  }
+
+  const normalizedWindowMinutes = Math.max(1, Number(windowMinutes) || 1);
+  const difference = (currentMinutes - scheduledMinutes + (24 * 60)) % (24 * 60);
+  return difference >= 0 && difference < normalizedWindowMinutes;
+}
+
 async function runDailyReflectionSchedulerTick() {
   try {
     const now = new Date();
@@ -236,7 +262,7 @@ async function runDailyReflectionSchedulerTick() {
         : "18:00";
       const currentTime = getCurrentTimeInTimezone(timezone);
 
-      if (currentTime !== scheduledTime) {
+      if (!isWithinScheduledWindow(currentTime, scheduledTime, DAILY_EMAIL_SCHEDULER_WINDOW_MINUTES)) {
         continue;
       }
 
@@ -1074,7 +1100,10 @@ app.get("/api/cron/daily-reflection", async (req, res) => {
   }
 
   await runDailyReflectionSchedulerTick();
-  return res.json({ ok: true });
+  return res.json({
+    ok: true,
+    schedulerWindowMinutes: DAILY_EMAIL_SCHEDULER_WINDOW_MINUTES,
+  });
 });
 
 
