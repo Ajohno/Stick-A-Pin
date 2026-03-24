@@ -1,0 +1,58 @@
+name: Daily Reflection Scheduler Tick
+
+on:
+  schedule:
+    # GitHub Actions' smallest supported cron interval is every 5 minutes.
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Optional deployed URL to call (for example a Vercel preview URL)."
+        required: false
+        type: string
+
+jobs:
+  trigger-daily-reflection:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger scheduler endpoint
+        env:
+          INPUT_BASE_URL: ${{ inputs.base_url }}
+          APP_BASE_URL: ${{ secrets.APP_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          TARGET_BASE_URL="$INPUT_BASE_URL"
+          if [ -z "$TARGET_BASE_URL" ]; then
+            TARGET_BASE_URL="$APP_BASE_URL"
+          fi
+
+          if [ -z "$TARGET_BASE_URL" ]; then
+            echo "Missing target deployment URL. Set APP_BASE_URL secret or provide workflow_dispatch input base_url."
+            exit 1
+          fi
+
+          if [ -z "$CRON_SECRET" ]; then
+            echo "Missing CRON_SECRET secret."
+            exit 1
+          fi
+
+          RESPONSE=$(curl --silent --show-error \
+            --retry 3 \
+            --retry-delay 2 \
+            --connect-timeout 10 \
+            --max-time 30 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -H "Accept: application/json" \
+            -w "\n%{http_code}" \
+            "$TARGET_BASE_URL/api/cron/daily-reflection")
+
+          STATUS_CODE=$(echo "$RESPONSE" | tail -n1)
+          RESPONSE_BODY=$(echo "$RESPONSE" | sed '$d')
+
+          if [ "$STATUS_CODE" != "200" ]; then
+            echo "Scheduler endpoint returned HTTP $STATUS_CODE"
+            echo "$RESPONSE_BODY"
+            exit 1
+          fi
+
+          node -e 'const payload = JSON.parse(process.argv[1]); if (!payload.ok) { throw new Error("Scheduler response did not include ok=true"); }' "$RESPONSE_BODY"

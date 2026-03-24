@@ -27,7 +27,13 @@ const APP_BASE_URL = process.env.APP_BASE_URL;
 const EMAIL_FROM = process.env.EMAIL_FROM || "Stick A Pin <no-reply@mail.stickapin.app>";
 
 const DAILY_EMAIL_SCHEDULER_INTERVAL_MS = Number(process.env.DAILY_EMAIL_SCHEDULER_INTERVAL_MS || 60 * 1000);
+const DAILY_EMAIL_SCHEDULER_WINDOW_MINUTES = Math.max(
+  1,
+  Number(process.env.DAILY_EMAIL_SCHEDULER_WINDOW_MINUTES || Math.ceil(DAILY_EMAIL_SCHEDULER_INTERVAL_MS / 60000) || 1)
+);
 let dailyEmailSchedulerStarted = false;
+const IS_VERCEL_RUNTIME = Boolean(process.env.VERCEL);
+const CRON_SECRET = process.env.CRON_SECRET;
 
 // Rate limiter for authenticated routes to protect expensive operations
 const authenticatedLimiter = rateLimit({
@@ -219,6 +225,28 @@ function getCurrentTimeInTimezone(timezone) {
   }
 }
 
+function parseTimeToMinutes(value) {
+  if (!isValidTimeInput(value)) {
+    return null;
+  }
+
+  const [hours, minutes] = value.split(":").map((part) => Number(part));
+  return (hours * 60) + minutes;
+}
+
+function isWithinScheduledWindow(currentTime, scheduledTime, windowMinutes) {
+  const currentMinutes = parseTimeToMinutes(currentTime);
+  const scheduledMinutes = parseTimeToMinutes(scheduledTime);
+
+  if (currentMinutes === null || scheduledMinutes === null) {
+    return false;
+  }
+
+  const normalizedWindowMinutes = Math.max(1, Number(windowMinutes) || 1);
+  const difference = (currentMinutes - scheduledMinutes + (24 * 60)) % (24 * 60);
+  return difference >= 0 && difference < normalizedWindowMinutes;
+}
+
 async function runDailyReflectionSchedulerTick() {
   try {
     const now = new Date();
@@ -234,7 +262,7 @@ async function runDailyReflectionSchedulerTick() {
         : "18:00";
       const currentTime = getCurrentTimeInTimezone(timezone);
 
-      if (currentTime !== scheduledTime) {
+      if (!isWithinScheduledWindow(currentTime, scheduledTime, DAILY_EMAIL_SCHEDULER_WINDOW_MINUTES)) {
         continue;
       }
 
@@ -261,6 +289,11 @@ async function runDailyReflectionSchedulerTick() {
 }
 
 function startDailyReflectionScheduler() {
+  if (IS_VERCEL_RUNTIME) {
+    console.log("Skipping in-memory daily reflection scheduler in Vercel runtime. Use cron endpoint instead.");
+    return;
+  }
+
   if (dailyEmailSchedulerStarted) {
     return;
   }
@@ -1056,6 +1089,21 @@ app.post("/settings/daily-email/test", authenticatedLimiter, ensureAuthenticated
     console.error("Error sending daily reflection test email:", error);
     return res.status(500).json({ error: "Unable to send daily reflection test email" });
   }
+});
+
+app.get("/api/cron/daily-reflection", async (req, res) => {
+  const authHeader = req.get("authorization") || "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+
+  if (!CRON_SECRET || token !== CRON_SECRET) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  await runDailyReflectionSchedulerTick();
+  return res.json({
+    ok: true,
+    schedulerWindowMinutes: DAILY_EMAIL_SCHEDULER_WINDOW_MINUTES,
+  });
 });
 
 
