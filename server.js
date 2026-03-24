@@ -402,7 +402,14 @@ app.use(session({
 }));
 
 // CSRF protection for routes using cookie-based sessions
-app.use(csrf());
+const csrfProtection = csrf();
+app.use((req, res, next) => {
+  if (req.path === "/auth/apple/callback") {
+    return next();
+  }
+
+  return csrfProtection(req, res, next);
+});
 
 app.use(passport.initialize());
 app.use(passport.session()); // Enables persistent login sessions
@@ -427,6 +434,60 @@ const emailVerificationLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+
+function isStrategyEnabled(name) {
+  try {
+    return Boolean(passport._strategy(name));
+  } catch (error) {
+    return false;
+  }
+}
+
+function redirectAuthFailure(req, res) {
+  return res.redirect("/login.html?error=sso_failed");
+}
+
+app.get("/auth/google", (req, res, next) => {
+  if (!isStrategyEnabled("google")) {
+    return res.status(503).json({ error: "Google login is not configured" });
+  }
+
+  passport.authenticate("google", { scope: ["profile", "email"] })(req, res, next);
+});
+
+app.get("/auth/google/callback", (req, res, next) => {
+  if (!isStrategyEnabled("google")) {
+    return redirectAuthFailure(req, res);
+  }
+
+  passport.authenticate("google", { failureRedirect: "/login.html?error=sso_failed" })(req, res, (authErr) => {
+    if (authErr) return next(authErr);
+    return res.redirect("/dashboard.html");
+  });
+});
+
+app.get("/auth/apple", (req, res, next) => {
+  if (!isStrategyEnabled("apple")) {
+    return res.status(503).json({ error: "Apple login is not configured" });
+  }
+
+  passport.authenticate("apple", { scope: ["name", "email"] })(req, res, next);
+});
+
+function handleAppleCallback(req, res, next) {
+  if (!isStrategyEnabled("apple")) {
+    return redirectAuthFailure(req, res);
+  }
+
+  return passport.authenticate("apple", { failureRedirect: "/login.html?error=sso_failed" })(req, res, (authErr) => {
+    if (authErr) return next(authErr);
+    return res.redirect("/dashboard.html");
+  });
+}
+
+app.get("/auth/apple/callback", handleAppleCallback);
+app.post("/auth/apple/callback", express.urlencoded({ extended: false }), handleAppleCallback);
 
 // Register Route
 app.post("/register", async (req, res) => {

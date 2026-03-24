@@ -1337,6 +1337,15 @@ document.addEventListener("DOMContentLoaded", () => {
   // Login handler (used on login.html)
   const loginForm = document.getElementById("loginForm");
   if (loginForm) {
+    const authError = new URLSearchParams(window.location.search).get("error");
+    if (authError === "sso_failed") {
+      Toast.show({
+        message: "Social sign-in failed. Please try again.",
+        type: "error",
+        duration: 3500,
+      });
+    }
+
     loginForm.addEventListener("submit", async (event) => {
       event.preventDefault();
 
