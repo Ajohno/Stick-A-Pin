@@ -477,13 +477,13 @@ p{
   justify-content: center;
   gap: 10px;
   border-radius: 18px 14px 20px 12px;
-  background: linear-gradient(180deg, #fdf8f0 0%, #efe2cf 100%);
+  background: transparent;
   color: #5f473f !important;
-  border: 2px solid #b08a77;
+  border: 2px dotted #b08a77;
 }
 
 .hand-drawn-google::before{
-  border-color: rgba(91, 58, 52, 0.33);
+  border: 2px dotted rgba(91, 58, 52, 0.33);
 }
 
 .google-sketch-logo{
