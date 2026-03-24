@@ -403,6 +403,12 @@ p{
   text-decoration: underline;
 }
 
+.paper-actions--stacked{
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 6px;
+}
+
 /* Submit button inside paper form */
 .paper-button{
   display: block;
@@ -504,25 +510,6 @@ p{
   color: transparent;
 }
 
-.forgot-password-link{
-  position: relative;
-  text-decoration: none !important;
-}
-
-.forgot-password-link::after{
-  content: "";
-  position: absolute;
-  left: -2px;
-  right: -2px;
-  bottom: -6px;
-  height: 5px;
-  background-image:
-    radial-gradient(circle at 4px 50%, #c6534e 1.4px, transparent 2px),
-    radial-gradient(circle at 12px 50%, #c6534e 1.4px, transparent 2px);
-  background-size: 16px 5px;
-  background-repeat: repeat-x;
-  opacity: 0.9;
-}
 
 .social-auth{
   margin-top: 8px;
