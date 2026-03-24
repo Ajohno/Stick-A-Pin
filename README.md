@@ -33,3 +33,9 @@ Because GitHub Actions cannot run every minute, set:
 - `DAILY_EMAIL_SCHEDULER_WINDOW_MINUTES=5`
 
 in your runtime environment. This allows each tick to send when the current local time is within the 5-minute window after a user's chosen send time.
+
+#### 4) Vercel cron limit compatibility
+
+`vercel.json` is configured with a single once-per-day cron (`0 0 * * *`) so deployments remain compatible with Vercel Hobby cron limits.
+
+GitHub Actions is the primary high-frequency scheduler (every 5 minutes). The daily Vercel cron acts as a low-frequency backup trigger.

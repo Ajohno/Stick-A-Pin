@@ -8,7 +8,7 @@
     { "src": "/(.*)", "dest": "server.js" }
   ],
   "crons": [
-    { "path": "/api/cron/daily-reflection", "schedule": "* * * * *" }
+    { "path": "/api/cron/daily-reflection", "schedule": "0 0 * * *" }
   ]
 }
   
