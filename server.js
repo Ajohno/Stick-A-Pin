@@ -163,6 +163,19 @@ function isValidTimeInput(value) {
   return typeof value === "string" && /^([01]\d|2[0-3]):([0-5]\d)$/.test(value);
 }
 
+function isValidTimezone(value) {
+  if (typeof value !== "string" || !value.trim()) {
+    return false;
+  }
+
+  try {
+    Intl.DateTimeFormat("en-US", { timeZone: value }).format(new Date());
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
 function formatDurationFromMs(durationMs) {
   const safeDurationMs = Math.max(0, Number(durationMs) || 0);
   const totalMinutes = Math.floor(safeDurationMs / 60000);
@@ -1019,16 +1032,19 @@ app.get("/focus-sessions", ensureAuthenticated, async (req, res) => {
 
 app.get("/settings/daily-email", authenticatedLimiter, ensureAuthenticated, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select("settings.dailyEmail settings.dailyEmailTime");
+    const user = await User.findById(req.user.id).select("settings.dailyEmail settings.dailyEmailTime settings.timezone");
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
+
+    const timezone = isValidTimezone(user.settings?.timezone) ? user.settings.timezone : "UTC";
 
     return res.json({
       dailyEmail: user.settings?.dailyEmail !== false,
       dailyEmailTime: isValidTimeInput(user.settings?.dailyEmailTime)
         ? user.settings.dailyEmailTime
         : "18:00",
+      timezone,
     });
   } catch (error) {
     console.error("Error loading daily email settings:", error);
@@ -1041,17 +1057,25 @@ app.put("/settings/daily-email", authenticatedLimiter, ensureAuthenticated, asyn
     const dailyEmail = Boolean(req.body.dailyEmail);
     const requestedTime = String(req.body.dailyEmailTime || "").trim();
     const dailyEmailTime = isValidTimeInput(requestedTime) ? requestedTime : "18:00";
+    const requestedTimezone = String(req.body.timezone || "").trim();
+    const timezone = isValidTimezone(requestedTimezone) ? requestedTimezone : null;
+
+    const setPayload = {
+      "settings.dailyEmail": dailyEmail,
+      "settings.dailyEmailTime": dailyEmailTime,
+    };
+
+    if (timezone) {
+      setPayload["settings.timezone"] = timezone;
+    }
 
     const updatedUser = await User.findByIdAndUpdate(
       req.user.id,
       {
-        $set: {
-          "settings.dailyEmail": dailyEmail,
-          "settings.dailyEmailTime": dailyEmailTime,
-        },
+        $set: setPayload,
       },
       { new: true, runValidators: true }
-    ).select("settings.dailyEmail settings.dailyEmailTime");
+    ).select("settings.dailyEmail settings.dailyEmailTime settings.timezone");
 
     if (!updatedUser) {
       return res.status(404).json({ error: "User not found" });
@@ -1061,6 +1085,7 @@ app.put("/settings/daily-email", authenticatedLimiter, ensureAuthenticated, asyn
       message: "Daily email settings updated",
       dailyEmail: updatedUser.settings?.dailyEmail !== false,
       dailyEmailTime: updatedUser.settings?.dailyEmailTime || "18:00",
+      timezone: isValidTimezone(updatedUser.settings?.timezone) ? updatedUser.settings.timezone : "UTC",
     });
   } catch (error) {
     console.error("Error saving daily email settings:", error);

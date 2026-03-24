@@ -998,7 +998,16 @@ async function initDailyEmailSettings() {
     testBtn.disabled = disabled;
   };
 
-  const saveSettings = async () => {
+  const getBrowserTimezone = () => {
+    try {
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      return typeof timezone === "string" && timezone.trim() ? timezone : "UTC";
+    } catch (error) {
+      return "UTC";
+    }
+  };
+
+  const saveSettings = async ({ showToast = true } = {}) => {
     try {
       const response = await apiFetch("/settings/daily-email", {
         credentials: "include",
@@ -1007,6 +1016,7 @@ async function initDailyEmailSettings() {
         body: JSON.stringify({
           dailyEmail: toggleEl.checked,
           dailyEmailTime: timeEl.value || "18:00",
+          timezone: getBrowserTimezone(),
         }),
       });
 
@@ -1015,11 +1025,13 @@ async function initDailyEmailSettings() {
         throw new Error(data?.error || "Unable to save daily email settings.");
       }
 
-      Toast.show({
-        message: "Daily reflection settings saved",
-        type: "success",
-        duration: 1800,
-      });
+      if (showToast) {
+        Toast.show({
+          message: "Daily reflection settings saved",
+          type: "success",
+          duration: 1800,
+        });
+      }
     } catch (error) {
       console.error("Saving daily email settings failed:", error);
       Toast.show({
@@ -1044,6 +1056,11 @@ async function initDailyEmailSettings() {
 
     toggleEl.checked = Boolean(data?.dailyEmail);
     timeEl.value = typeof data?.dailyEmailTime === "string" ? data.dailyEmailTime : "18:00";
+
+    const browserTimezone = getBrowserTimezone();
+    if (data?.timezone !== browserTimezone) {
+      await saveSettings({ showToast: false });
+    }
   } catch (error) {
     console.error("Loading daily email settings failed:", error);
     Toast.show({
