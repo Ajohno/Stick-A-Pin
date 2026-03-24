@@ -18,7 +18,11 @@ In GitHub → **Settings** → **Secrets and variables** → **Actions**, add:
 - Go to **Actions** and make sure workflows are enabled for the repository.
 - The workflow runs on:
   - `schedule` (`*/5 * * * *`)
-  - `workflow_dispatch` (manual run button)
+  - `workflow_dispatch` (manual run button; supports optional `base_url` input for a preview deployment URL)
+
+#### 2.1) Important deployment note
+
+The workflow calls a deployed URL. If your branch is not deployed on Vercel yet, use the manual workflow run and set `base_url` to a deployed preview URL, or rely on the default `APP_BASE_URL` secret (typically production).
 
 #### 3) Set the scheduler window for 5-minute ticks
 

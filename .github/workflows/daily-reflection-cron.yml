@@ -5,6 +5,11 @@ on:
     # GitHub Actions' smallest supported cron interval is every 5 minutes.
     - cron: "*/5 * * * *"
   workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Optional deployed URL to call (for example a Vercel preview URL)."
+        required: false
+        type: string
 
 jobs:
   trigger-daily-reflection:
@@ -12,12 +17,18 @@ jobs:
     steps:
       - name: Trigger scheduler endpoint
         env:
+          INPUT_BASE_URL: ${{ inputs.base_url }}
           APP_BASE_URL: ${{ secrets.APP_BASE_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          if [ -z "$APP_BASE_URL" ]; then
-            echo "Missing APP_BASE_URL secret."
-            exit 1
+          TARGET_BASE_URL="$INPUT_BASE_URL"
+          if [ -z "$TARGET_BASE_URL" ]; then
+            TARGET_BASE_URL="$APP_BASE_URL"
+          fi
+
+          if [ -z "$TARGET_BASE_URL" ]; then
+            echo "No target deployment URL configured. Set APP_BASE_URL secret or provide workflow_dispatch input base_url."
+            exit 0
           fi
 
           if [ -z "$CRON_SECRET" ]; then
@@ -27,4 +38,4 @@ jobs:
 
           curl --fail --silent --show-error \
             -H "Authorization: Bearer $CRON_SECRET" \
-            "$APP_BASE_URL/api/cron/daily-reflection"
+            "$TARGET_BASE_URL/api/cron/daily-reflection"
