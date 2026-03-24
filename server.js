@@ -494,8 +494,8 @@ function handleAppleCallback(req, res, next) {
   });
 }
 
-app.get("/auth/apple/callback", handleAppleCallback);
-app.post("/auth/apple/callback", express.urlencoded({ extended: false }), handleAppleCallback);
+app.get("/auth/apple/callback", authRateLimiter, handleAppleCallback);
+app.post("/auth/apple/callback", authRateLimiter, express.urlencoded({ extended: false }), handleAppleCallback);
 
 // Register Route
 app.post("/register", async (req, res) => {
