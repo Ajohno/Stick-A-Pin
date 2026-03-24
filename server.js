@@ -10,6 +10,7 @@ const bcrypt = require("bcryptjs"); // Used to hash passwords
 const User = require("./config/models/user"); // User model for the database
 const Task = require("./config/models/task"); // Task model for the database
 const FocusSession = require("./config/models/focusSession"); // FocusSession model for tracking focus sessions
+const rateLimit = require("express-rate-limit");
 const csrf = require("lusca").csrf; // CSRF protection middleware
 const rateLimit = require("express-rate-limit"); // Rate limiting middleware
 const MongoStore = require("connect-mongo").default; // Store sessions in MongoDB
@@ -402,7 +403,14 @@ app.use(session({
 }));
 
 // CSRF protection for routes using cookie-based sessions
-app.use(csrf());
+const csrfProtection = csrf();
+app.use((req, res, next) => {
+  if (req.path === "/auth/apple/callback") {
+    return next();
+  }
+
+  return csrfProtection(req, res, next);
+});
 
 app.use(passport.initialize());
 app.use(passport.session()); // Enables persistent login sessions
@@ -427,6 +435,67 @@ const emailVerificationLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+// Rate limiter for authentication / OAuth-related routes
+const authRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 50, // limit each IP to 50 authentication requests per window
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+function isStrategyEnabled(name) {
+  try {
+    return Boolean(passport._strategy(name));
+  } catch (error) {
+    return false;
+  }
+}
+
+function redirectAuthFailure(req, res) {
+  return res.redirect("/login.html?error=sso_failed");
+}
+
+app.get("/auth/google", authRateLimiter, (req, res, next) => {
+  if (!isStrategyEnabled("google")) {
+    return res.status(503).json({ error: "Google login is not configured" });
+  }
+
+  passport.authenticate("google", { scope: ["profile", "email"] })(req, res, next);
+});
+
+app.get("/auth/google/callback", authRateLimiter, (req, res, next) => {
+  if (!isStrategyEnabled("google")) {
+    return redirectAuthFailure(req, res);
+  }
+
+  passport.authenticate("google", { failureRedirect: "/login.html?error=sso_failed" })(req, res, (authErr) => {
+    if (authErr) return next(authErr);
+    return res.redirect("/dashboard.html");
+  });
+});
+
+app.get("/auth/apple", authRateLimiter, (req, res, next) => {
+  if (!isStrategyEnabled("apple")) {
+    return res.status(503).json({ error: "Apple login is not configured" });
+  }
+
+  passport.authenticate("apple", { scope: ["name", "email"] })(req, res, next);
+});
+
+function handleAppleCallback(req, res, next) {
+  if (!isStrategyEnabled("apple")) {
+    return redirectAuthFailure(req, res);
+  }
+
+  return passport.authenticate("apple", { failureRedirect: "/login.html?error=sso_failed" })(req, res, (authErr) => {
+    if (authErr) return next(authErr);
+    return res.redirect("/dashboard.html");
+  });
+}
+
+app.get("/auth/apple/callback", authRateLimiter, handleAppleCallback);
+app.post("/auth/apple/callback", authRateLimiter, express.urlencoded({ extended: false }), handleAppleCallback);
 
 // Register Route
 app.post("/register", async (req, res) => {
