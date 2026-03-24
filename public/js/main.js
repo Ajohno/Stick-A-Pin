@@ -991,6 +991,8 @@ async function initDailyEmailSettings() {
   const testBtn = document.getElementById("dailyEmailTestBtn");
 
   if (!toggleEl || !timeEl || !testBtn) return;
+  timeEl.disabled = true;
+  timeEl.title = "Daily reflection emails send at 17:00 in your local timezone.";
 
   const setInputsDisabled = (disabled) => {
     toggleEl.disabled = disabled;
@@ -1015,7 +1017,6 @@ async function initDailyEmailSettings() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           dailyEmail: toggleEl.checked,
-          dailyEmailTime: timeEl.value || "18:00",
           timezone: getBrowserTimezone(),
         }),
       });
@@ -1055,7 +1056,7 @@ async function initDailyEmailSettings() {
     }
 
     toggleEl.checked = Boolean(data?.dailyEmail);
-    timeEl.value = typeof data?.dailyEmailTime === "string" ? data.dailyEmailTime : "18:00";
+    timeEl.value = typeof data?.dailyEmailTime === "string" ? data.dailyEmailTime : "17:00";
 
     const browserTimezone = getBrowserTimezone();
     if (data?.timezone !== browserTimezone) {
@@ -1073,7 +1074,6 @@ async function initDailyEmailSettings() {
   }
 
   toggleEl.addEventListener("change", saveSettings);
-  timeEl.addEventListener("change", saveSettings);
 
   testBtn.addEventListener("click", async () => {
     if (!toggleEl.checked) {

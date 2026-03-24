@@ -34,6 +34,14 @@ Because GitHub Actions cannot run every minute, set:
 
 in your runtime environment. This allows each tick to send when the current local time is within the 5-minute window after a user's chosen send time.
 
+#### 3.1) Fixed daily send time (per user timezone)
+
+Daily reflections now send at a fixed local time of `17:00` (5:00 PM) for each user timezone.
+
+Optionally override this globally with:
+
+- `DAILY_REFLECTION_FIXED_TIME` (must be `HH:mm`, default `17:00`)
+
 #### 4) Vercel cron limit compatibility
 
 `vercel.json` is configured with a single once-per-day cron (`0 0 * * *`) so deployments remain compatible with Vercel Hobby cron limits.
