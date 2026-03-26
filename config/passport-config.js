@@ -33,6 +33,32 @@ function splitName(profile = {}, fallbackEmail = "") {
   };
 }
 
+
+function readEnv(name) {
+  const value = process.env[name];
+  if (typeof value !== "string") return "";
+  return value.trim();
+}
+
+function firstEnv(names = []) {
+  for (const name of names) {
+    const value = readEnv(name);
+    if (value) return value;
+  }
+
+  return "";
+}
+
+function buildCallbackUrl(pathname) {
+  const explicitBaseUrl = readEnv("APP_BASE_URL");
+  const vercelUrl = readEnv("VERCEL_PROJECT_PRODUCTION_URL") || readEnv("VERCEL_URL");
+  const baseUrl = explicitBaseUrl || (vercelUrl ? `https://${vercelUrl.replace(/^https?:\/\//, "")}` : "");
+
+  if (!baseUrl) return "";
+
+  return `${baseUrl.replace(/\/$/, "")}${pathname}`;
+}
+
 module.exports = function (passport) {
   passport.use(
     new LocalStrategy(
@@ -66,9 +92,9 @@ module.exports = function (passport) {
     )
   );
 
-  const googleClientId = process.env.GOOGLE_CLIENT_ID;
-  const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const googleCallbackURL = process.env.GOOGLE_CALLBACK_URL;
+  const googleClientId = firstEnv(["GOOGLE_CLIENT_ID"]);
+  const googleClientSecret = firstEnv(["GOOGLE_CLIENT_SECRET"]);
+  const googleCallbackURL = firstEnv(["GOOGLE_CALLBACK_URL"]) || buildCallbackUrl("/auth/google/callback");
 
   if (googleClientId && googleClientSecret && googleCallbackURL) {
     const GoogleStrategy = require("passport-google-oauth20").Strategy;
