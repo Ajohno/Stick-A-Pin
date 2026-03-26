@@ -885,16 +885,43 @@ function formatDailyFocusDuration(durationMs) {
   return `${hours} hr ${minutes} min`;
 }
 
+function getCompletedTaskCountToday(tasks = []) {
+  const now = new Date();
+  const dayStart = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+  ).getTime();
+  const nextDay = dayStart + 24 * 60 * 60 * 1000;
+
+  if (!Array.isArray(tasks)) return 0;
+
+  return tasks.reduce((count, task) => {
+    if (task?.status !== "completed") return count;
+    const completedAt = new Date(task?.completedAt || 0).getTime();
+    if (
+      Number.isFinite(completedAt) &&
+      completedAt >= dayStart &&
+      completedAt < nextDay
+    ) {
+      return count + 1;
+    }
+    return count;
+  }, 0);
+}
+
 function renderDailyReflectionStats({
   dateLabel,
   tasksFocused = "—",
   focusTimeLabel = "—",
+  tasksCompleted = "—",
 } = {}) {
   const dateEl = document.getElementById("dailyReflectionDate");
   const tasksEl = document.getElementById("dailyReflectionTasksFocused");
   const timeEl = document.getElementById("dailyReflectionFocusTime");
+  const completedEl = document.getElementById("dailyReflectionTasksCompleted");
 
-  if (!dateEl || !tasksEl || !timeEl) return;
+  if (!dateEl || !tasksEl || !timeEl || !completedEl) return;
 
   dateEl.textContent = dateLabel || new Date().toLocaleDateString(undefined, {
     weekday: "long",
@@ -904,14 +931,16 @@ function renderDailyReflectionStats({
   });
   tasksEl.textContent = String(tasksFocused);
   timeEl.textContent = String(focusTimeLabel);
+  completedEl.textContent = String(tasksCompleted);
 }
 
 async function refreshDailyReflectionStats() {
   const dateEl = document.getElementById("dailyReflectionDate");
   const tasksEl = document.getElementById("dailyReflectionTasksFocused");
   const timeEl = document.getElementById("dailyReflectionFocusTime");
+  const completedEl = document.getElementById("dailyReflectionTasksCompleted");
 
-  if (!dateEl || !tasksEl || !timeEl) return;
+  if (!dateEl || !tasksEl || !timeEl || !completedEl) return;
 
   const todayLabel = new Date().toLocaleDateString(undefined, {
     weekday: "long",
@@ -924,24 +953,38 @@ async function refreshDailyReflectionStats() {
     dateLabel: todayLabel,
     tasksFocused: "…",
     focusTimeLabel: "…",
+    tasksCompleted: "…",
   });
 
   try {
     const { startIso, endIso } = getTodayDateRangeIso();
     const focusQuery = new URLSearchParams({ from: startIso, to: endIso }).toString();
 
-    const sessionsResponse = await apiFetch(`/focus-sessions?${focusQuery}`, {
-      credentials: "include",
-      cache: "no-store",
-    });
+    const [sessionsResponse, tasksResponse] = await Promise.all([
+      apiFetch(`/focus-sessions?${focusQuery}`, {
+        credentials: "include",
+        cache: "no-store",
+      }),
+      apiFetch("/tasks", {
+        credentials: "include",
+        cache: "no-store",
+      }),
+    ]);
 
-    const sessionsData = await parseApiResponse(sessionsResponse);
+    const [sessionsData, tasksData] = await Promise.all([
+      parseApiResponse(sessionsResponse),
+      parseApiResponse(tasksResponse),
+    ]);
 
     if (!sessionsResponse.ok) {
       throw new Error(sessionsData?.error || "Could not load focus sessions");
     }
+    if (!tasksResponse.ok) {
+      throw new Error(tasksData?.error || "Could not load tasks");
+    }
 
     const sessions = Array.isArray(sessionsData) ? sessionsData : [];
+    const tasks = Array.isArray(tasksData) ? tasksData : [];
 
     const focusedTaskIds = new Set(
       sessions
@@ -951,7 +994,7 @@ async function refreshDailyReflectionStats() {
     );
 
     const totalFocusMs = sessions.reduce(
-      (sum, session) => sum + (Number(session?.durationMs) || 0),
+      (sum, session) => sum + computeSessionDurationMs(session),
       0,
     );
 
@@ -959,6 +1002,7 @@ async function refreshDailyReflectionStats() {
       dateLabel: todayLabel,
       tasksFocused: focusedTaskIds.size,
       focusTimeLabel: formatDailyFocusDuration(totalFocusMs),
+      tasksCompleted: getCompletedTaskCountToday(tasks),
     });
   } catch (error) {
     console.error("Could not refresh daily reflection stats:", error);
@@ -966,6 +1010,7 @@ async function refreshDailyReflectionStats() {
       dateLabel: todayLabel,
       tasksFocused: "—",
       focusTimeLabel: "—",
+      tasksCompleted: "—",
     });
   }
 }
