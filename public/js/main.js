@@ -994,7 +994,7 @@ async function refreshDailyReflectionStats() {
     );
 
     const totalFocusMs = sessions.reduce(
-      (sum, session) => sum + (Number(session?.durationMs) || 0),
+      (sum, session) => sum + computeSessionDurationMs(session),
       0,
     );
 
