@@ -10,6 +10,7 @@ const bcrypt = require("bcryptjs"); // Used to hash passwords
 const User = require("./config/models/user"); // User model for the database
 const Task = require("./config/models/task"); // Task model for the database
 const FocusSession = require("./config/models/focusSession"); // FocusSession model for tracking focus sessions
+const FeedbackReport = require("./config/models/feedbackReport"); // Feedback report model for durable rate limiting
 const rateLimit = require("express-rate-limit"); // Rate limiting middleware
 const csrf = require("lusca").csrf; // CSRF protection middleware
 const MongoStore = require("connect-mongo").default; // Store sessions in MongoDB
@@ -26,6 +27,8 @@ const PASSWORD_RESET_TTL_MINUTES = Number(process.env.PASSWORD_RESET_TTL_MINUTES
 const APP_BASE_URL = process.env.APP_BASE_URL;
 const EMAIL_FROM = process.env.EMAIL_FROM || "Stick A Pin <no-reply@mail.stickapin.app>";
 const FEEDBACK_EMAIL_TO = process.env.FEEDBACK_EMAIL_TO || process.env.EMAIL_FROM || "support@stickapin.app";
+const FEEDBACK_HOURLY_LIMIT = Number(process.env.FEEDBACK_HOURLY_LIMIT || 5);
+const FEEDBACK_MIN_SECONDS_BETWEEN_REPORTS = Number(process.env.FEEDBACK_MIN_SECONDS_BETWEEN_REPORTS || 60);
 
 const DAILY_EMAIL_SCHEDULER_INTERVAL_MS = Number(process.env.DAILY_EMAIL_SCHEDULER_INTERVAL_MS || 60 * 1000);
 let dailyEmailSchedulerStarted = false;
@@ -1211,6 +1214,34 @@ app.post("/feedback/report-bug", authenticatedLimiter, ensureAuthenticated, feed
       return res.status(404).json({ error: "User not found" });
     }
 
+    const now = new Date();
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    const cooldownWindowMs = FEEDBACK_MIN_SECONDS_BETWEEN_REPORTS * 1000;
+
+    const [recentHourlyCount, lastFeedbackReport] = await Promise.all([
+      FeedbackReport.countDocuments({
+        userId: user._id,
+        createdAt: { $gte: oneHourAgo },
+      }),
+      FeedbackReport.findOne({ userId: user._id }).sort({ createdAt: -1 }).select("createdAt"),
+    ]);
+
+    if (recentHourlyCount >= FEEDBACK_HOURLY_LIMIT) {
+      return res.status(429).json({
+        error: `Too many bug reports. Please try again later.`,
+      });
+    }
+
+    if (lastFeedbackReport?.createdAt) {
+      const elapsedMs = now.getTime() - new Date(lastFeedbackReport.createdAt).getTime();
+      if (elapsedMs < cooldownWindowMs) {
+        const waitSeconds = Math.ceil((cooldownWindowMs - elapsedMs) / 1000);
+        return res.status(429).json({
+          error: `Please wait ${waitSeconds} second(s) before sending another bug report.`,
+        });
+      }
+    }
+
     await sendBugFeedbackEmail({
       user,
       subject,
@@ -1219,6 +1250,14 @@ app.post("/feedback/report-bug", authenticatedLimiter, ensureAuthenticated, feed
         ip: req.ip,
         userAgent: req.get("user-agent"),
       },
+    });
+
+    await FeedbackReport.create({
+      userId: user._id,
+      subject,
+      message,
+      ipAddress: req.ip,
+      userAgent: req.get("user-agent"),
     });
 
     return res.json({
