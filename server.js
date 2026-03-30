@@ -25,6 +25,7 @@ const EMAIL_VERIFICATION_TTL_MINUTES = Number(process.env.EMAIL_VERIFICATION_TTL
 const PASSWORD_RESET_TTL_MINUTES = Number(process.env.PASSWORD_RESET_TTL_MINUTES || 30);
 const APP_BASE_URL = process.env.APP_BASE_URL;
 const EMAIL_FROM = process.env.EMAIL_FROM || "Stick A Pin <no-reply@mail.stickapin.app>";
+const FEEDBACK_EMAIL_TO = process.env.FEEDBACK_EMAIL_TO || process.env.EMAIL_FROM || "support@stickapin.app";
 
 const DAILY_EMAIL_SCHEDULER_INTERVAL_MS = Number(process.env.DAILY_EMAIL_SCHEDULER_INTERVAL_MS || 60 * 1000);
 let dailyEmailSchedulerStarted = false;
@@ -126,6 +127,47 @@ async function sendPasswordResetEmail(email, firstName, token, baseUrl) {
         <p>We received a request to reset your password.</p>
         <p><a href="${resetUrl}">Reset password</a></p>
         <p>If you did not request this, you can ignore this email.</p>
+      `,
+    }),
+  });
+
+  if (!response.ok) {
+    const failure = await response.text();
+    throw new Error(`Resend API request failed (${response.status}): ${failure}`);
+  }
+}
+
+async function sendBugFeedbackEmail({ user, subject, message, requestMeta = {} }) {
+  if (!process.env.RESEND_API_KEY) {
+    throw new Error("RESEND_API_KEY is not configured");
+  }
+
+  const safeSubject = String(subject || "").trim();
+  const safeMessage = String(message || "").trim();
+  const safeName = `${user?.firstName || ""} ${user?.lastName || ""}`.trim() || "Unknown user";
+  const safeEmail = String(user?.email || "").trim() || "unknown@unknown.local";
+  const ip = String(requestMeta.ip || "unknown");
+  const userAgent = String(requestMeta.userAgent || "unknown");
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: EMAIL_FROM,
+      to: [FEEDBACK_EMAIL_TO],
+      reply_to: safeEmail,
+      subject: `[Bug Report] ${safeSubject}`,
+      html: `
+        <p><strong>Reporter:</strong> ${escapeHtml(safeName)} (${escapeHtml(safeEmail)})</p>
+        <p><strong>Submitted:</strong> ${escapeHtml(new Date().toISOString())}</p>
+        <p><strong>IP:</strong> ${escapeHtml(ip)}</p>
+        <p><strong>User-Agent:</strong> ${escapeHtml(userAgent)}</p>
+        <hr />
+        <p><strong>Details</strong></p>
+        <p>${escapeHtml(safeMessage).replace(/\n/g, "<br />")}</p>
       `,
     }),
   });
@@ -441,6 +483,14 @@ const authRateLimiter = rateLimit({
   max: 50, // limit each IP to 50 authentication requests per window
   standardHeaders: true,
   legacyHeaders: false,
+});
+
+const feedbackSubmissionLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5, // limit each user+IP to 5 feedback emails per hour
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `${req.user?.id || "anonymous"}:${req.ip}`,
 });
 
 function isStrategyEnabled(name) {
@@ -1140,6 +1190,44 @@ app.post("/settings/daily-email/test", authenticatedLimiter, ensureAuthenticated
   } catch (error) {
     console.error("Error sending daily reflection test email:", error);
     return res.status(500).json({ error: "Unable to send daily reflection test email" });
+  }
+});
+
+app.post("/feedback/report-bug", authenticatedLimiter, ensureAuthenticated, feedbackSubmissionLimiter, async (req, res) => {
+  try {
+    const subject = String(req.body?.subject || "").trim();
+    const message = String(req.body?.message || "").trim();
+
+    if (subject.length < 5 || subject.length > 120) {
+      return res.status(400).json({ error: "Bug summary must be between 5 and 120 characters." });
+    }
+
+    if (message.length < 10 || message.length > 2000) {
+      return res.status(400).json({ error: "Bug details must be between 10 and 2000 characters." });
+    }
+
+    const user = await User.findById(req.user.id).select("firstName lastName email");
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    await sendBugFeedbackEmail({
+      user,
+      subject,
+      message,
+      requestMeta: {
+        ip: req.ip,
+        userAgent: req.get("user-agent"),
+      },
+    });
+
+    return res.json({
+      message: "Bug report sent",
+      fromEmail: user.email,
+    });
+  } catch (error) {
+    console.error("Error sending bug feedback email:", error);
+    return res.status(500).json({ error: "Unable to send bug report right now." });
   }
 });
 

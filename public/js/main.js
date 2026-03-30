@@ -1303,6 +1303,89 @@ async function initDailyEmailSettings() {
   });
 }
 
+async function initFeedbackForm() {
+  const feedbackForm = document.getElementById("feedbackForm");
+  if (!feedbackForm) return;
+
+  const emailEl = document.getElementById("feedbackEmail");
+  const subjectEl = document.getElementById("feedbackSubject");
+  const messageEl = document.getElementById("feedbackMessage");
+  const submitBtn = document.getElementById("feedbackSubmitBtn");
+
+  try {
+    const authResponse = await apiFetch("/auth-status", {
+      credentials: "include",
+      cache: "no-store",
+    });
+    const authData = await parseApiResponse(authResponse);
+
+    if (!authResponse.ok || !authData?.loggedIn || !authData?.user?.email) {
+      throw new Error("Please log in before sending feedback.");
+    }
+
+    if (emailEl) {
+      emailEl.value = authData.user.email;
+    }
+  } catch (error) {
+    Toast.show({
+      message: error?.message || "Unable to load account email for feedback.",
+      type: "error",
+      duration: 3000,
+    });
+  }
+
+  feedbackForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    const subject = subjectEl?.value?.trim() || "";
+    const message = messageEl?.value?.trim() || "";
+
+    if (!subject || !message) {
+      Toast.show({
+        message: "Please add a bug summary and details before sending.",
+        type: "warning",
+        duration: 2500,
+      });
+      return;
+    }
+
+    submitBtn.disabled = true;
+
+    try {
+      const response = await apiFetch("/feedback/report-bug", {
+        credentials: "include",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subject, message }),
+      });
+
+      const data = await parseApiResponse(response);
+      if (!response.ok) {
+        throw new Error(data?.error || "Unable to send feedback right now.");
+      }
+
+      feedbackForm.reset();
+      if (emailEl) {
+        emailEl.value = data?.fromEmail || emailEl.value;
+      }
+
+      Toast.show({
+        message: "Thanks! Your bug report was emailed to support.",
+        type: "success",
+        duration: 2800,
+      });
+    } catch (error) {
+      Toast.show({
+        message: error?.message || "Unable to send feedback right now.",
+        type: "error",
+        duration: 3200,
+      });
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+}
+
 
 document.addEventListener("DOMContentLoaded", () => {
   console.log("DOM Fully Loaded - JavaScript Running");
@@ -1649,6 +1732,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initDailyEmailSettings();
   initDailyReflectionStatsWidget();
   initWeeklyReflectionStatsWidget();
+  initFeedbackForm();
 
   checkAuthStatus({ isLoginPage, isRegisterPage, isProtectedPage, isHomePage }); // Check authentication status on page load
   initFocusMode();
