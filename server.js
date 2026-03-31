@@ -10,6 +10,7 @@ const bcrypt = require("bcryptjs"); // Used to hash passwords
 const User = require("./config/models/user"); // User model for the database
 const Task = require("./config/models/task"); // Task model for the database
 const FocusSession = require("./config/models/focusSession"); // FocusSession model for tracking focus sessions
+const rateLimit = require("express-rate-limit");
 const FeedbackReport = require("./config/models/feedbackReport"); // Feedback report model for durable rate limiting
 const InboundEmail = require("./config/models/inboundEmail"); // Resend inbound email storage
 const rateLimit = require("express-rate-limit"); // Rate limiting middleware
@@ -572,7 +573,14 @@ app.use((req, res, next) => {
 app.use(passport.initialize());
 app.use(passport.session()); // Enables persistent login sessions
 
-app.post("/webhooks/resend/receiving", express.raw({ type: "application/json" }), async (req, res) => {
+const resendWebhookLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute window
+  max: 60, // limit each IP to 60 requests per windowMs for this endpoint
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.post("/webhooks/resend/receiving", resendWebhookLimiter, express.raw({ type: "application/json" }), async (req, res) => {
   try {
     const payload = req.body ? req.body.toString("utf8") : "{}";
 
