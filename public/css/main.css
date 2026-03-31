@@ -1942,17 +1942,23 @@ body.task-panel-open {
 }
 
 .feedback-note {
-  width: min(860px, 94%);
+  width: min(1180px, 94%);
+  padding: clamp(1rem, 2vw, 1.4rem);
 }
 
 .feedback-intro {
   margin: 0.5rem 0 1rem;
+  max-width: 900px;
+  text-align: center;
+  margin-inline: auto;
 }
 
 .feedback-form {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+  max-width: 920px;
+  margin-inline: auto;
 }
 
 .feedback-form label {
@@ -1971,6 +1977,11 @@ body.task-panel-open {
   font-size: 0.95rem;
   background: #fff8ef;
   color: #3f2c20;
+}
+
+.feedback-form textarea {
+  resize: vertical;
+  min-height: 140px;
 }
 
 .feedback-form input[readonly] {
@@ -1994,6 +2005,39 @@ body.task-panel-open {
 #feedbackSubmitBtn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+@media (max-width: 900px) {
+  .feedback-note {
+    width: min(760px, 96%);
+  }
+
+  .feedback-form,
+  .feedback-intro {
+    max-width: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .feedback-note {
+    width: 96%;
+    padding: 1rem 0.9rem;
+  }
+
+  .feedback-form label {
+    font-size: 1.15rem;
+  }
+
+  .feedback-form input,
+  .feedback-form textarea {
+    font-size: 0.9rem;
+    padding: 0.5rem 0.55rem;
+  }
+
+  #feedbackSubmitBtn {
+    width: 100%;
+    text-align: center;
+  }
 }
 
 .settings-panel {
