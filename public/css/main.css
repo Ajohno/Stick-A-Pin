@@ -1935,6 +1935,111 @@ body.task-panel-open {
   padding-top: 2rem;
 }
 
+.corkboard.placeholder-board.feedback-board {
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 2rem;
+}
+
+.feedback-note {
+  width: min(1180px, 94%);
+  padding: clamp(1rem, 2vw, 1.4rem);
+}
+
+.feedback-intro {
+  margin: 0.5rem 0 1rem;
+  max-width: 900px;
+  text-align: center;
+  margin-inline: auto;
+}
+
+.feedback-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-width: 920px;
+  margin-inline: auto;
+}
+
+.feedback-form label {
+  font-family: "Gochi Hand", cursive;
+  font-size: 1.3rem;
+  color: #3f2c20;
+}
+
+.feedback-form input,
+.feedback-form textarea {
+  width: 100%;
+  border: 2px solid #c6534e;
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+  font-family: "Quantico", sans-serif;
+  font-size: 0.95rem;
+  background: #fff8ef;
+  color: #3f2c20;
+}
+
+.feedback-form textarea {
+  resize: vertical;
+  min-height: 140px;
+}
+
+.feedback-form input[readonly] {
+  opacity: 0.8;
+  cursor: not-allowed;
+}
+
+#feedbackSubmitBtn {
+  margin-top: 0.5rem;
+  align-self: flex-start;
+  border: 2px solid #c6534e;
+  border-radius: 10px;
+  padding: 0.45rem 1.05rem;
+  background: #ffe6d9;
+  color: #612a27;
+  font-family: "Quantico", sans-serif;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+#feedbackSubmitBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+@media (max-width: 900px) {
+  .feedback-note {
+    width: min(760px, 96%);
+  }
+
+  .feedback-form,
+  .feedback-intro {
+    max-width: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .feedback-note {
+    width: 96%;
+    padding: 1rem 0.9rem;
+  }
+
+  .feedback-form label {
+    font-size: 1.15rem;
+  }
+
+  .feedback-form input,
+  .feedback-form textarea {
+    font-size: 0.9rem;
+    padding: 0.5rem 0.55rem;
+  }
+
+  #feedbackSubmitBtn {
+    width: 100%;
+    text-align: center;
+  }
+}
+
 .settings-panel {
   width: min(860px, 94%);
 }
