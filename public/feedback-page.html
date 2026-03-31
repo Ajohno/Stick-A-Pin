@@ -73,22 +73,47 @@
     </nav>
     <div id="nav-backdrop" aria-hidden="true"></div>
 
-    <main
-      class="corkboard placeholder-board"
-      style="max-width: 1100px; margin: 0 auto"
-    >
+    <main class="corkboard placeholder-board feedback-board">
       <section
-        class="sticky-note orange caution-tape page-placeholder"
-        aria-label="Feedback page coming soon"
+        class="sticky-note orange caution-tape feedback-note"
+        aria-label="Send feedback email form"
       >
         <h2 class="widget-title">
           <i class="fa-solid fa-comment-dots" style="color: #c6534e"></i>
           Feedback
         </h2>
-        <p>
-          This page is currently in progress. Check back soon for feedback tools
-          and updates.
+        <p class="feedback-intro">
+          Report bugs you run into while using Stick A Pin. We'll send your
+          note straight to our support inbox.
         </p>
+        <form id="feedbackForm" class="feedback-form" novalidate>
+          <label for="feedbackEmail">Your account email</label>
+          <input id="feedbackEmail" type="email" readonly />
+
+          <label for="feedbackSubject">Bug summary</label>
+          <input
+            id="feedbackSubject"
+            name="feedbackSubject"
+            type="text"
+            maxlength="120"
+            placeholder="Short summary of the issue"
+            required
+          />
+
+          <label for="feedbackMessage">What happened?</label>
+          <textarea
+            id="feedbackMessage"
+            name="feedbackMessage"
+            maxlength="2000"
+            rows="6"
+            placeholder="Steps to reproduce, expected result, and what you saw."
+            required
+          ></textarea>
+
+          <button id="feedbackSubmitBtn" type="submit">
+            Send bug report
+          </button>
+        </form>
       </section>
     </main>
 
