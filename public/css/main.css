@@ -978,8 +978,10 @@ input:focus{
   padding-bottom: 0.5rem;
   padding-right: 0.25rem;
   position: relative;
-  transform-origin: left center;
+  transform-origin: right center;
   will-change: transform, clip-path, opacity, filter;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
 }
 
 .task-item::after{
@@ -999,52 +1001,59 @@ input:focus{
 }
 
 .task-item.peel-active{
-  animation: task-peel-out 380ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+  animation: task-peel-out 420ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
   z-index: 2;
+  pointer-events: none;
 }
 
 .task-item.peel-return{
-  animation: task-peel-in 380ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+  animation: task-peel-in 420ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
   z-index: 2;
 }
 
 @keyframes task-peel-out {
   0% {
-    transform: translateX(0) rotate(0deg) scale(1);
+    transform: perspective(900px) rotateY(0deg) rotateZ(0deg) scale(1);
     clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
     opacity: 1;
-    filter: brightness(1);
+    visibility: visible;
+    filter: brightness(1) saturate(1);
   }
-  45% {
-    transform: translateX(16px) rotate(-3deg) scale(0.98);
-    clip-path: polygon(0 0, 96% 7%, 100% 100%, 0 100%);
-    filter: brightness(1.02);
+  35% {
+    transform: perspective(900px) rotateY(-28deg) rotateZ(-2deg) scale(0.99);
+    clip-path: polygon(0 0, 92% 5%, 90% 100%, 0 100%);
+    filter: brightness(1.05) saturate(1.04);
   }
   100% {
-    transform: translateX(42px) rotate(-9deg) scale(0.95);
-    clip-path: polygon(0 0, 84% 20%, 100% 100%, 0 100%);
-    opacity: 0.55;
-    filter: brightness(0.96);
+    transform: perspective(900px) rotateY(-78deg) rotateZ(-10deg) translateX(-18px) scale(0.96);
+    clip-path: polygon(0 0, 14% 16%, 10% 86%, 0 100%);
+    opacity: 0;
+    visibility: hidden;
+    filter: brightness(0.86) saturate(0.95);
   }
 }
 
 @keyframes task-peel-in {
   0% {
-    transform: translateX(42px) rotate(-9deg) scale(0.95);
-    clip-path: polygon(0 0, 84% 20%, 100% 100%, 0 100%);
-    opacity: 0.55;
-    filter: brightness(0.96);
+    transform: perspective(900px) rotateY(-78deg) rotateZ(-10deg) translateX(-18px) scale(0.96);
+    clip-path: polygon(0 0, 14% 16%, 10% 86%, 0 100%);
+    opacity: 0;
+    visibility: hidden;
+    filter: brightness(0.86) saturate(0.95);
   }
-  55% {
-    transform: translateX(16px) rotate(-3deg) scale(0.98);
-    clip-path: polygon(0 0, 96% 7%, 100% 100%, 0 100%);
-    filter: brightness(1.02);
+  65% {
+    transform: perspective(900px) rotateY(-24deg) rotateZ(-2deg) scale(0.99);
+    clip-path: polygon(0 0, 92% 5%, 90% 100%, 0 100%);
+    opacity: 1;
+    visibility: visible;
+    filter: brightness(1.04) saturate(1.04);
   }
   100% {
-    transform: translateX(0) rotate(0deg) scale(1);
+    transform: perspective(900px) rotateY(0deg) rotateZ(0deg) scale(1);
     clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
     opacity: 1;
-    filter: brightness(1);
+    visibility: visible;
+    filter: brightness(1) saturate(1);
   }
 }
 
