@@ -171,6 +171,26 @@ function isDocumentPictureInPictureSupported() {
   return Boolean(window.documentPictureInPicture?.requestWindow);
 }
 
+function updateFocusPiPToggleButton() {
+  const toggleBtn = document.getElementById("focusPiPToggleBtn");
+  const iconEl = document.getElementById("focusPiPIcon");
+  if (!toggleBtn || !iconEl) return;
+
+  const isRunning = Boolean(focusState.taskId);
+  const supported = isDocumentPictureInPictureSupported();
+  toggleBtn.disabled = !isRunning || !supported;
+
+  if (focusState.isInPiP) {
+    toggleBtn.setAttribute("aria-label", "Pop timer back into page");
+    toggleBtn.setAttribute("title", "Pop in timer");
+    iconEl.className = "fa-solid fa-down-left-and-up-right-to-center";
+  } else {
+    toggleBtn.setAttribute("aria-label", "Pop out focus timer");
+    toggleBtn.setAttribute("title", "Pop out timer");
+    iconEl.className = "fa-solid fa-up-right-and-down-left-from-center";
+  }
+}
+
 function copyStylesToPiPWindow(pipWindow) {
   if (!pipWindow?.document) return;
   const head = pipWindow.document.head;
@@ -202,6 +222,7 @@ function returnFocusWidgetToMainPage() {
   focusState.pipWindow = null;
   focusState.pipOriginalParent = null;
   focusState.pipOriginalNextSibling = null;
+  updateFocusPiPToggleButton();
 }
 
 async function openFocusWidgetInPiP() {
@@ -235,6 +256,7 @@ async function openFocusWidgetInPiP() {
 
     focusState.pipWindow = pipWindow;
     focusState.isInPiP = true;
+    updateFocusPiPToggleButton();
     updateFocusModeControls({
       running: Boolean(focusState.taskId),
       hasTask: Boolean(document.getElementById("focusTaskSelect")?.value),
@@ -250,6 +272,7 @@ async function openFocusWidgetInPiP() {
   } catch (error) {
     focusState.pipOriginalParent = null;
     focusState.pipOriginalNextSibling = null;
+    updateFocusPiPToggleButton();
     console.error("Could not open focus widget in picture-in-picture:", error);
     Toast.show({
       message: "Could not open picture-in-picture right now.",
@@ -459,7 +482,6 @@ function updateFocusModeControls({ running, hasTask } = {}) {
   const selectEl = document.getElementById("focusTaskSelect");
   const taskListEl = document.getElementById("focusTaskList");
   const startBtn = document.getElementById("focusStartBtn");
-  const pipBtn = document.getElementById("focusPiPBtn");
   const stopBtn = document.getElementById("focusStopBtn");
   const completeBtn = document.getElementById("focusCompleteBtn");
   if (selectEl) selectEl.disabled = running;
@@ -479,12 +501,7 @@ function updateFocusModeControls({ running, hasTask } = {}) {
     startBtn.hidden = Boolean(running);
     startBtn.disabled = Boolean(running);
   }
-  if (pipBtn) {
-    pipBtn.hidden = !Boolean(running);
-    pipBtn.disabled =
-      !Boolean(running) || !isDocumentPictureInPictureSupported();
-    pipBtn.textContent = focusState.isInPiP ? "In Picture-in-Picture" : "Pop Out Timer";
-  }
+  updateFocusPiPToggleButton();
   if (stopBtn) {
     stopBtn.hidden = !Boolean(running);
     stopBtn.disabled = !Boolean(running);
@@ -863,14 +880,15 @@ async function completeTask(taskId) {
 async function initFocusMode() {
   const selectEl = document.getElementById("focusTaskSelect");
   const startBtn = document.getElementById("focusStartBtn");
-  const pipBtn = document.getElementById("focusPiPBtn");
+  const pipToggleBtn = document.getElementById("focusPiPToggleBtn");
   const stopBtn = document.getElementById("focusStopBtn");
   const completeBtn = document.getElementById("focusCompleteBtn");
   const statusEl = document.getElementById("focus-status");
-  if (!selectEl || !startBtn || !pipBtn || !stopBtn || !completeBtn || !statusEl) return;
+  if (!selectEl || !startBtn || !pipToggleBtn || !stopBtn || !completeBtn || !statusEl) return;
 
   bindFocusFilterTabs();
   setFocusQuoteText("", { typewriter: false });
+  updateFocusPiPToggleButton();
 
   try {
     await loadFocusTasks();
@@ -960,8 +978,12 @@ async function initFocusMode() {
     await stopFocusSession("manual_stop");
   });
 
-  pipBtn.addEventListener("click", async () => {
-    if (!focusState.taskId || focusState.isInPiP) return;
+  pipToggleBtn.addEventListener("click", async () => {
+    if (!focusState.taskId) return;
+    if (focusState.isInPiP) {
+      closeFocusWidgetPiP();
+      return;
+    }
     await openFocusWidgetInPiP();
   });
 
