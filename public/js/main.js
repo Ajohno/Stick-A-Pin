@@ -2088,34 +2088,6 @@ function updateBigThreeWidget(tasks, taskInteractions = new Map()) {
 
 let activeTaskInPanel = null;
 let panelTypewriterRunId = 0;
-let activePeeledTaskElement = null;
-
-function animateTaskPeelOut(taskElement) {
-  if (!taskElement) return;
-
-  if (activePeeledTaskElement && activePeeledTaskElement !== taskElement) {
-    activePeeledTaskElement.classList.remove("peel-active", "peel-return");
-  }
-
-  taskElement.classList.remove("peel-return");
-  taskElement.classList.add("peel-active");
-  activePeeledTaskElement = taskElement;
-}
-
-function animateTaskPeelIn() {
-  if (!activePeeledTaskElement) return;
-
-  activePeeledTaskElement.classList.remove("peel-active");
-  activePeeledTaskElement.classList.add("peel-return");
-
-  const peeledTask = activePeeledTaskElement;
-  window.setTimeout(() => {
-    peeledTask.classList.remove("peel-return");
-    if (activePeeledTaskElement === peeledTask) {
-      activePeeledTaskElement = null;
-    }
-  }, 500);
-}
 
 function toDisplayDate(value) {
   if (!value) return null;
@@ -2318,7 +2290,6 @@ function closeTaskDetailPanel() {
   backdrop.classList.remove("is-visible");
   backdrop.setAttribute("aria-hidden", "true");
   document.body.classList.remove("task-panel-open");
-  animateTaskPeelIn();
 
   const effortInput = document.getElementById("panelTaskEffortInput");
   if (effortInput) {
@@ -2757,7 +2728,6 @@ function updateTaskList(tasks) {
     rowDeleteButton?.addEventListener("click", deleteTask);
 
     const openTaskDetails = () => {
-      animateTaskPeelOut(taskItem);
       openTaskDetailPanel(task, {
         toggleBigThree: async () => {
           panelBigThreeButton.disabled = true;
