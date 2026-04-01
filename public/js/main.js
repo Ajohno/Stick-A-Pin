@@ -220,16 +220,17 @@ function updateFocusPiPToggleButton() {
 
   const isRunning = Boolean(focusState.taskId);
   const supported = isDocumentPictureInPictureSupported();
+  toggleBtn.hidden = !isRunning;
   toggleBtn.disabled = !isRunning || !supported;
 
   if (focusState.isInPiP) {
     toggleBtn.setAttribute("aria-label", "Pop timer back into page");
     toggleBtn.setAttribute("title", "Pop in timer");
-    iconEl.className = "fa-solid fa-picture-in-picture";
+    iconEl.textContent = "⤡";
   } else {
     toggleBtn.setAttribute("aria-label", "Pop out focus timer");
     toggleBtn.setAttribute("title", "Pop out timer");
-    iconEl.className = "fa-solid fa-picture-in-picture";
+    iconEl.textContent = "⤢";
   }
 }
 
@@ -540,7 +541,7 @@ function updateFocusModeControls({ running, hasTask } = {}) {
   updateFocusFilterTabs(focusState.filter, { running: Boolean(running) });
 
   if (startBtn) {
-    startBtn.hidden = Boolean(running);
+    startBtn.hidden = Boolean(running) || focusState.isInPiP;
     startBtn.disabled = Boolean(running);
   }
   updateFocusPiPToggleButton();
