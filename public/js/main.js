@@ -72,6 +72,12 @@ const focusState = {
   sessionId: null,
   startedAt: null,
   timerIntervalId: null,
+  timerEl: null,
+  sessionCardEl: null,
+  pipWindow: null,
+  isInPiP: false,
+  pipOriginalParent: null,
+  pipOriginalNextSibling: null,
   quoteTimeoutIds: [],
   quoteTypingIntervalId: null,
   currentQuoteToken: 0,
@@ -135,8 +141,48 @@ function formatFocusDuration(totalSeconds) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
+function getFocusTimerEl() {
+  if (focusState.timerEl && focusState.timerEl.isConnected) {
+    return focusState.timerEl;
+  }
+
+  const fromMainDoc = document.getElementById("focusTimer");
+  if (fromMainDoc) {
+    focusState.timerEl = fromMainDoc;
+    return fromMainDoc;
+  }
+
+  const fromPiPDoc = focusState.pipWindow?.document?.getElementById("focusTimer");
+  if (fromPiPDoc) {
+    focusState.timerEl = fromPiPDoc;
+    return fromPiPDoc;
+  }
+
+  return null;
+}
+
+function getFocusSessionCardEl() {
+  if (focusState.sessionCardEl && focusState.sessionCardEl.isConnected) {
+    return focusState.sessionCardEl;
+  }
+
+  const fromMainDoc = document.querySelector(".focus-session-card");
+  if (fromMainDoc) {
+    focusState.sessionCardEl = fromMainDoc;
+    return fromMainDoc;
+  }
+
+  const fromPiPDoc = focusState.pipWindow?.document?.querySelector(".focus-session-card");
+  if (fromPiPDoc) {
+    focusState.sessionCardEl = fromPiPDoc;
+    return fromPiPDoc;
+  }
+
+  return null;
+}
+
 function renderFocusTimer() {
-  const timerEl = document.getElementById("focusTimer");
+  const timerEl = getFocusTimerEl();
   if (!timerEl) return;
 
   if (!focusState.startedAt) {
@@ -160,6 +206,140 @@ function stopFocusTimer() {
   if (focusState.timerIntervalId) {
     window.clearInterval(focusState.timerIntervalId);
     focusState.timerIntervalId = null;
+  }
+}
+
+function isDocumentPictureInPictureSupported() {
+  return Boolean(window.documentPictureInPicture?.requestWindow);
+}
+
+function updateFocusPiPToggleButton() {
+  const toggleBtn = document.getElementById("focusPiPToggleBtn");
+  const iconEl = document.getElementById("focusPiPIcon");
+  if (!toggleBtn || !iconEl) return;
+
+  const isRunning = Boolean(focusState.taskId && focusState.startedAt);
+  const supported = isDocumentPictureInPictureSupported();
+  toggleBtn.setAttribute(
+    "aria-disabled",
+    !isRunning || !supported ? "true" : "false",
+  );
+
+  if (focusState.isInPiP) {
+    toggleBtn.setAttribute("aria-label", "Pop timer back into page");
+    toggleBtn.setAttribute("title", "Pop in timer");
+    iconEl.className = "focus-pip-icon fa-solid fa-down-left-and-up-right-to-center";
+  } else {
+    toggleBtn.setAttribute("aria-label", "Pop out focus timer");
+    toggleBtn.setAttribute("title", "Pop out timer");
+    iconEl.className = "focus-pip-icon fa-solid fa-up-right-from-square";
+  }
+}
+
+function copyStylesToPiPWindow(pipWindow) {
+  if (!pipWindow?.document) return;
+  const head = pipWindow.document.head;
+  if (!head) return;
+
+  document.querySelectorAll('link[rel="stylesheet"]').forEach((linkEl) => {
+    const clone = linkEl.cloneNode(true);
+    head.appendChild(clone);
+  });
+
+  const pipStyle = pipWindow.document.createElement("style");
+  pipStyle.textContent = "#focusStartBtn { display: none !important; }";
+  head.appendChild(pipStyle);
+}
+
+function returnFocusWidgetToMainPage() {
+  const sessionCard = getFocusSessionCardEl();
+  if (!sessionCard || !focusState.pipOriginalParent) return;
+
+  if (
+    focusState.pipOriginalNextSibling &&
+    focusState.pipOriginalNextSibling.parentNode === focusState.pipOriginalParent
+  ) {
+    focusState.pipOriginalParent.insertBefore(
+      sessionCard,
+      focusState.pipOriginalNextSibling,
+    );
+  } else {
+    focusState.pipOriginalParent.appendChild(sessionCard);
+  }
+
+  focusState.isInPiP = false;
+  focusState.pipWindow = null;
+  focusState.pipOriginalParent = null;
+  focusState.pipOriginalNextSibling = null;
+  updateFocusPiPToggleButton();
+}
+
+async function openFocusWidgetInPiP() {
+  if (!isDocumentPictureInPictureSupported()) {
+    Toast.show({
+      message:
+        "Oh no! You can't use that here. Try on a different browser or device.",
+      type: "error",
+      duration: 3200,
+    });
+    return;
+  }
+
+  if (focusState.isInPiP) return;
+
+  const sessionCard = getFocusSessionCardEl();
+  if (!sessionCard) return;
+
+  focusState.pipOriginalParent = sessionCard.parentNode;
+  focusState.pipOriginalNextSibling = sessionCard.nextSibling;
+
+  try {
+    const pipWindow = await window.documentPictureInPicture.requestWindow({
+      width: 440,
+      height: 360,
+    });
+    copyStylesToPiPWindow(pipWindow);
+    pipWindow.document.body.className = "pip-focus-window";
+    pipWindow.document.body.style.margin = "0";
+    pipWindow.document.body.style.padding = "12px";
+    pipWindow.document.body.appendChild(sessionCard);
+
+    focusState.pipWindow = pipWindow;
+    focusState.isInPiP = true;
+    const startBtn = document.getElementById("focusStartBtn");
+    if (startBtn) startBtn.hidden = true;
+    updateFocusPiPToggleButton();
+    updateFocusModeControls({
+      running: Boolean(focusState.taskId),
+      hasTask: Boolean(document.getElementById("focusTaskSelect")?.value),
+    });
+
+    pipWindow.addEventListener("pagehide", () => {
+      returnFocusWidgetToMainPage();
+      updateFocusModeControls({
+        running: Boolean(focusState.taskId),
+        hasTask: Boolean(document.getElementById("focusTaskSelect")?.value),
+      });
+    });
+  } catch (error) {
+    focusState.pipOriginalParent = null;
+    focusState.pipOriginalNextSibling = null;
+    updateFocusPiPToggleButton();
+    console.error("Could not open focus widget in picture-in-picture:", error);
+    Toast.show({
+      message: "Could not open picture-in-picture right now.",
+      type: "error",
+      duration: 3000,
+    });
+  }
+}
+
+function closeFocusWidgetPiP() {
+  if (!focusState.isInPiP) return;
+  if (focusState.pipWindow && !focusState.pipWindow.closed) {
+    focusState.pipWindow.close();
+  } else {
+    returnFocusWidgetToMainPage();
   }
 }
 
@@ -354,6 +534,7 @@ function updateFocusModeControls({ running, hasTask } = {}) {
   const selectEl = document.getElementById("focusTaskSelect");
   const taskListEl = document.getElementById("focusTaskList");
   const startBtn = document.getElementById("focusStartBtn");
+  const pipToggleBtn = document.getElementById("focusPiPToggleBtn");
   const stopBtn = document.getElementById("focusStopBtn");
   const completeBtn = document.getElementById("focusCompleteBtn");
   if (selectEl) selectEl.disabled = running;
@@ -370,9 +551,10 @@ function updateFocusModeControls({ running, hasTask } = {}) {
   updateFocusFilterTabs(focusState.filter, { running: Boolean(running) });
 
   if (startBtn) {
-    startBtn.hidden = Boolean(running);
+    startBtn.hidden = Boolean(running) || focusState.isInPiP;
     startBtn.disabled = Boolean(running);
   }
+  updateFocusPiPToggleButton();
   if (stopBtn) {
     stopBtn.hidden = !Boolean(running);
     stopBtn.disabled = !Boolean(running);
@@ -680,6 +862,7 @@ async function stopFocusSession(reason = "manual_stop") {
   }
 
   stopFocusTimer();
+  closeFocusWidgetPiP();
   clearFocusQuoteTimers();
   focusState.taskId = null;
   focusState.sessionId = null;
@@ -750,13 +933,18 @@ async function completeTask(taskId) {
 async function initFocusMode() {
   const selectEl = document.getElementById("focusTaskSelect");
   const startBtn = document.getElementById("focusStartBtn");
+  const pipToggleBtn = document.getElementById("focusPiPToggleBtn");
   const stopBtn = document.getElementById("focusStopBtn");
   const completeBtn = document.getElementById("focusCompleteBtn");
   const statusEl = document.getElementById("focus-status");
-  if (!selectEl || !startBtn || !stopBtn || !completeBtn || !statusEl) return;
+  if (!selectEl || !startBtn || !pipToggleBtn || !stopBtn || !completeBtn || !statusEl) return;
+  pipToggleBtn.setAttribute("aria-disabled", "true");
+  focusState.timerEl = document.getElementById("focusTimer");
+  focusState.sessionCardEl = document.querySelector(".focus-session-card");
 
   bindFocusFilterTabs();
   setFocusQuoteText("", { typewriter: false });
+  updateFocusPiPToggleButton();
 
   try {
     await loadFocusTasks();
@@ -844,6 +1032,33 @@ async function initFocusMode() {
 
   stopBtn.addEventListener("click", async () => {
     await stopFocusSession("manual_stop");
+  });
+
+  pipToggleBtn.addEventListener("click", async () => {
+    if (!focusState.taskId || !focusState.startedAt) {
+      Toast.show({
+        message: "You should probably start focusing first.",
+        type: "error",
+        duration: 2600,
+      });
+      return;
+    }
+
+    if (!isDocumentPictureInPictureSupported()) {
+      Toast.show({
+        message:
+          "Oh no! You can't use that here. Try on a different browser or device.",
+        type: "error",
+        duration: 3200,
+      });
+      return;
+    }
+
+    if (focusState.isInPiP) {
+      closeFocusWidgetPiP();
+      return;
+    }
+    await openFocusWidgetInPiP();
   });
 
   completeBtn.addEventListener("click", async () => {
