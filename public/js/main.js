@@ -72,6 +72,10 @@ const focusState = {
   sessionId: null,
   startedAt: null,
   timerIntervalId: null,
+  pipWindow: null,
+  isInPiP: false,
+  pipOriginalParent: null,
+  pipOriginalNextSibling: null,
   quoteTimeoutIds: [],
   quoteTypingIntervalId: null,
   currentQuoteToken: 0,
@@ -160,6 +164,107 @@ function stopFocusTimer() {
   if (focusState.timerIntervalId) {
     window.clearInterval(focusState.timerIntervalId);
     focusState.timerIntervalId = null;
+  }
+}
+
+function isDocumentPictureInPictureSupported() {
+  return Boolean(window.documentPictureInPicture?.requestWindow);
+}
+
+function copyStylesToPiPWindow(pipWindow) {
+  if (!pipWindow?.document) return;
+  const head = pipWindow.document.head;
+  if (!head) return;
+
+  document.querySelectorAll('link[rel="stylesheet"]').forEach((linkEl) => {
+    const clone = linkEl.cloneNode(true);
+    head.appendChild(clone);
+  });
+}
+
+function returnFocusWidgetToMainPage() {
+  const sessionCard = document.querySelector(".focus-session-card");
+  if (!sessionCard || !focusState.pipOriginalParent) return;
+
+  if (
+    focusState.pipOriginalNextSibling &&
+    focusState.pipOriginalNextSibling.parentNode === focusState.pipOriginalParent
+  ) {
+    focusState.pipOriginalParent.insertBefore(
+      sessionCard,
+      focusState.pipOriginalNextSibling,
+    );
+  } else {
+    focusState.pipOriginalParent.appendChild(sessionCard);
+  }
+
+  focusState.isInPiP = false;
+  focusState.pipWindow = null;
+  focusState.pipOriginalParent = null;
+  focusState.pipOriginalNextSibling = null;
+}
+
+async function openFocusWidgetInPiP() {
+  if (!isDocumentPictureInPictureSupported()) {
+    Toast.show({
+      message: "Picture-in-picture is not supported in this browser yet.",
+      type: "error",
+      duration: 3200,
+    });
+    return;
+  }
+
+  if (focusState.isInPiP) return;
+
+  const sessionCard = document.querySelector(".focus-session-card");
+  if (!sessionCard) return;
+
+  focusState.pipOriginalParent = sessionCard.parentNode;
+  focusState.pipOriginalNextSibling = sessionCard.nextSibling;
+
+  try {
+    const pipWindow = await window.documentPictureInPicture.requestWindow({
+      width: 440,
+      height: 360,
+    });
+    copyStylesToPiPWindow(pipWindow);
+    pipWindow.document.body.className = "pip-focus-window";
+    pipWindow.document.body.style.margin = "0";
+    pipWindow.document.body.style.padding = "12px";
+    pipWindow.document.body.appendChild(sessionCard);
+
+    focusState.pipWindow = pipWindow;
+    focusState.isInPiP = true;
+    updateFocusModeControls({
+      running: Boolean(focusState.taskId),
+      hasTask: Boolean(document.getElementById("focusTaskSelect")?.value),
+    });
+
+    pipWindow.addEventListener("pagehide", () => {
+      returnFocusWidgetToMainPage();
+      updateFocusModeControls({
+        running: Boolean(focusState.taskId),
+        hasTask: Boolean(document.getElementById("focusTaskSelect")?.value),
+      });
+    });
+  } catch (error) {
+    focusState.pipOriginalParent = null;
+    focusState.pipOriginalNextSibling = null;
+    console.error("Could not open focus widget in picture-in-picture:", error);
+    Toast.show({
+      message: "Could not open picture-in-picture right now.",
+      type: "error",
+      duration: 3000,
+    });
+  }
+}
+
+function closeFocusWidgetPiP() {
+  if (!focusState.isInPiP) return;
+  if (focusState.pipWindow && !focusState.pipWindow.closed) {
+    focusState.pipWindow.close();
+  } else {
+    returnFocusWidgetToMainPage();
   }
 }
 
@@ -354,6 +459,7 @@ function updateFocusModeControls({ running, hasTask } = {}) {
   const selectEl = document.getElementById("focusTaskSelect");
   const taskListEl = document.getElementById("focusTaskList");
   const startBtn = document.getElementById("focusStartBtn");
+  const pipBtn = document.getElementById("focusPiPBtn");
   const stopBtn = document.getElementById("focusStopBtn");
   const completeBtn = document.getElementById("focusCompleteBtn");
   if (selectEl) selectEl.disabled = running;
@@ -372,6 +478,12 @@ function updateFocusModeControls({ running, hasTask } = {}) {
   if (startBtn) {
     startBtn.hidden = Boolean(running);
     startBtn.disabled = Boolean(running);
+  }
+  if (pipBtn) {
+    pipBtn.hidden = !Boolean(running);
+    pipBtn.disabled =
+      !Boolean(running) || !isDocumentPictureInPictureSupported();
+    pipBtn.textContent = focusState.isInPiP ? "In Picture-in-Picture" : "Pop Out Timer";
   }
   if (stopBtn) {
     stopBtn.hidden = !Boolean(running);
@@ -680,6 +792,7 @@ async function stopFocusSession(reason = "manual_stop") {
   }
 
   stopFocusTimer();
+  closeFocusWidgetPiP();
   clearFocusQuoteTimers();
   focusState.taskId = null;
   focusState.sessionId = null;
@@ -750,10 +863,11 @@ async function completeTask(taskId) {
 async function initFocusMode() {
   const selectEl = document.getElementById("focusTaskSelect");
   const startBtn = document.getElementById("focusStartBtn");
+  const pipBtn = document.getElementById("focusPiPBtn");
   const stopBtn = document.getElementById("focusStopBtn");
   const completeBtn = document.getElementById("focusCompleteBtn");
   const statusEl = document.getElementById("focus-status");
-  if (!selectEl || !startBtn || !stopBtn || !completeBtn || !statusEl) return;
+  if (!selectEl || !startBtn || !pipBtn || !stopBtn || !completeBtn || !statusEl) return;
 
   bindFocusFilterTabs();
   setFocusQuoteText("", { typewriter: false });
@@ -844,6 +958,11 @@ async function initFocusMode() {
 
   stopBtn.addEventListener("click", async () => {
     await stopFocusSession("manual_stop");
+  });
+
+  pipBtn.addEventListener("click", async () => {
+    if (!focusState.taskId || focusState.isInPiP) return;
+    await openFocusWidgetInPiP();
   });
 
   completeBtn.addEventListener("click", async () => {

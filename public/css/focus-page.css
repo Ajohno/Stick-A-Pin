@@ -107,6 +107,15 @@
   color: #fff !important;
 }
 
+#focusPiPBtn {
+  background: linear-gradient(180deg, #6f81f0 0%, #4b5ecf 100%);
+  color: #fff !important;
+}
+
+#focusPiPBtn:hover:not(:disabled) {
+  background: linear-gradient(180deg, #8191f5 0%, #5a6ce0 100%);
+}
+
 .focus-timer {
   min-width: 4.2ch;
   font-family: "Quantico", serif;
