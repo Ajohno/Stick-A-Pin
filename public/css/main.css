@@ -978,6 +978,8 @@ input:focus{
   padding-bottom: 0.5rem;
   padding-right: 0.25rem;
   position: relative;
+  transform-origin: left center;
+  will-change: transform, clip-path, opacity, filter;
 }
 
 .task-item::after{
@@ -994,6 +996,56 @@ input:focus{
     rgba(0,0,0,0.2),
     rgba(0,0,0,0.4)
   );
+}
+
+.task-item.peel-active{
+  animation: task-peel-out 380ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+  z-index: 2;
+}
+
+.task-item.peel-return{
+  animation: task-peel-in 380ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+  z-index: 2;
+}
+
+@keyframes task-peel-out {
+  0% {
+    transform: translateX(0) rotate(0deg) scale(1);
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+    opacity: 1;
+    filter: brightness(1);
+  }
+  45% {
+    transform: translateX(16px) rotate(-3deg) scale(0.98);
+    clip-path: polygon(0 0, 96% 7%, 100% 100%, 0 100%);
+    filter: brightness(1.02);
+  }
+  100% {
+    transform: translateX(42px) rotate(-9deg) scale(0.95);
+    clip-path: polygon(0 0, 84% 20%, 100% 100%, 0 100%);
+    opacity: 0.55;
+    filter: brightness(0.96);
+  }
+}
+
+@keyframes task-peel-in {
+  0% {
+    transform: translateX(42px) rotate(-9deg) scale(0.95);
+    clip-path: polygon(0 0, 84% 20%, 100% 100%, 0 100%);
+    opacity: 0.55;
+    filter: brightness(0.96);
+  }
+  55% {
+    transform: translateX(16px) rotate(-3deg) scale(0.98);
+    clip-path: polygon(0 0, 96% 7%, 100% 100%, 0 100%);
+    filter: brightness(1.02);
+  }
+  100% {
+    transform: translateX(0) rotate(0deg) scale(1);
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+    opacity: 1;
+    filter: brightness(1);
+  }
 }
 
 
