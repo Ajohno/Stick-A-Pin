@@ -94,15 +94,13 @@
         <div class="focus-column focus-column-middle">
           <article class="sticky-note white tape focus-card focus-session-card">
             <div class="focus-session-heading">
-              <h2 class="focus-phase-title">Concentration Phase</h2>
               <button
                 id="focusPiPToggleBtn"
                 class="focus-pip-toggle"
                 type="button"
                 aria-label="Pop out focus timer"
                 title="Pop out timer"
-                hidden
-                disabled
+                aria-disabled="true"
               >
                 <span
                   id="focusPiPIcon"
@@ -110,6 +108,7 @@
                   aria-hidden="true"
                 ></span>
               </button>
+              <h2 class="focus-phase-title">Concentration Phase</h2>
             </div>
             <p id="focus-status" class="focus-status">
               Pick a task and start a focus session.

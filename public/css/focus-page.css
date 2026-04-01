@@ -56,9 +56,14 @@
 
 .focus-session-heading {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: flex-end;
   gap: 0.5rem;
+}
+
+.focus-session-heading .focus-phase-title {
+  align-self: stretch;
+  text-align: center;
 }
 
 .focus-pip-toggle {
@@ -74,12 +79,12 @@
   cursor: pointer;
 }
 
-.focus-pip-toggle:disabled {
+.focus-pip-toggle[aria-disabled="true"] {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.focus-pip-toggle:hover:not(:disabled) {
+.focus-pip-toggle:hover {
   background: rgba(255, 255, 255, 0.85);
 }
 

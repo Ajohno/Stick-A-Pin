@@ -220,7 +220,10 @@ function updateFocusPiPToggleButton() {
 
   const isRunning = Boolean(focusState.taskId && focusState.startedAt);
   const supported = isDocumentPictureInPictureSupported();
-  toggleBtn.disabled = !isRunning || !supported;
+  toggleBtn.setAttribute(
+    "aria-disabled",
+    !isRunning || !supported ? "true" : "false",
+  );
 
   if (focusState.isInPiP) {
     toggleBtn.setAttribute("aria-label", "Pop timer back into page");
@@ -274,7 +277,8 @@ function returnFocusWidgetToMainPage() {
 async function openFocusWidgetInPiP() {
   if (!isDocumentPictureInPictureSupported()) {
     Toast.show({
-      message: "Picture-in-picture is not supported in this browser yet.",
+      message:
+        "Oh no! You can't use that here. Try on a different browser or device.",
       type: "error",
       duration: 3200,
     });
@@ -549,9 +553,6 @@ function updateFocusModeControls({ running, hasTask } = {}) {
   if (startBtn) {
     startBtn.hidden = Boolean(running) || focusState.isInPiP;
     startBtn.disabled = Boolean(running);
-  }
-  if (pipToggleBtn) {
-    pipToggleBtn.hidden = !Boolean(running);
   }
   updateFocusPiPToggleButton();
   if (stopBtn) {
@@ -937,8 +938,7 @@ async function initFocusMode() {
   const completeBtn = document.getElementById("focusCompleteBtn");
   const statusEl = document.getElementById("focus-status");
   if (!selectEl || !startBtn || !pipToggleBtn || !stopBtn || !completeBtn || !statusEl) return;
-  pipToggleBtn.hidden = true;
-  pipToggleBtn.disabled = true;
+  pipToggleBtn.setAttribute("aria-disabled", "true");
   focusState.timerEl = document.getElementById("focusTimer");
   focusState.sessionCardEl = document.querySelector(".focus-session-card");
 
@@ -1035,7 +1035,25 @@ async function initFocusMode() {
   });
 
   pipToggleBtn.addEventListener("click", async () => {
-    if (!focusState.taskId) return;
+    if (!focusState.taskId || !focusState.startedAt) {
+      Toast.show({
+        message: "You should probably start focusing first.",
+        type: "error",
+        duration: 2600,
+      });
+      return;
+    }
+
+    if (!isDocumentPictureInPictureSupported()) {
+      Toast.show({
+        message:
+          "Oh no! You can't use that here. Try on a different browser or device.",
+        type: "error",
+        duration: 3200,
+      });
+      return;
+    }
+
     if (focusState.isInPiP) {
       closeFocusWidgetPiP();
       return;
