@@ -2114,7 +2114,7 @@ function animateTaskPeelIn() {
     if (activePeeledTaskElement === peeledTask) {
       activePeeledTaskElement = null;
     }
-  }, 420);
+  }, 500);
 }
 
 function toDisplayDate(value) {
