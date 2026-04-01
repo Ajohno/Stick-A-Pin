@@ -226,11 +226,11 @@ function updateFocusPiPToggleButton() {
   if (focusState.isInPiP) {
     toggleBtn.setAttribute("aria-label", "Pop timer back into page");
     toggleBtn.setAttribute("title", "Pop in timer");
-    iconEl.textContent = "⤡";
+    iconEl.className = "focus-pip-icon fa-solid fa-down-left-and-up-right-to-center";
   } else {
     toggleBtn.setAttribute("aria-label", "Pop out focus timer");
     toggleBtn.setAttribute("title", "Pop out timer");
-    iconEl.textContent = "⤢";
+    iconEl.className = "focus-pip-icon fa-solid fa-up-right-from-square";
   }
 }
 
@@ -299,6 +299,8 @@ async function openFocusWidgetInPiP() {
 
     focusState.pipWindow = pipWindow;
     focusState.isInPiP = true;
+    const startBtn = document.getElementById("focusStartBtn");
+    if (startBtn) startBtn.hidden = true;
     updateFocusPiPToggleButton();
     updateFocusModeControls({
       running: Boolean(focusState.taskId),
