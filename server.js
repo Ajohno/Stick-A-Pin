@@ -13,7 +13,6 @@ const FocusSession = require("./config/models/focusSession"); // FocusSession mo
 const rateLimit = require("express-rate-limit");
 const FeedbackReport = require("./config/models/feedbackReport"); // Feedback report model for durable rate limiting
 const InboundEmail = require("./config/models/inboundEmail"); // Resend inbound email storage
-const rateLimit = require("express-rate-limit"); // Rate limiting middleware
 const csrf = require("lusca").csrf; // CSRF protection middleware
 const MongoStore = require("connect-mongo").default; // Store sessions in MongoDB
 

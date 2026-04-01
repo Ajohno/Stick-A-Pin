@@ -54,6 +54,45 @@
   color: #5d4037;
 }
 
+.focus-session-heading {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.focus-session-heading .focus-phase-title {
+  align-self: stretch;
+  text-align: center;
+}
+
+.focus-pip-toggle {
+  border: 1px solid rgba(93, 64, 55, 0.35);
+  background: rgba(255, 255, 255, 0.55);
+  color: #5d4037;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.focus-pip-toggle[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.focus-pip-toggle:hover {
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.focus-pip-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
 #focus-mode-widget .focus-status {
   margin: 0;
   font-size: 0.95rem;
