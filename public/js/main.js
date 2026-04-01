@@ -220,7 +220,6 @@ function updateFocusPiPToggleButton() {
 
   const isRunning = Boolean(focusState.taskId && focusState.startedAt);
   const supported = isDocumentPictureInPictureSupported();
-  toggleBtn.hidden = !isRunning;
   toggleBtn.disabled = !isRunning || !supported;
 
   if (focusState.isInPiP) {
@@ -531,6 +530,7 @@ function updateFocusModeControls({ running, hasTask } = {}) {
   const selectEl = document.getElementById("focusTaskSelect");
   const taskListEl = document.getElementById("focusTaskList");
   const startBtn = document.getElementById("focusStartBtn");
+  const pipToggleBtn = document.getElementById("focusPiPToggleBtn");
   const stopBtn = document.getElementById("focusStopBtn");
   const completeBtn = document.getElementById("focusCompleteBtn");
   if (selectEl) selectEl.disabled = running;
@@ -549,6 +549,9 @@ function updateFocusModeControls({ running, hasTask } = {}) {
   if (startBtn) {
     startBtn.hidden = Boolean(running) || focusState.isInPiP;
     startBtn.disabled = Boolean(running);
+  }
+  if (pipToggleBtn) {
+    pipToggleBtn.hidden = !Boolean(running);
   }
   updateFocusPiPToggleButton();
   if (stopBtn) {
