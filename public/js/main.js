@@ -218,7 +218,7 @@ function updateFocusPiPToggleButton() {
   const iconEl = document.getElementById("focusPiPIcon");
   if (!toggleBtn || !iconEl) return;
 
-  const isRunning = Boolean(focusState.taskId);
+  const isRunning = Boolean(focusState.taskId && focusState.startedAt);
   const supported = isDocumentPictureInPictureSupported();
   toggleBtn.hidden = !isRunning;
   toggleBtn.disabled = !isRunning || !supported;
@@ -243,6 +243,10 @@ function copyStylesToPiPWindow(pipWindow) {
     const clone = linkEl.cloneNode(true);
     head.appendChild(clone);
   });
+
+  const pipStyle = pipWindow.document.createElement("style");
+  pipStyle.textContent = "#focusStartBtn { display: none !important; }";
+  head.appendChild(pipStyle);
 }
 
 function returnFocusWidgetToMainPage() {
