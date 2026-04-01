@@ -934,6 +934,8 @@ async function initFocusMode() {
   const completeBtn = document.getElementById("focusCompleteBtn");
   const statusEl = document.getElementById("focus-status");
   if (!selectEl || !startBtn || !pipToggleBtn || !stopBtn || !completeBtn || !statusEl) return;
+  pipToggleBtn.hidden = true;
+  pipToggleBtn.disabled = true;
   focusState.timerEl = document.getElementById("focusTimer");
   focusState.sessionCardEl = document.querySelector(".focus-session-card");
 
