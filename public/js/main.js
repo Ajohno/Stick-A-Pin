@@ -72,6 +72,8 @@ const focusState = {
   sessionId: null,
   startedAt: null,
   timerIntervalId: null,
+  timerEl: null,
+  sessionCardEl: null,
   pipWindow: null,
   isInPiP: false,
   pipOriginalParent: null,
@@ -139,8 +141,48 @@ function formatFocusDuration(totalSeconds) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
+function getFocusTimerEl() {
+  if (focusState.timerEl && focusState.timerEl.isConnected) {
+    return focusState.timerEl;
+  }
+
+  const fromMainDoc = document.getElementById("focusTimer");
+  if (fromMainDoc) {
+    focusState.timerEl = fromMainDoc;
+    return fromMainDoc;
+  }
+
+  const fromPiPDoc = focusState.pipWindow?.document?.getElementById("focusTimer");
+  if (fromPiPDoc) {
+    focusState.timerEl = fromPiPDoc;
+    return fromPiPDoc;
+  }
+
+  return null;
+}
+
+function getFocusSessionCardEl() {
+  if (focusState.sessionCardEl && focusState.sessionCardEl.isConnected) {
+    return focusState.sessionCardEl;
+  }
+
+  const fromMainDoc = document.querySelector(".focus-session-card");
+  if (fromMainDoc) {
+    focusState.sessionCardEl = fromMainDoc;
+    return fromMainDoc;
+  }
+
+  const fromPiPDoc = focusState.pipWindow?.document?.querySelector(".focus-session-card");
+  if (fromPiPDoc) {
+    focusState.sessionCardEl = fromPiPDoc;
+    return fromPiPDoc;
+  }
+
+  return null;
+}
+
 function renderFocusTimer() {
-  const timerEl = document.getElementById("focusTimer");
+  const timerEl = getFocusTimerEl();
   if (!timerEl) return;
 
   if (!focusState.startedAt) {
@@ -183,11 +225,11 @@ function updateFocusPiPToggleButton() {
   if (focusState.isInPiP) {
     toggleBtn.setAttribute("aria-label", "Pop timer back into page");
     toggleBtn.setAttribute("title", "Pop in timer");
-    iconEl.className = "fa-solid fa-down-left-and-up-right-to-center";
+    iconEl.className = "fa-solid fa-picture-in-picture";
   } else {
     toggleBtn.setAttribute("aria-label", "Pop out focus timer");
     toggleBtn.setAttribute("title", "Pop out timer");
-    iconEl.className = "fa-solid fa-up-right-and-down-left-from-center";
+    iconEl.className = "fa-solid fa-picture-in-picture";
   }
 }
 
@@ -203,7 +245,7 @@ function copyStylesToPiPWindow(pipWindow) {
 }
 
 function returnFocusWidgetToMainPage() {
-  const sessionCard = document.querySelector(".focus-session-card");
+  const sessionCard = getFocusSessionCardEl();
   if (!sessionCard || !focusState.pipOriginalParent) return;
 
   if (
@@ -237,7 +279,7 @@ async function openFocusWidgetInPiP() {
 
   if (focusState.isInPiP) return;
 
-  const sessionCard = document.querySelector(".focus-session-card");
+  const sessionCard = getFocusSessionCardEl();
   if (!sessionCard) return;
 
   focusState.pipOriginalParent = sessionCard.parentNode;
@@ -885,6 +927,8 @@ async function initFocusMode() {
   const completeBtn = document.getElementById("focusCompleteBtn");
   const statusEl = document.getElementById("focus-status");
   if (!selectEl || !startBtn || !pipToggleBtn || !stopBtn || !completeBtn || !statusEl) return;
+  focusState.timerEl = document.getElementById("focusTimer");
+  focusState.sessionCardEl = document.querySelector(".focus-session-card");
 
   bindFocusFilterTabs();
   setFocusQuoteText("", { typewriter: false });
