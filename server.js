@@ -154,6 +154,7 @@ async function sendBugFeedbackEmail({ user, subject, message, attachments = [], 
   }
 
   const safeSubject = String(subject || "").trim();
+  const feedbackReportId = String(requestMeta.feedbackReportId || "").trim();
   const safeMessage = String(message || "").trim();
   const safeName = `${user?.firstName || ""} ${user?.lastName || ""}`.trim() || "Unknown user";
   const safeEmail = String(user?.email || "").trim() || "unknown@unknown.local";
@@ -184,6 +185,7 @@ async function sendBugFeedbackEmail({ user, subject, message, attachments = [], 
     : "<p><strong>Image attachments:</strong> none</p>";
 
   const emailBodyHtml = `
+    <p><strong>Feedback Report ID:</strong> ${escapeHtml(feedbackReportId || "unknown")}</p>
     <p><strong>Reporter:</strong> ${escapeHtml(safeName)} (${escapeHtml(safeEmail)})</p>
     <p><strong>Submitted:</strong> ${escapeHtml(new Date().toISOString())}</p>
     <p><strong>IP:</strong> ${escapeHtml(ip)}</p>
@@ -205,7 +207,7 @@ async function sendBugFeedbackEmail({ user, subject, message, attachments = [], 
         from: fromAddress,
         to: [inboxAddress],
         reply_to: safeEmail,
-        subject: `[Bug Report] ${safeSubject}`,
+        subject: `[Bug Report][FR:${feedbackReportId || "unknown"}] ${safeSubject}`,
         html: emailBodyHtml,
         attachments: resendAttachments,
       }),
@@ -257,6 +259,20 @@ function extractEmailAddress(value) {
   const angleMatch = text.match(/<([^>]+)>/);
   if (angleMatch?.[1]) return angleMatch[1].trim();
   return text;
+}
+
+function extractFeedbackReportIdFromEmail({ subject = "", to = [] }) {
+  const subjectText = String(subject || "");
+  const subjectMatch = subjectText.match(/\[FR:([a-fA-F0-9]{24})\]/);
+  if (subjectMatch?.[1]) return subjectMatch[1].toLowerCase();
+
+  for (const recipient of Array.isArray(to) ? to : []) {
+    const normalized = String(recipient || "").toLowerCase();
+    const plusMatch = normalized.match(/\+fr_([a-f0-9]{24})@/);
+    if (plusMatch?.[1]) return plusMatch[1];
+  }
+
+  return null;
 }
 
 function parseSvixSecret(secret) {
@@ -642,6 +658,10 @@ app.post("/webhooks/resend/receiving", resendWebhookLimiter, express.raw({ type:
       console.error("Unable to fetch full received email content from Resend:", error);
       return { text: null, html: null, attachments: [] };
     });
+    const feedbackReportId = extractFeedbackReportIdFromEmail({
+      subject: eventData.subject,
+      to: Array.isArray(eventData.to) ? eventData.to : [],
+    });
 
     await InboundEmail.updateOne(
       { eventId: String(eventData.id || event.id || emailId) },
@@ -654,6 +674,7 @@ app.post("/webhooks/resend/receiving", resendWebhookLimiter, express.raw({ type:
           to: Array.isArray(eventData.to) ? eventData.to : [],
           cc: Array.isArray(eventData.cc) ? eventData.cc : [],
           bcc: Array.isArray(eventData.bcc) ? eventData.bcc : [],
+          feedbackReportId: feedbackReportId || null,
           subject: eventData.subject || null,
           createdAtProvider: eventData.created_at ? new Date(eventData.created_at) : null,
           text: content.text,
@@ -1440,6 +1461,7 @@ app.post("/feedback/report-bug", authenticatedLimiter, ensureAuthenticated, feed
 
     const attachments = [];
     let totalAttachmentBytes = 0;
+    const feedbackReportId = new FeedbackReport()._id;
 
     for (const attachment of incomingAttachments) {
       const filename = String(attachment?.filename || "").trim();
@@ -1513,10 +1535,12 @@ app.post("/feedback/report-bug", authenticatedLimiter, ensureAuthenticated, feed
       requestMeta: {
         ip: req.ip,
         userAgent: req.get("user-agent"),
+        feedbackReportId: feedbackReportId.toString(),
       },
     });
 
     await FeedbackReport.create({
+      _id: feedbackReportId,
       userId: user._id,
       subject,
       message,
