@@ -28,6 +28,7 @@ const PASSWORD_RESET_TTL_MINUTES = Number(process.env.PASSWORD_RESET_TTL_MINUTES
 const APP_BASE_URL = process.env.APP_BASE_URL;
 const EMAIL_FROM = process.env.EMAIL_FROM || "Stick A Pin <no-reply@mail.stickapin.app>";
 const FEEDBACK_INBOX_EMAIL = "support@stickapin.app";
+const FEEDBACK_FROM_EMAIL = process.env.FEEDBACK_FROM_EMAIL || "Stick A Pin Support <support@stickapin.app>";
 const FEEDBACK_HOURLY_LIMIT = Number(process.env.FEEDBACK_HOURLY_LIMIT || 5);
 const FEEDBACK_MIN_SECONDS_BETWEEN_REPORTS = Number(process.env.FEEDBACK_MIN_SECONDS_BETWEEN_REPORTS || 60);
 const FEEDBACK_REQUEST_BODY_LIMIT = process.env.FEEDBACK_REQUEST_BODY_LIMIT || "30mb";
@@ -183,7 +184,7 @@ async function sendBugFeedbackEmail({ user, subject, message, attachments = [], 
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: EMAIL_FROM,
+      from: FEEDBACK_FROM_EMAIL,
       to: [inboxAddress],
       reply_to: safeEmail,
       subject: `[Bug Report] ${safeSubject}`,
