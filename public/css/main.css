@@ -1942,8 +1942,8 @@ body.task-panel-open {
 }
 
 .feedback-note {
-  width: min(1180px, 94%);
-  padding: clamp(1rem, 2vw, 1.4rem);
+  width: min(1180px, 94%) !important;
+  padding: clamp(1rem, 2vw, 1.4rem) !important;
 }
 
 .feedback-intro {
