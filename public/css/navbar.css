@@ -155,48 +155,33 @@
 }
 
 .nav-profile-button {
+  --note-color: #fff9e1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 44px;
   height: 44px;
-  border-radius: 4px;
-  border: 1px solid rgba(0, 0, 0, 0.14);
-  background: linear-gradient(155deg, #ffe98c 0%, #f7d96b 100%);
+  min-width: 44px;
+  padding: 0;
+  border-radius: 2px;
   color: #5b3a34;
   text-decoration: none;
+  font-family: var(--font-main);
   font-size: 16px;
-  box-shadow:
-    0 2px 4px rgba(0, 0, 0, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.4);
-  transform: rotate(1.5deg);
+  line-height: 1;
+  transform: rotate(-1.5deg);
   transition:
     transform 0.2s ease,
-    box-shadow 0.2s ease,
-    filter 0.2s ease;
-  position: relative;
+    box-shadow 0.2s ease;
 }
 
 .nav-profile-button:hover {
-  transform: rotate(0deg) translateY(-1px);
-  box-shadow:
-    0 4px 8px rgba(0, 0, 0, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.45);
-  filter: saturate(1.06);
+  transform: rotate(0.5deg) translateY(-1px);
 }
 
 .nav-profile-button:focus-visible {
   outline: 2px solid #c6534e;
   outline-offset: 2px;
-}
-
-.nav-profile-pin {
-  position: absolute;
-  top: -8px;
-  right: -6px;
-  font-size: 13px;
-  color: #c6534e;
-  transform: rotate(14deg);
 }
 
 #nav-backdrop {
