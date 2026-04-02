@@ -1519,6 +1519,9 @@ async function initDailyEmailSettings() {
 }
 
 async function initFeedbackForm() {
+  const MAX_FEEDBACK_ATTACHMENTS = 3;
+  const MAX_FEEDBACK_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+
   const feedbackForm = document.getElementById("feedbackForm");
   if (!feedbackForm) return;
 
@@ -1526,6 +1529,162 @@ async function initFeedbackForm() {
   const subjectEl = document.getElementById("feedbackSubject");
   const messageEl = document.getElementById("feedbackMessage");
   const submitBtn = document.getElementById("feedbackSubmitBtn");
+  const photoBtn = document.getElementById("feedbackPhotoBtn");
+  const photoInput = document.getElementById("feedbackPhotoInput");
+  const attachmentListEl = document.getElementById("feedbackAttachmentList");
+  let feedbackAttachments = [];
+  let attachmentIdCounter = 0;
+
+  function formatAttachmentSize(sizeInBytes) {
+    if (!Number.isFinite(sizeInBytes)) return "0 KB";
+    if (sizeInBytes < 1024 * 1024) {
+      return `${Math.max(1, Math.round(sizeInBytes / 1024))} KB`;
+    }
+    return `${(sizeInBytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  function renderAttachmentList() {
+    if (!attachmentListEl) return;
+    attachmentListEl.innerHTML = "";
+
+    feedbackAttachments.forEach((attachment) => {
+      const item = document.createElement("li");
+      item.className = "feedback-attachment-item";
+
+      const attachmentMain = document.createElement("div");
+      attachmentMain.className = "feedback-attachment-main";
+
+      const preview = document.createElement("img");
+      preview.className = "feedback-attachment-preview";
+      preview.src = attachment.previewUrl;
+      preview.alt = `Preview of ${attachment.file.name}`;
+
+      const label = document.createElement("span");
+      label.className = "feedback-attachment-text";
+      label.textContent = `${attachment.file.name} (${formatAttachmentSize(attachment.file.size)})`;
+
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className = "feedback-attachment-remove";
+      removeBtn.textContent = "Remove";
+      removeBtn.addEventListener("click", () => {
+        const toRemove = feedbackAttachments.find((itemAttachment) => itemAttachment.id === attachment.id);
+        if (toRemove?.previewUrl) {
+          URL.revokeObjectURL(toRemove.previewUrl);
+        }
+        feedbackAttachments = feedbackAttachments.filter((itemAttachment) => itemAttachment.id !== attachment.id);
+        renderAttachmentList();
+      });
+
+      attachmentMain.append(preview, label);
+      item.append(attachmentMain, removeBtn);
+      attachmentListEl.appendChild(item);
+    });
+  }
+
+  function addAttachmentFiles(candidateFiles) {
+    const selectedFiles = Array.from(candidateFiles || []);
+    if (!selectedFiles.length) return;
+
+    const existingKeys = new Set(
+      feedbackAttachments.map((attachment) => `${attachment.file.name}:${attachment.file.size}:${attachment.file.lastModified}`),
+    );
+
+    for (const file of selectedFiles) {
+      const fileKey = `${file.name}:${file.size}:${file.lastModified}`;
+      if (!file.type?.startsWith("image/")) {
+        Toast.show({
+          message: "Only image files can be attached to bug reports.",
+          type: "warning",
+          duration: 3000,
+        });
+        continue;
+      }
+
+      if (file.size > MAX_FEEDBACK_ATTACHMENT_BYTES) {
+        Toast.show({
+          message: `Image "${file.name}" is too large. Use files up to 5 MB.`,
+          type: "warning",
+          duration: 3200,
+        });
+        continue;
+      }
+
+      if (feedbackAttachments.length >= MAX_FEEDBACK_ATTACHMENTS) {
+        Toast.show({
+          message: "You can attach up to 3 images per bug report.",
+          type: "warning",
+          duration: 3000,
+        });
+        break;
+      }
+
+      if (existingKeys.has(fileKey)) {
+        continue;
+      }
+
+      feedbackAttachments.push({
+        id: ++attachmentIdCounter,
+        file,
+        previewUrl: URL.createObjectURL(file),
+      });
+      existingKeys.add(fileKey);
+    }
+
+    renderAttachmentList();
+  }
+
+  function resetAttachments() {
+    feedbackAttachments.forEach((attachment) => {
+      if (attachment.previewUrl) {
+        URL.revokeObjectURL(attachment.previewUrl);
+      }
+    });
+    feedbackAttachments = [];
+    if (photoInput) photoInput.value = "";
+    renderAttachmentList();
+  }
+
+  async function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result || "");
+        const base64Data = result.includes(",") ? result.split(",")[1] : "";
+        if (!base64Data) {
+          reject(new Error(`Unable to read "${file.name}"`));
+          return;
+        }
+        resolve(base64Data);
+      };
+      reader.onerror = () => reject(new Error(`Unable to read "${file.name}"`));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  if (photoBtn && photoInput) {
+    photoBtn.addEventListener("click", () => {
+      photoInput.click();
+    });
+
+    photoInput.addEventListener("change", (event) => {
+      addAttachmentFiles(event.target?.files);
+      photoInput.value = "";
+    });
+  }
+
+  if (messageEl) {
+    messageEl.addEventListener("paste", (event) => {
+      const clipboardItems = Array.from(event.clipboardData?.items || []);
+      const imageFiles = clipboardItems
+        .filter((item) => item.kind === "file" && item.type?.startsWith("image/"))
+        .map((item) => item.getAsFile())
+        .filter(Boolean);
+
+      if (!imageFiles.length) return;
+      addAttachmentFiles(imageFiles);
+    });
+  }
 
   try {
     const authResponse = await apiFetch("/auth-status", {
@@ -1567,11 +1726,19 @@ async function initFeedbackForm() {
     submitBtn.disabled = true;
 
     try {
+      const attachments = await Promise.all(
+        feedbackAttachments.map(async (attachment) => ({
+          filename: attachment.file.name || "attachment.png",
+          contentType: attachment.file.type || "image/png",
+          base64Data: await fileToBase64(attachment.file),
+        })),
+      );
+
       const response = await apiFetch("/feedback/report-bug", {
         credentials: "include",
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subject, message }),
+        body: JSON.stringify({ subject, message, attachments }),
       });
 
       const data = await parseApiResponse(response);
@@ -1583,6 +1750,7 @@ async function initFeedbackForm() {
       if (emailEl) {
         emailEl.value = data?.fromEmail || emailEl.value;
       }
+      resetAttachments();
 
       Toast.show({
         message: "Thanks! Your bug report was emailed to support.",
