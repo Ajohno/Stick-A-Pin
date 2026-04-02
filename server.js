@@ -28,7 +28,7 @@ const PASSWORD_RESET_TTL_MINUTES = Number(process.env.PASSWORD_RESET_TTL_MINUTES
 const APP_BASE_URL = process.env.APP_BASE_URL;
 const EMAIL_FROM = process.env.EMAIL_FROM || "Stick A Pin <no-reply@mail.stickapin.app>";
 const FEEDBACK_INBOX_EMAIL = "support@stickapin.app";
-const FEEDBACK_FROM_EMAIL = process.env.FEEDBACK_FROM_EMAIL || "Stick A Pin Support <support@stickapin.app>";
+const FEEDBACK_FROM_EMAIL = process.env.FEEDBACK_FROM_EMAIL || EMAIL_FROM;
 const FEEDBACK_HOURLY_LIMIT = Number(process.env.FEEDBACK_HOURLY_LIMIT || 5);
 const FEEDBACK_MIN_SECONDS_BETWEEN_REPORTS = Number(process.env.FEEDBACK_MIN_SECONDS_BETWEEN_REPORTS || 60);
 const FEEDBACK_REQUEST_BODY_LIMIT = process.env.FEEDBACK_REQUEST_BODY_LIMIT || "30mb";
@@ -160,10 +160,27 @@ async function sendBugFeedbackEmail({ user, subject, message, attachments = [], 
   const ip = String(requestMeta.ip || "unknown");
   const userAgent = String(requestMeta.userAgent || "unknown");
   const safeAttachments = Array.isArray(attachments) ? attachments : [];
+  const resendAttachments = safeAttachments.map((attachment) => ({
+    filename: attachment.filename,
+    content: attachment.content,
+  }));
   const attachmentSummary = safeAttachments.length
-    ? `<p><strong>Image attachments:</strong> ${safeAttachments
-      .map((attachment) => escapeHtml(attachment?.filename || "image"))
-      .join(", ")}</p>`
+    ? `
+      <p><strong>Image attachments:</strong></p>
+      <ul>
+        ${safeAttachments
+          .map((attachment) => {
+            const attachmentSizeKb = Math.max(
+              1,
+              Math.round((Number(attachment?.sizeBytes) || 0) / 1024)
+            );
+            return `<li>${escapeHtml(attachment?.filename || "image")} (${escapeHtml(
+              attachment?.contentType || "image/unknown"
+            )}, ${attachmentSizeKb} KB)</li>`;
+          })
+          .join("")}
+      </ul>
+    `
     : "<p><strong>Image attachments:</strong> none</p>";
 
   const emailBodyHtml = `
@@ -189,7 +206,7 @@ async function sendBugFeedbackEmail({ user, subject, message, attachments = [], 
       reply_to: safeEmail,
       subject: `[Bug Report] ${safeSubject}`,
       html: emailBodyHtml,
-      attachments: safeAttachments,
+      attachments: resendAttachments,
     }),
   });
 
@@ -1430,6 +1447,8 @@ app.post("/feedback/report-bug", authenticatedLimiter, ensureAuthenticated, feed
       totalAttachmentBytes += fileBuffer.length;
       attachments.push({
         filename,
+        contentType,
+        sizeBytes: fileBuffer.length,
         content: base64Data,
       });
     }
