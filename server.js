@@ -30,6 +30,7 @@ const EMAIL_FROM = process.env.EMAIL_FROM || "Stick A Pin <no-reply@mail.stickap
 const FEEDBACK_INBOX_EMAIL = "support@stickapin.app";
 const FEEDBACK_HOURLY_LIMIT = Number(process.env.FEEDBACK_HOURLY_LIMIT || 5);
 const FEEDBACK_MIN_SECONDS_BETWEEN_REPORTS = Number(process.env.FEEDBACK_MIN_SECONDS_BETWEEN_REPORTS || 60);
+const FEEDBACK_REQUEST_BODY_LIMIT = process.env.FEEDBACK_REQUEST_BODY_LIMIT || "30mb";
 const RESEND_WEBHOOK_SECRET = (process.env.RESEND_WEBHOOK_SECRET || "").trim();
 
 const DAILY_EMAIL_SCHEDULER_INTERVAL_MS = Number(process.env.DAILY_EMAIL_SCHEDULER_INTERVAL_MS || 60 * 1000);
@@ -639,11 +640,20 @@ app.get("/csrf-token", (req, res) => {
   res.json({ csrfToken: req.csrfToken() });
 });
 
-app.use(express.json()); // Middleware to parse JSON request body
-app.use(express.urlencoded({ extended: false })); // Parses form data
+app.use(express.json({ limit: FEEDBACK_REQUEST_BODY_LIMIT })); // Middleware to parse JSON request body
+app.use(express.urlencoded({ extended: false, limit: FEEDBACK_REQUEST_BODY_LIMIT })); // Parses form data
 
 // Serve static files from the "public" directory
 app.use(express.static("public"));
+
+app.use((error, req, res, next) => {
+  if (error?.type === "entity.too.large") {
+    return res.status(413).json({
+      error: "Attachment payload is too large. Please upload smaller images or fewer attachments.",
+    });
+  }
+  return next(error);
+});
 
 // ROUTES -----------------------------------------------------------------------------------
 
