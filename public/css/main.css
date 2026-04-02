@@ -1984,6 +1984,66 @@ body.task-panel-open {
   min-height: 140px;
 }
 
+.feedback-attachment-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.8rem;
+  align-items: center;
+}
+
+.feedback-photo-btn {
+  border: 2px solid #c6534e;
+  border-radius: 999px;
+  padding: 0.35rem 0.85rem;
+  background: #fff2e3;
+  color: #612a27;
+  font-family: "Quantico", sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.feedback-photo-hint {
+  font-size: 0.83rem;
+  color: #5b4436;
+  font-family: "Quantico", sans-serif;
+}
+
+.feedback-attachment-list {
+  margin: 0.2rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.feedback-attachment-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  border: 1px dashed #c6534e;
+  border-radius: 8px;
+  padding: 0.35rem 0.6rem;
+  background: #fffdf7;
+  font-family: "Quantico", sans-serif;
+  font-size: 0.8rem;
+}
+
+.feedback-attachment-remove {
+  border: none;
+  border-radius: 6px;
+  background: #fce0db;
+  color: #8c2e2b;
+  font-family: "Quantico", sans-serif;
+  font-size: 0.78rem;
+  padding: 0.2rem 0.45rem;
+  cursor: pointer;
+}
+
 .feedback-form input[readonly] {
   opacity: 0.8;
   cursor: not-allowed;
@@ -2032,6 +2092,11 @@ body.task-panel-open {
   .feedback-form textarea {
     font-size: 0.9rem;
     padding: 0.5rem 0.55rem;
+  }
+
+  .feedback-photo-btn {
+    width: 100%;
+    justify-content: center;
   }
 
   #feedbackSubmitBtn {

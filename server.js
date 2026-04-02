@@ -142,7 +142,7 @@ async function sendPasswordResetEmail(email, firstName, token, baseUrl) {
   }
 }
 
-async function sendBugFeedbackEmail({ user, subject, message, requestMeta = {} }) {
+async function sendBugFeedbackEmail({ user, subject, message, attachments = [], requestMeta = {} }) {
   if (!process.env.RESEND_API_KEY) {
     throw new Error("RESEND_API_KEY is not configured");
   }
@@ -157,12 +157,19 @@ async function sendBugFeedbackEmail({ user, subject, message, requestMeta = {} }
   const safeEmail = String(user?.email || "").trim() || "unknown@unknown.local";
   const ip = String(requestMeta.ip || "unknown");
   const userAgent = String(requestMeta.userAgent || "unknown");
+  const safeAttachments = Array.isArray(attachments) ? attachments : [];
+  const attachmentSummary = safeAttachments.length
+    ? `<p><strong>Image attachments:</strong> ${safeAttachments
+      .map((attachment) => escapeHtml(attachment?.filename || "image"))
+      .join(", ")}</p>`
+    : "<p><strong>Image attachments:</strong> none</p>";
 
   const emailBodyHtml = `
     <p><strong>Reporter:</strong> ${escapeHtml(safeName)} (${escapeHtml(safeEmail)})</p>
     <p><strong>Submitted:</strong> ${escapeHtml(new Date().toISOString())}</p>
     <p><strong>IP:</strong> ${escapeHtml(ip)}</p>
     <p><strong>User-Agent:</strong> ${escapeHtml(userAgent)}</p>
+    ${attachmentSummary}
     <hr />
     <p><strong>Details</strong></p>
     <p>${escapeHtml(safeMessage).replace(/\n/g, "<br />")}</p>
@@ -181,6 +188,7 @@ async function sendBugFeedbackEmail({ user, subject, message, requestMeta = {} }
         reply_to: safeEmail,
         subject: `[Bug Report] ${safeSubject}`,
         html: emailBodyHtml,
+        attachments: safeAttachments,
       }),
     });
 
@@ -1377,6 +1385,9 @@ app.post("/feedback/report-bug", authenticatedLimiter, ensureAuthenticated, feed
   try {
     const subject = String(req.body?.subject || "").trim();
     const message = String(req.body?.message || "").trim();
+    const incomingAttachments = Array.isArray(req.body?.attachments) ? req.body.attachments : [];
+    const MAX_ATTACHMENTS = 3;
+    const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 
     if (subject.length < 5 || subject.length > 120) {
       return res.status(400).json({ error: "Bug summary must be between 5 and 120 characters." });
@@ -1384,6 +1395,42 @@ app.post("/feedback/report-bug", authenticatedLimiter, ensureAuthenticated, feed
 
     if (message.length < 10 || message.length > 2000) {
       return res.status(400).json({ error: "Bug details must be between 10 and 2000 characters." });
+    }
+
+    if (incomingAttachments.length > MAX_ATTACHMENTS) {
+      return res.status(400).json({ error: "You can attach up to 3 images per bug report." });
+    }
+
+    const attachments = [];
+    let totalAttachmentBytes = 0;
+
+    for (const attachment of incomingAttachments) {
+      const filename = String(attachment?.filename || "").trim();
+      const contentType = String(attachment?.contentType || "").trim().toLowerCase();
+      const base64Data = String(attachment?.base64Data || "").trim();
+
+      if (!filename || !contentType || !base64Data) {
+        return res.status(400).json({ error: "Each attachment must include a file name, type, and image data." });
+      }
+
+      if (!contentType.startsWith("image/")) {
+        return res.status(400).json({ error: "Only image attachments are supported in bug reports." });
+      }
+
+      const fileBuffer = Buffer.from(base64Data, "base64");
+      if (!fileBuffer.length) {
+        return res.status(400).json({ error: `Attachment "${filename}" is empty or invalid.` });
+      }
+
+      if (fileBuffer.length > MAX_ATTACHMENT_BYTES) {
+        return res.status(400).json({ error: `Attachment "${filename}" exceeds the 5 MB file size limit.` });
+      }
+
+      totalAttachmentBytes += fileBuffer.length;
+      attachments.push({
+        filename,
+        content: base64Data,
+      });
     }
 
     const user = await User.findById(req.user.id).select("firstName lastName email");
@@ -1423,6 +1470,7 @@ app.post("/feedback/report-bug", authenticatedLimiter, ensureAuthenticated, feed
       user,
       subject,
       message,
+      attachments,
       requestMeta: {
         ip: req.ip,
         userAgent: req.get("user-agent"),
@@ -1433,6 +1481,8 @@ app.post("/feedback/report-bug", authenticatedLimiter, ensureAuthenticated, feed
       userId: user._id,
       subject,
       message,
+      attachmentCount: attachments.length,
+      attachmentBytes: totalAttachmentBytes,
       ipAddress: req.ip,
       userAgent: req.get("user-agent"),
     });
