@@ -194,25 +194,44 @@ async function sendBugFeedbackEmail({ user, subject, message, attachments = [], 
     <p>${escapeHtml(safeMessage).replace(/\n/g, "<br />")}</p>
   `;
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: FEEDBACK_FROM_EMAIL,
-      to: [inboxAddress],
-      reply_to: safeEmail,
-      subject: `[Bug Report] ${safeSubject}`,
-      html: emailBodyHtml,
-      attachments: resendAttachments,
-    }),
-  });
+  async function sendFeedbackEmail(fromAddress) {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: fromAddress,
+        to: [inboxAddress],
+        reply_to: safeEmail,
+        subject: `[Bug Report] ${safeSubject}`,
+        html: emailBodyHtml,
+        attachments: resendAttachments,
+      }),
+    });
 
-  if (!response.ok) {
+    if (response.ok) return;
+
     const failure = await response.text();
     throw new Error(`Resend API request failed (${response.status}): ${failure}`);
+  }
+
+  const primarySender = FEEDBACK_FROM_EMAIL;
+  const fallbackSender = EMAIL_FROM;
+
+  try {
+    await sendFeedbackEmail(primarySender);
+  } catch (error) {
+    const shouldRetryWithFallback =
+      primarySender !== fallbackSender &&
+      String(error?.message || "").includes("not authorized to send emails from");
+
+    if (!shouldRetryWithFallback) {
+      throw error;
+    }
+
+    await sendFeedbackEmail(fallbackSender);
   }
 }
 
