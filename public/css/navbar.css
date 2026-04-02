@@ -308,9 +308,4 @@
     max-width: min(30ch, 58vw);
   }
 
-  .nav-profile-button {
-    width: 36px;
-    height: 36px;
-    font-size: 13px;
-  }
 }
