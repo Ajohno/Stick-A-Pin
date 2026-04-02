@@ -1533,6 +1533,7 @@ async function initFeedbackForm() {
   const photoInput = document.getElementById("feedbackPhotoInput");
   const attachmentListEl = document.getElementById("feedbackAttachmentList");
   let feedbackAttachments = [];
+  let attachmentIdCounter = 0;
 
   function formatAttachmentSize(sizeInBytes) {
     if (!Number.isFinite(sizeInBytes)) return "0 KB";
@@ -1546,23 +1547,37 @@ async function initFeedbackForm() {
     if (!attachmentListEl) return;
     attachmentListEl.innerHTML = "";
 
-    feedbackAttachments.forEach((file, index) => {
+    feedbackAttachments.forEach((attachment) => {
       const item = document.createElement("li");
       item.className = "feedback-attachment-item";
 
+      const attachmentMain = document.createElement("div");
+      attachmentMain.className = "feedback-attachment-main";
+
+      const preview = document.createElement("img");
+      preview.className = "feedback-attachment-preview";
+      preview.src = attachment.previewUrl;
+      preview.alt = `Preview of ${attachment.file.name}`;
+
       const label = document.createElement("span");
-      label.textContent = `${file.name} (${formatAttachmentSize(file.size)})`;
+      label.className = "feedback-attachment-text";
+      label.textContent = `${attachment.file.name} (${formatAttachmentSize(attachment.file.size)})`;
 
       const removeBtn = document.createElement("button");
       removeBtn.type = "button";
       removeBtn.className = "feedback-attachment-remove";
       removeBtn.textContent = "Remove";
       removeBtn.addEventListener("click", () => {
-        feedbackAttachments = feedbackAttachments.filter((_, fileIndex) => fileIndex !== index);
+        const toRemove = feedbackAttachments.find((itemAttachment) => itemAttachment.id === attachment.id);
+        if (toRemove?.previewUrl) {
+          URL.revokeObjectURL(toRemove.previewUrl);
+        }
+        feedbackAttachments = feedbackAttachments.filter((itemAttachment) => itemAttachment.id !== attachment.id);
         renderAttachmentList();
       });
 
-      item.append(label, removeBtn);
+      attachmentMain.append(preview, label);
+      item.append(attachmentMain, removeBtn);
       attachmentListEl.appendChild(item);
     });
   }
@@ -1572,7 +1587,7 @@ async function initFeedbackForm() {
     if (!selectedFiles.length) return;
 
     const existingKeys = new Set(
-      feedbackAttachments.map((file) => `${file.name}:${file.size}:${file.lastModified}`),
+      feedbackAttachments.map((attachment) => `${attachment.file.name}:${attachment.file.size}:${attachment.file.lastModified}`),
     );
 
     for (const file of selectedFiles) {
@@ -1608,7 +1623,11 @@ async function initFeedbackForm() {
         continue;
       }
 
-      feedbackAttachments.push(file);
+      feedbackAttachments.push({
+        id: ++attachmentIdCounter,
+        file,
+        previewUrl: URL.createObjectURL(file),
+      });
       existingKeys.add(fileKey);
     }
 
@@ -1616,6 +1635,11 @@ async function initFeedbackForm() {
   }
 
   function resetAttachments() {
+    feedbackAttachments.forEach((attachment) => {
+      if (attachment.previewUrl) {
+        URL.revokeObjectURL(attachment.previewUrl);
+      }
+    });
     feedbackAttachments = [];
     if (photoInput) photoInput.value = "";
     renderAttachmentList();
@@ -1703,10 +1727,10 @@ async function initFeedbackForm() {
 
     try {
       const attachments = await Promise.all(
-        feedbackAttachments.map(async (file) => ({
-          filename: file.name || "attachment.png",
-          contentType: file.type || "image/png",
-          base64Data: await fileToBase64(file),
+        feedbackAttachments.map(async (attachment) => ({
+          filename: attachment.file.name || "attachment.png",
+          contentType: attachment.file.type || "image/png",
+          base64Data: await fileToBase64(attachment.file),
         })),
       );
 

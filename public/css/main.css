@@ -2033,6 +2033,29 @@ body.task-panel-open {
   font-size: 0.8rem;
 }
 
+.feedback-attachment-main {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.feedback-attachment-preview {
+  width: 42px;
+  height: 42px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #d8b39e;
+  flex-shrink: 0;
+  background: #f9f0e6;
+}
+
+.feedback-attachment-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .feedback-attachment-remove {
   border: none;
   border-radius: 6px;

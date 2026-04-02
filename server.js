@@ -27,7 +27,7 @@ const EMAIL_VERIFICATION_TTL_MINUTES = Number(process.env.EMAIL_VERIFICATION_TTL
 const PASSWORD_RESET_TTL_MINUTES = Number(process.env.PASSWORD_RESET_TTL_MINUTES || 30);
 const APP_BASE_URL = process.env.APP_BASE_URL;
 const EMAIL_FROM = process.env.EMAIL_FROM || "Stick A Pin <no-reply@mail.stickapin.app>";
-const FEEDBACK_INBOX_EMAIL = (process.env.FEEDBACK_INBOX_EMAIL || "").trim();
+const FEEDBACK_INBOX_EMAIL = "support@stickapin.app";
 const FEEDBACK_HOURLY_LIMIT = Number(process.env.FEEDBACK_HOURLY_LIMIT || 5);
 const FEEDBACK_MIN_SECONDS_BETWEEN_REPORTS = Number(process.env.FEEDBACK_MIN_SECONDS_BETWEEN_REPORTS || 60);
 const RESEND_WEBHOOK_SECRET = (process.env.RESEND_WEBHOOK_SECRET || "").trim();
@@ -175,35 +175,25 @@ async function sendBugFeedbackEmail({ user, subject, message, attachments = [], 
     <p>${escapeHtml(safeMessage).replace(/\n/g, "<br />")}</p>
   `;
 
-  async function sendWithFromAddress(fromAddress) {
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: fromAddress,
-        to: [inboxAddress],
-        reply_to: safeEmail,
-        subject: `[Bug Report] ${safeSubject}`,
-        html: emailBodyHtml,
-        attachments: safeAttachments,
-      }),
-    });
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: safeEmail,
+      to: [inboxAddress],
+      reply_to: safeEmail,
+      subject: `[Bug Report] ${safeSubject}`,
+      html: emailBodyHtml,
+      attachments: safeAttachments,
+    }),
+  });
 
-    if (response.ok) return null;
+  if (!response.ok) {
     const failure = await response.text();
-    return `Resend API request failed (${response.status}): ${failure}`;
-  }
-
-  const preferredFrom = `${safeName} <${safeEmail}>`;
-  const preferredError = await sendWithFromAddress(preferredFrom);
-  if (!preferredError) return;
-
-  const fallbackError = await sendWithFromAddress(EMAIL_FROM);
-  if (fallbackError) {
-    throw new Error(fallbackError);
+    throw new Error(`Resend API request failed (${response.status}): ${failure}`);
   }
 }
 
