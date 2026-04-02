@@ -183,7 +183,7 @@ async function sendBugFeedbackEmail({ user, subject, message, attachments = [], 
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: safeEmail,
+      from: EMAIL_FROM,
       to: [inboxAddress],
       reply_to: safeEmail,
       subject: `[Bug Report] ${safeSubject}`,
