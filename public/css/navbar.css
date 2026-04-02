@@ -106,6 +106,9 @@
 }
 
 .nav-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   margin-left: auto;
   min-width: 0;
 }
@@ -151,6 +154,33 @@
   color: #5b3a34;
 }
 
+.nav-profile-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(198, 83, 78, 0.35);
+  background: rgba(255, 255, 255, 0.8);
+  color: #5b3a34;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.nav-profile-button:hover {
+  background: #c6534e;
+  color: #fff;
+}
+
+.nav-profile-button:focus-visible {
+  outline: 2px solid #c6534e;
+  outline-offset: 2px;
+}
+
 #nav-backdrop {
   position: fixed;
   inset: 0;
@@ -186,6 +216,7 @@
   .nav-right {
     flex: 1 1 auto;
     min-width: 0;
+    gap: 8px;
   }
 
   .nav-status {
@@ -212,6 +243,11 @@
     text-overflow: clip;
     word-break: break-word;
     line-height: 1.2;
+  }
+
+  .nav-profile-button {
+    padding: 6px 10px;
+    font-size: 11px;
   }
 
   #nav-drawer {
@@ -266,5 +302,10 @@
 
   .nav-welcome {
     max-width: min(30ch, 58vw);
+  }
+
+  .nav-profile-button {
+    padding: 6px 9px;
+    font-size: 10px;
   }
 }
