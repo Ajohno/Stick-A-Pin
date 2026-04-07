@@ -89,15 +89,15 @@
         </section>
 
         <nav class="profile-side-nav" aria-label="Profile sections">
-          <button class="profile-nav-link is-active" type="button" data-panel="profile">
+          <button class="profile-nav-link profile-panel-trigger is-active" type="button" data-panel="profile" aria-label="Show My Profile">
             <i class="fa-solid fa-user" aria-hidden="true"></i>
             My Profile
           </button>
-          <button class="profile-nav-link" type="button" data-panel="settings">
+          <button class="profile-nav-link profile-panel-trigger" type="button" data-panel="settings" aria-label="Show Settings">
             <i class="fa-solid fa-gear" aria-hidden="true"></i>
             Settings
           </button>
-          <button class="profile-nav-link" type="button" data-panel="support">
+          <button class="profile-nav-link profile-panel-trigger" type="button" data-panel="support" aria-label="Show Help and Support">
             <i class="fa-solid fa-circle-question" aria-hidden="true"></i>
             Help &amp; Support
           </button>
@@ -114,6 +114,40 @@
         class="sticky-note white caution-tape profile-content-panel"
         aria-live="polite"
       >
+        <div class="profile-mobile-stamps" aria-label="Profile section quick actions">
+          <button
+            class="profile-stamp-link profile-panel-trigger is-active"
+            type="button"
+            data-panel="profile"
+            aria-label="Show My Profile"
+          >
+            <i class="fa-solid fa-user" aria-hidden="true"></i>
+          </button>
+          <button
+            class="profile-stamp-link profile-panel-trigger"
+            type="button"
+            data-panel="settings"
+            aria-label="Show Settings"
+          >
+            <i class="fa-solid fa-gear" aria-hidden="true"></i>
+          </button>
+          <button
+            class="profile-stamp-link profile-panel-trigger"
+            type="button"
+            data-panel="support"
+            aria-label="Show Help and Support"
+          >
+            <i class="fa-solid fa-circle-question" aria-hidden="true"></i>
+          </button>
+          <button
+            id="profileMobileLogoutBtn"
+            class="profile-stamp-link logout-stamp"
+            type="button"
+            aria-label="Logout"
+          >
+            <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i>
+          </button>
+        </div>
         <div id="profilePanelContent"></div>
       </section>
     </main>

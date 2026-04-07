@@ -2016,9 +2016,38 @@ body.task-panel-open {
 }
 
 .profile-content-panel {
+  position: relative;
   min-height: clamp(520px, 68vh, 860px);
   padding: clamp(1rem, 2.2vw, 1.8rem) !important;
   transform: rotate(-0.4deg);
+}
+
+.profile-mobile-stamps {
+  display: none;
+}
+
+.profile-stamp-link {
+  border: 2px solid #1f1f1f;
+  background: #1f1f1f;
+  color: #fff;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
+
+.profile-stamp-link.is-active {
+  background: #c63232;
+  border-color: #c63232;
+}
+
+.profile-stamp-link.logout-stamp {
+  background: #b51f1f;
+  border-color: #b51f1f;
 }
 
 .profile-content-panel.profile-note-leaving {
@@ -2076,6 +2105,24 @@ body.task-panel-open {
 
   .profile-content-panel {
     min-height: auto;
+    padding-top: 3.4rem !important;
+  }
+
+  .profile-side-nav {
+    display: none;
+  }
+
+  .profile-logout-btn {
+    display: none;
+  }
+
+  .profile-mobile-stamps {
+    position: absolute;
+    top: 0.6rem;
+    right: 0.7rem;
+    display: inline-flex;
+    gap: 0.45rem;
+    z-index: 3;
   }
 }
 

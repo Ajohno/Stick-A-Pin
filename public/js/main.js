@@ -1834,7 +1834,7 @@ function getProfilePanelMarkup(panelKey) {
 
 function initProfileBoardNav() {
   const panelContainer = document.getElementById("profilePanelContent");
-  const navButtons = Array.from(document.querySelectorAll(".profile-nav-link"));
+  const navButtons = Array.from(document.querySelectorAll(".profile-panel-trigger"));
   const panelStickyNote = document.getElementById("profileContentPanel");
   if (!panelContainer || !navButtons.length) return;
 
@@ -1932,6 +1932,13 @@ function initProfileBoardNav() {
   const sidebarLogoutBtn = document.getElementById("profileSidebarLogoutBtn");
   if (sidebarLogoutBtn) {
     sidebarLogoutBtn.addEventListener("click", () => {
+      document.getElementById("logoutBtn")?.click();
+    });
+  }
+
+  const mobileLogoutBtn = document.getElementById("profileMobileLogoutBtn");
+  if (mobileLogoutBtn) {
+    mobileLogoutBtn.addEventListener("click", () => {
       document.getElementById("logoutBtn")?.click();
     });
   }
