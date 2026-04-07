@@ -2098,6 +2098,35 @@ body.task-panel-open {
   justify-self: flex-start;
 }
 
+.profile-account-details {
+  margin-top: 0.4rem;
+}
+
+.profile-account-field {
+  margin: 0.7rem 0 0.55rem;
+}
+
+.profile-account-label {
+  margin: 0;
+  color: #c6534e;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.8rem !important;
+  font-family: "Quantico", sans-serif;
+  font-weight: 700;
+}
+
+.profile-account-value {
+  margin: 0.45rem 0 0 !important;
+  color: #3c3c3c;
+  font-size: clamp(1.45rem, 2.8vw, 2rem) !important;
+  font-family: "Itim", serif;
+}
+
+.profile-account-divider {
+  border-top: 2px dashed rgba(60, 60, 60, 0.16);
+}
+
 @media (max-width: 900px) {
   .corkboard.profile-board {
     grid-template-columns: 1fr;

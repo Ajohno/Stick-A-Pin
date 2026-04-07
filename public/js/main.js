@@ -1769,7 +1769,7 @@ async function initFeedbackForm() {
   });
 }
 
-function getProfilePanelMarkup(panelKey) {
+function getProfilePanelMarkup(panelKey, user = null) {
   if (panelKey === "support") {
     return `
       <section class="profile-dynamic-content" aria-label="Help and support">
@@ -1818,16 +1818,33 @@ function getProfilePanelMarkup(panelKey) {
     `;
   }
 
+  const fullName = [
+    String(user?.firstName || "").trim(),
+    String(user?.lastName || "").trim(),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    || String(user?.name || "Not available").trim();
+  const emailAddress = String(user?.email || "Not available").trim();
+
   return `
     <section class="profile-dynamic-content" aria-label="My profile">
       <h2 class="widget-title">
         <i class="fa-solid fa-user" style="color: #c6534e"></i>
-        Profile
+        My Profile
       </h2>
-      <p>
-        This page is currently in progress. Check back soon for profile tools
-        and details.
-      </p>
+      <div class="profile-account-details">
+        <div class="profile-account-field">
+          <p class="profile-account-label">Display Name</p>
+          <p class="profile-account-value">${fullName || "Not available"}</p>
+        </div>
+        <div class="profile-account-divider" aria-hidden="true"></div>
+        <div class="profile-account-field">
+          <p class="profile-account-label">Email Address</p>
+          <p class="profile-account-value">${emailAddress || "Not available"}</p>
+        </div>
+        <div class="profile-account-divider" aria-hidden="true"></div>
+      </div>
     </section>
   `;
 }
@@ -1839,6 +1856,7 @@ function initProfileBoardNav() {
   if (!panelContainer || !navButtons.length) return;
 
   const userNameEl = document.getElementById("profileSidebarUserName");
+  let currentUser = null;
   const applyUserName = (user) => {
     if (!userNameEl) return;
     const firstName = String(user?.firstName || "").trim();
@@ -1849,7 +1867,7 @@ function initProfileBoardNav() {
   };
 
   const renderPanel = (panelKey) => {
-    panelContainer.innerHTML = getProfilePanelMarkup(panelKey);
+    panelContainer.innerHTML = getProfilePanelMarkup(panelKey, currentUser);
     navButtons.forEach((button) => {
       button.classList.toggle("is-active", button.dataset.panel === panelKey);
     });
@@ -1925,7 +1943,11 @@ function initProfileBoardNav() {
 
   document.addEventListener("auth-status-resolved", (event) => {
     if (event?.detail?.loggedIn) {
-      applyUserName(event.detail.user);
+      currentUser = event.detail.user || null;
+      applyUserName(currentUser);
+      if (activePanelKey === "profile") {
+        renderPanel("profile");
+      }
     }
   });
 
