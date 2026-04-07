@@ -1803,8 +1803,23 @@ function getProfilePanelMarkup(panelKey) {
     `;
   }
 
+  if (panelKey === "settings") {
+    return `
+      <section class="profile-dynamic-content" aria-label="Settings">
+        <h2 class="widget-title">
+          <i class="fa-solid fa-gear" style="color: #c6534e"></i>
+          Settings
+        </h2>
+        <p>
+          This page is currently in progress. Check back soon for settings
+          tools and options.
+        </p>
+      </section>
+    `;
+  }
+
   return `
-    <section class="profile-dynamic-content" aria-label="${panelKey === "settings" ? "Settings" : "My profile"}">
+    <section class="profile-dynamic-content" aria-label="My profile">
       <h2 class="widget-title">
         <i class="fa-solid fa-user" style="color: #c6534e"></i>
         Profile
@@ -1825,7 +1840,10 @@ function initProfileBoardNav() {
   const userNameEl = document.getElementById("profileSidebarUserName");
   const applyUserName = (user) => {
     if (!userNameEl) return;
-    const rawName = String(user?.firstName || user?.name || "User").trim();
+    const firstName = String(user?.firstName || "").trim();
+    const lastName = String(user?.lastName || "").trim();
+    const combinedName = [firstName, lastName].filter(Boolean).join(" ");
+    const rawName = combinedName || String(user?.name || "User").trim();
     userNameEl.textContent = rawName || "User";
   };
 
