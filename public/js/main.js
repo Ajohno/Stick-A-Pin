@@ -1929,18 +1929,44 @@ function initProfileBoardNav() {
     }
   });
 
+  const triggerLogout = async () => {
+    const navLogoutBtn = document.getElementById("logoutBtn");
+    if (navLogoutBtn) {
+      navLogoutBtn.click();
+      return;
+    }
+
+    try {
+      const response = await apiFetch("/logout", {
+        credentials: "include",
+        method: "POST",
+      });
+
+      if (response.ok) {
+        Toast.show({
+          message: "Logged out successfully",
+          type: "success",
+          duration: 2000,
+        });
+        window.location.href = "/login.html";
+      } else {
+        const data = await parseApiResponse(response);
+        alert("Logout failed: " + (data.error || "Unknown error"));
+      }
+    } catch (error) {
+      console.error("Logout request failed:", error);
+      alert("Logout failed due to a network/server issue.");
+    }
+  };
+
   const sidebarLogoutBtn = document.getElementById("profileSidebarLogoutBtn");
   if (sidebarLogoutBtn) {
-    sidebarLogoutBtn.addEventListener("click", () => {
-      document.getElementById("logoutBtn")?.click();
-    });
+    sidebarLogoutBtn.addEventListener("click", triggerLogout);
   }
 
   const mobileLogoutBtn = document.getElementById("profileMobileLogoutBtn");
   if (mobileLogoutBtn) {
-    mobileLogoutBtn.addEventListener("click", () => {
-      document.getElementById("logoutBtn")?.click();
-    });
+    mobileLogoutBtn.addEventListener("click", triggerLogout);
   }
 
   renderPanel("profile");
