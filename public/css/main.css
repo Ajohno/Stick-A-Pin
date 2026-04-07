@@ -2020,6 +2020,45 @@ body.task-panel-open {
   transform: rotate(-0.4deg);
 }
 
+.profile-content-panel.profile-note-leaving {
+  animation: profile-note-leave 340ms ease-in forwards;
+  pointer-events: none;
+}
+
+.profile-content-panel.profile-note-entering {
+  animation: profile-note-enter 360ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  pointer-events: none;
+}
+
+@keyframes profile-note-leave {
+  0% {
+    transform: translateX(0) translateY(0) rotate(-0.4deg);
+    opacity: 1;
+  }
+  30% {
+    transform: translateX(12px) translateY(-12px) rotate(1.2deg);
+  }
+  100% {
+    transform: translateX(130px) translateY(-18px) rotate(3deg);
+    opacity: 0;
+  }
+}
+
+@keyframes profile-note-enter {
+  0% {
+    transform: translateX(130px) translateY(-18px) rotate(3deg);
+    opacity: 0;
+  }
+  65% {
+    transform: translateX(-8px) translateY(0) rotate(-0.8deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(0) translateY(0) rotate(-0.4deg);
+    opacity: 1;
+  }
+}
+
 .profile-dynamic-content .widget-title {
   margin-bottom: 0.35rem;
 }

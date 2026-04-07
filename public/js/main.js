@@ -1835,6 +1835,7 @@ function getProfilePanelMarkup(panelKey) {
 function initProfileBoardNav() {
   const panelContainer = document.getElementById("profilePanelContent");
   const navButtons = Array.from(document.querySelectorAll(".profile-nav-link"));
+  const panelStickyNote = document.getElementById("profileContentPanel");
   if (!panelContainer || !navButtons.length) return;
 
   const userNameEl = document.getElementById("profileSidebarUserName");
@@ -1858,9 +1859,67 @@ function initProfileBoardNav() {
     }
   };
 
+  const waitForAnimation = (element, timeoutMs = 420) =>
+    new Promise((resolve) => {
+      if (!element) {
+        resolve();
+        return;
+      }
+
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        element.removeEventListener("animationend", finish);
+        resolve();
+      };
+
+      element.addEventListener("animationend", finish, { once: true });
+      window.setTimeout(finish, timeoutMs);
+    });
+
+  let activePanelKey = "profile";
+  let transitionInFlight = false;
+  let queuedPanelKey = null;
+
+  const transitionToPanel = async (panelKey) => {
+    if (!panelStickyNote) {
+      renderPanel(panelKey);
+      activePanelKey = panelKey;
+      return;
+    }
+
+    transitionInFlight = true;
+    panelStickyNote.classList.add("in-view-hover", "profile-note-leaving");
+    await waitForAnimation(panelStickyNote, 380);
+
+    panelStickyNote.classList.remove("profile-note-leaving");
+    renderPanel(panelKey);
+    activePanelKey = panelKey;
+
+    panelStickyNote.classList.add("profile-note-entering", "in-view-hover");
+    await waitForAnimation(panelStickyNote, 420);
+    panelStickyNote.classList.remove("profile-note-entering", "in-view-hover");
+    transitionInFlight = false;
+
+    if (queuedPanelKey && queuedPanelKey !== activePanelKey) {
+      const nextPanel = queuedPanelKey;
+      queuedPanelKey = null;
+      transitionToPanel(nextPanel);
+    }
+  };
+
   navButtons.forEach((button) => {
     button.addEventListener("click", () => {
-      renderPanel(button.dataset.panel || "profile");
+      const requestedPanel = button.dataset.panel || "profile";
+      if (requestedPanel === activePanelKey && !transitionInFlight) return;
+
+      if (transitionInFlight) {
+        queuedPanelKey = requestedPanel;
+        return;
+      }
+
+      transitionToPanel(requestedPanel);
     });
   });
 
