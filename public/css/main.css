@@ -1946,6 +1946,7 @@ body.task-panel-open {
   height: auto;
   min-height: 72vh;
   margin: 0 auto;
+  overflow: visible;
   display: grid;
   grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
   gap: clamp(0.9rem, 2.2vw, 1.5rem);
