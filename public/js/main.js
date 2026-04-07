@@ -1769,6 +1769,99 @@ async function initFeedbackForm() {
   });
 }
 
+function getProfilePanelMarkup(panelKey) {
+  if (panelKey === "support") {
+    return `
+      <section class="profile-dynamic-content" aria-label="Help and support">
+        <h2 class="widget-title">
+          <i class="fa-solid fa-comment-dots" style="color: #c6534e"></i>
+          Feedback
+        </h2>
+        <p class="feedback-intro">
+          Report bugs you run into while using Stick A Pin. We'll send your
+          note straight to our support inbox.
+        </p>
+        <form id="feedbackForm" class="feedback-form" novalidate>
+          <label for="feedbackEmail">Your account email</label>
+          <input id="feedbackEmail" type="email" readonly />
+          <label for="feedbackSubject">Bug summary</label>
+          <input id="feedbackSubject" name="feedbackSubject" type="text" maxlength="120" placeholder="Short summary of the issue" required />
+          <label for="feedbackMessage">What happened?</label>
+          <div class="feedback-attachment-toolbar">
+            <button id="feedbackPhotoBtn" class="feedback-photo-btn" type="button" aria-controls="feedbackPhotoInput feedbackAttachmentList">
+              <i class="fa-regular fa-image" aria-hidden="true"></i>
+              Add photo
+            </button>
+            <span class="feedback-photo-hint">Paste images into the details box or upload from your device.</span>
+          </div>
+          <input id="feedbackPhotoInput" name="feedbackPhotos" type="file" accept="image/*" multiple hidden />
+          <textarea id="feedbackMessage" name="feedbackMessage" maxlength="2000" rows="6" placeholder="Steps to reproduce, expected result, and what you saw." required></textarea>
+          <ul id="feedbackAttachmentList" class="feedback-attachment-list" aria-live="polite"></ul>
+          <button id="feedbackSubmitBtn" type="submit">Send bug report</button>
+        </form>
+      </section>
+    `;
+  }
+
+  return `
+    <section class="profile-dynamic-content" aria-label="${panelKey === "settings" ? "Settings" : "My profile"}">
+      <h2 class="widget-title">
+        <i class="fa-solid fa-user" style="color: #c6534e"></i>
+        Profile
+      </h2>
+      <p>
+        This page is currently in progress. Check back soon for profile tools
+        and details.
+      </p>
+    </section>
+  `;
+}
+
+function initProfileBoardNav() {
+  const panelContainer = document.getElementById("profilePanelContent");
+  const navButtons = Array.from(document.querySelectorAll(".profile-nav-link"));
+  if (!panelContainer || !navButtons.length) return;
+
+  const userNameEl = document.getElementById("profileSidebarUserName");
+  const applyUserName = (user) => {
+    if (!userNameEl) return;
+    const rawName = String(user?.firstName || user?.name || "User").trim();
+    userNameEl.textContent = rawName || "User";
+  };
+
+  const renderPanel = (panelKey) => {
+    panelContainer.innerHTML = getProfilePanelMarkup(panelKey);
+    navButtons.forEach((button) => {
+      button.classList.toggle("is-active", button.dataset.panel === panelKey);
+    });
+
+    if (panelKey === "support") {
+      initFeedbackForm();
+    }
+  };
+
+  navButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      renderPanel(button.dataset.panel || "profile");
+    });
+  });
+
+  document.addEventListener("auth-status-resolved", (event) => {
+    if (event?.detail?.loggedIn) {
+      applyUserName(event.detail.user);
+    }
+  });
+
+  const sidebarLogoutBtn = document.getElementById("profileSidebarLogoutBtn");
+  if (sidebarLogoutBtn) {
+    sidebarLogoutBtn.addEventListener("click", () => {
+      document.getElementById("logoutBtn")?.click();
+    });
+  }
+
+  renderPanel("profile");
+}
+
 
 document.addEventListener("DOMContentLoaded", () => {
   console.log("DOM Fully Loaded - JavaScript Running");
@@ -2116,6 +2209,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initDailyReflectionStatsWidget();
   initWeeklyReflectionStatsWidget();
   initFeedbackForm();
+  initProfileBoardNav();
 
   checkAuthStatus({ isLoginPage, isRegisterPage, isProtectedPage, isHomePage }); // Check authentication status on page load
   initFocusMode();
@@ -2210,6 +2304,11 @@ async function checkAuthStatus({
     updateFocusLogWidget();
 
     updateNavTaskCounter();
+    document.dispatchEvent(
+      new CustomEvent("auth-status-resolved", {
+        detail: { loggedIn: true, user: data.user },
+      }),
+    );
   } else {
     // Protected pages should send logged-out users to login instead of showing a blank shell.
     if (isProtectedPage) {
@@ -2230,6 +2329,11 @@ async function checkAuthStatus({
     if (taskList) {
       taskList.innerHTML = ""; // Clear tasks when logged out
     }
+    document.dispatchEvent(
+      new CustomEvent("auth-status-resolved", {
+        detail: { loggedIn: false },
+      }),
+    );
   }
 }
 

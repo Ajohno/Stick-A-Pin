@@ -1941,6 +1941,104 @@ body.task-panel-open {
   padding-top: 2rem;
 }
 
+.corkboard.profile-board {
+  width: min(1240px, 96vw);
+  height: auto;
+  min-height: 72vh;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: clamp(0.9rem, 2.2vw, 1.5rem);
+  align-items: start;
+  padding: clamp(0.9rem, 1.8vw, 1.4rem);
+}
+
+.profile-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.profile-user-card h2 {
+  margin: 0;
+  color: #2f2f2f;
+  text-decoration: none;
+  font-size: clamp(1.4rem, 2.8vw, 2rem);
+}
+
+.profile-user-subtitle {
+  margin-top: 0.2rem;
+  color: #735a4f;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.82rem;
+}
+
+.profile-side-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.profile-nav-link,
+.profile-logout-btn {
+  border: none;
+  width: 100%;
+  text-align: left;
+  font-family: "Quantico", sans-serif;
+  font-size: 1.02rem;
+  border-radius: 4px;
+  cursor: pointer;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.22);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.profile-nav-link {
+  background: #fff;
+  color: #272727;
+  padding: 0.85rem 1rem;
+}
+
+.profile-nav-link.is-active {
+  background: #f4eebf;
+  color: #1f1f1f;
+}
+
+.profile-logout-btn {
+  margin-top: 0.25rem;
+  padding: 0.8rem 1rem;
+  background: #d83434;
+  color: #fff;
+  font-weight: 700;
+}
+
+.profile-content-panel {
+  min-height: clamp(520px, 68vh, 860px);
+  padding: clamp(1rem, 2.2vw, 1.8rem) !important;
+  transform: rotate(-0.4deg);
+}
+
+.profile-dynamic-content .widget-title {
+  margin-bottom: 0.35rem;
+}
+
+.profile-dynamic-content p {
+  width: auto;
+  justify-self: flex-start;
+}
+
+@media (max-width: 900px) {
+  .corkboard.profile-board {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-content-panel {
+    min-height: auto;
+  }
+}
+
 .feedback-note {
   width: min(1180px, 94%) !important;
   padding: clamp(1rem, 2vw, 1.4rem) !important;
