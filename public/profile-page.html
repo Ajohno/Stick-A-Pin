@@ -81,22 +81,66 @@
     </nav>
     <div id="nav-backdrop" aria-hidden="true"></div>
 
-    <main
-      class="corkboard placeholder-board"
-      style="max-width: 1100px; margin: 0 auto"
-    >
+    <main class="corkboard profile-board" aria-label="Profile workspace">
+      <aside class="profile-sidebar" aria-label="Profile navigation">
+        <section class="sticky-note white thumbtack profile-user-card">
+          <h2 id="profileSidebarUserName">User</h2>
+          <p class="profile-user-subtitle">Productive Human</p>
+        </section>
+
+        <nav class="profile-side-nav" aria-label="Profile sections">
+          <button class="profile-nav-link profile-panel-trigger is-active" type="button" data-panel="profile" aria-label="Show My Profile">
+            <i class="fa-solid fa-user" aria-hidden="true"></i>
+            My Profile
+          </button>
+          <button class="profile-nav-link profile-panel-trigger" type="button" data-panel="settings" aria-label="Show Settings">
+            <i class="fa-solid fa-gear" aria-hidden="true"></i>
+            Settings
+          </button>
+          <button class="profile-nav-link profile-panel-trigger" type="button" data-panel="support" aria-label="Show Help and Support">
+            <i class="fa-solid fa-circle-question" aria-hidden="true"></i>
+            Help &amp; Support
+          </button>
+        </nav>
+
+        <button id="profileSidebarLogoutBtn" class="profile-logout-btn" type="button">
+          <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i>
+          Logout
+        </button>
+      </aside>
+
       <section
-        class="sticky-note orange caution-tape page-placeholder"
-        aria-label="Profile page coming soon"
+        id="profileContentPanel"
+        class="sticky-note white caution-tape profile-content-panel"
+        aria-live="polite"
       >
-        <h2 class="widget-title">
-          <i class="fa-solid fa-user" style="color: #c6534e"></i>
-          Profile
-        </h2>
-        <p>
-          This page is currently in progress. Check back soon for profile tools
-          and details.
-        </p>
+        <div class="profile-mobile-stamps" aria-label="Profile section quick actions">
+          <button
+            class="profile-stamp-link profile-panel-trigger is-active"
+            type="button"
+            data-panel="profile"
+            aria-label="Show My Profile"
+          >
+            <i class="fa-solid fa-user" aria-hidden="true"></i>
+          </button>
+          <button
+            class="profile-stamp-link profile-panel-trigger"
+            type="button"
+            data-panel="settings"
+            aria-label="Show Settings"
+          >
+            <i class="fa-solid fa-gear" aria-hidden="true"></i>
+          </button>
+          <button
+            class="profile-stamp-link profile-panel-trigger"
+            type="button"
+            data-panel="support"
+            aria-label="Show Help and Support"
+          >
+            <i class="fa-solid fa-circle-question" aria-hidden="true"></i>
+          </button>
+        </div>
+        <div id="profilePanelContent"></div>
       </section>
     </main>
 
