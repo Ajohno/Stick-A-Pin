@@ -1936,6 +1936,13 @@ function initProfileBoardNav() {
     });
   }
 
+  const mobileLogoutBtn = document.getElementById("profileMobileLogoutBtn");
+  if (mobileLogoutBtn) {
+    mobileLogoutBtn.addEventListener("click", () => {
+      document.getElementById("logoutBtn")?.click();
+    });
+  }
+
   renderPanel("profile");
 }
 

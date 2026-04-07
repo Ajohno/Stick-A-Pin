@@ -2045,6 +2045,11 @@ body.task-panel-open {
   border-color: #c63232;
 }
 
+.profile-stamp-link.logout-stamp {
+  background: #b51f1f;
+  border-color: #b51f1f;
+}
+
 .profile-content-panel.profile-note-leaving {
   animation: profile-note-leave 340ms ease-in forwards;
   pointer-events: none;
@@ -2104,6 +2109,10 @@ body.task-panel-open {
   }
 
   .profile-side-nav {
+    display: none;
+  }
+
+  .profile-logout-btn {
     display: none;
   }
 
