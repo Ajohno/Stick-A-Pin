@@ -29,6 +29,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: nowrap;
   gap: 18px;
   padding: 10px 28px;
   min-height: 70px;
@@ -78,6 +79,8 @@
   font-weight: 700;
   color: var(--text-black);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .nav-links {
@@ -110,6 +113,7 @@
   align-items: center;
   gap: 12px;
   margin-left: auto;
+  flex: 0 0 auto;
   min-width: 0;
 }
 
@@ -217,7 +221,7 @@
   }
 
   .nav-right {
-    flex: 1 1 auto;
+    flex: 0 0 auto;
     min-width: 0;
     gap: 8px;
   }
@@ -240,7 +244,7 @@
 
   .nav-welcome {
     font-size: 12px;
-    max-width: min(32ch, 52vw);
+    max-width: min(26ch, 38vw);
     white-space: normal;
     overflow: visible;
     text-overflow: clip;
@@ -293,6 +297,7 @@
 
   .brand-name {
     font-size: 17px;
+    max-width: 120px;
   }
 
   .nav__toggle {
@@ -305,7 +310,7 @@
   }
 
   .nav-welcome {
-    max-width: min(30ch, 58vw);
+    max-width: min(22ch, 34vw);
   }
 
 }
