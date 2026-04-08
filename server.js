@@ -74,8 +74,16 @@ app.use(async (req, res, next) => {
     await connectDB();
     return next();
   } catch (error) {
-    console.error("Database unavailable for request", error);
-    return res.status(503).json({ error: "Service temporarily unavailable" });
+    console.error("Database unavailable for request (first attempt)", error);
+
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      await connectDB();
+      return next();
+    } catch (retryError) {
+      console.error("Database unavailable for request (retry failed)", retryError);
+      return res.status(503).json({ error: "Service temporarily unavailable" });
+    }
   }
 });
 
