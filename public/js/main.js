@@ -2517,8 +2517,9 @@ function initCalendarPage() {
   const monthTitle = document.getElementById("calendarMonthTitle");
   const prevBtn = document.getElementById("calendarPrevBtn");
   const nextBtn = document.getElementById("calendarNextBtn");
+  const todayBtn = document.getElementById("calendarTodayBtn");
 
-  if (!calendarGrid || !monthTitle || !prevBtn || !nextBtn) return;
+  if (!calendarGrid || !monthTitle || !prevBtn || !nextBtn || !todayBtn) return;
 
   const today = new Date();
   const todayYear = today.getFullYear();
@@ -2579,6 +2580,14 @@ function initCalendarPage() {
   nextBtn.addEventListener("click", () => {
     visibleDate = new Date(visibleDate.getFullYear(), visibleDate.getMonth() + 1, 1);
     renderCalendar();
+  });
+
+  todayBtn.addEventListener("click", () => {
+    visibleDate = new Date(todayYear, todayMonth, 1);
+    renderCalendar();
+
+    const todayCell = calendarGrid.querySelector(".calendar-day.today");
+    todayCell?.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
   });
 
   renderCalendar();
