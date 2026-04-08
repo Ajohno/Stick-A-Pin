@@ -1769,6 +1769,247 @@ async function initFeedbackForm() {
   });
 }
 
+function getProfilePanelMarkup(panelKey, user = null) {
+  if (panelKey === "support") {
+    return `
+      <section class="profile-dynamic-content" aria-label="Help and support">
+        <h2 class="widget-title">
+          <i class="fa-solid fa-comment-dots" style="color: #c6534e"></i>
+          Feedback
+        </h2>
+        <p class="feedback-intro">
+          Report bugs you run into while using Stick A Pin. We'll send your
+          note straight to our support inbox.
+        </p>
+        <form id="feedbackForm" class="feedback-form" novalidate>
+          <label for="feedbackEmail">Your account email</label>
+          <input id="feedbackEmail" type="email" readonly />
+          <label for="feedbackSubject">Bug summary</label>
+          <input id="feedbackSubject" name="feedbackSubject" type="text" maxlength="120" placeholder="Short summary of the issue" required />
+          <label for="feedbackMessage">What happened?</label>
+          <div class="feedback-attachment-toolbar">
+            <button id="feedbackPhotoBtn" class="feedback-photo-btn" type="button" aria-controls="feedbackPhotoInput feedbackAttachmentList">
+              <i class="fa-regular fa-image" aria-hidden="true"></i>
+              Add photo
+            </button>
+            <span class="feedback-photo-hint">Paste images into the details box or upload from your device.</span>
+          </div>
+          <input id="feedbackPhotoInput" name="feedbackPhotos" type="file" accept="image/*" multiple hidden />
+          <textarea id="feedbackMessage" name="feedbackMessage" maxlength="2000" rows="6" placeholder="Steps to reproduce, expected result, and what you saw." required></textarea>
+          <ul id="feedbackAttachmentList" class="feedback-attachment-list" aria-live="polite"></ul>
+          <button id="feedbackSubmitBtn" type="submit">Send bug report</button>
+        </form>
+      </section>
+    `;
+  }
+
+  if (panelKey === "settings") {
+    return `
+      <section class="profile-dynamic-content" aria-label="Settings">
+        <h2 class="widget-title">
+          <i class="fa-solid fa-gear" style="color: #c6534e"></i>
+          Settings
+        </h2>
+        <p>
+          This page is currently in progress. Check back soon for settings
+          tools and options.
+        </p>
+      </section>
+    `;
+  }
+
+  const fullName = [
+    String(user?.firstName || "").trim(),
+    String(user?.lastName || "").trim(),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    || String(user?.name || "Not available").trim();
+  const emailAddress = String(user?.email || "Not available").trim();
+  const timezoneValue = String(
+    user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "Not available",
+  ).trim();
+  const languageValue = String(
+    user?.language || navigator.language || "Not available",
+  ).trim();
+
+  return `
+    <section class="profile-dynamic-content" aria-label="My profile">
+      <h2 class="widget-title">
+        <i class="fa-solid fa-user" style="color: #c6534e"></i>
+        My Profile
+      </h2>
+      <div class="profile-account-details">
+        <div class="profile-account-field">
+          <p class="profile-account-label">Display Name</p>
+          <p class="profile-account-value">${fullName || "Not available"}</p>
+        </div>
+        <div class="profile-account-divider" aria-hidden="true"></div>
+        <div class="profile-account-field">
+          <p class="profile-account-label">Email Address</p>
+          <p class="profile-account-value">${emailAddress || "Not available"}</p>
+        </div>
+        <div class="profile-account-divider" aria-hidden="true"></div>
+        <div class="profile-account-field">
+          <p class="profile-account-label">Timezone</p>
+          <p class="profile-account-value">${timezoneValue || "Not available"}</p>
+        </div>
+        <div class="profile-account-divider" aria-hidden="true"></div>
+        <div class="profile-account-field">
+          <p class="profile-account-label">Language</p>
+          <p class="profile-account-value">${languageValue || "Not available"}</p>
+        </div>
+        <div class="profile-account-divider" aria-hidden="true"></div>
+      </div>
+    </section>
+  `;
+}
+
+function initProfileBoardNav() {
+  const panelContainer = document.getElementById("profilePanelContent");
+  const navButtons = Array.from(document.querySelectorAll(".profile-panel-trigger"));
+  const panelStickyNote = document.getElementById("profileContentPanel");
+  if (!panelContainer || !navButtons.length) return;
+
+  const userNameEl = document.getElementById("profileSidebarUserName");
+  let currentUser = null;
+  const applyUserName = (user) => {
+    if (!userNameEl) return;
+    const firstName = String(user?.firstName || "").trim();
+    const lastName = String(user?.lastName || "").trim();
+    const combinedName = [firstName, lastName].filter(Boolean).join(" ");
+    const rawName = combinedName || String(user?.name || "User").trim();
+    userNameEl.textContent = rawName || "User";
+  };
+
+  const renderPanel = (panelKey) => {
+    panelContainer.innerHTML = getProfilePanelMarkup(panelKey, currentUser);
+    navButtons.forEach((button) => {
+      button.classList.toggle("is-active", button.dataset.panel === panelKey);
+    });
+
+    if (panelKey === "support") {
+      initFeedbackForm();
+    }
+  };
+
+  const waitForAnimation = (element, timeoutMs = 420) =>
+    new Promise((resolve) => {
+      if (!element) {
+        resolve();
+        return;
+      }
+
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        element.removeEventListener("animationend", finish);
+        resolve();
+      };
+
+      element.addEventListener("animationend", finish, { once: true });
+      window.setTimeout(finish, timeoutMs);
+    });
+
+  let activePanelKey = "profile";
+  let transitionInFlight = false;
+  let queuedPanelKey = null;
+
+  const transitionToPanel = async (panelKey) => {
+    if (!panelStickyNote) {
+      renderPanel(panelKey);
+      activePanelKey = panelKey;
+      return;
+    }
+
+    transitionInFlight = true;
+    panelStickyNote.classList.add("in-view-hover", "profile-note-leaving");
+    await waitForAnimation(panelStickyNote, 380);
+
+    panelStickyNote.classList.remove("profile-note-leaving");
+    renderPanel(panelKey);
+    activePanelKey = panelKey;
+
+    panelStickyNote.classList.add("profile-note-entering", "in-view-hover");
+    await waitForAnimation(panelStickyNote, 420);
+    panelStickyNote.classList.remove("profile-note-entering", "in-view-hover");
+    transitionInFlight = false;
+
+    if (queuedPanelKey && queuedPanelKey !== activePanelKey) {
+      const nextPanel = queuedPanelKey;
+      queuedPanelKey = null;
+      transitionToPanel(nextPanel);
+    }
+  };
+
+  navButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const requestedPanel = button.dataset.panel || "profile";
+      if (requestedPanel === activePanelKey && !transitionInFlight) return;
+
+      if (transitionInFlight) {
+        queuedPanelKey = requestedPanel;
+        return;
+      }
+
+      transitionToPanel(requestedPanel);
+    });
+  });
+
+  document.addEventListener("auth-status-resolved", (event) => {
+    if (event?.detail?.loggedIn) {
+      currentUser = event.detail.user || null;
+      applyUserName(currentUser);
+      if (activePanelKey === "profile") {
+        renderPanel("profile");
+      }
+    }
+  });
+
+  const triggerLogout = async () => {
+    const navLogoutBtn = document.getElementById("logoutBtn");
+    if (navLogoutBtn) {
+      navLogoutBtn.click();
+      return;
+    }
+
+    try {
+      const response = await apiFetch("/logout", {
+        credentials: "include",
+        method: "POST",
+      });
+
+      if (response.ok) {
+        Toast.show({
+          message: "Logged out successfully",
+          type: "success",
+          duration: 2000,
+        });
+        window.location.href = "/login.html";
+      } else {
+        const data = await parseApiResponse(response);
+        alert("Logout failed: " + (data.error || "Unknown error"));
+      }
+    } catch (error) {
+      console.error("Logout request failed:", error);
+      alert("Logout failed due to a network/server issue.");
+    }
+  };
+
+  const sidebarLogoutBtn = document.getElementById("profileSidebarLogoutBtn");
+  if (sidebarLogoutBtn) {
+    sidebarLogoutBtn.addEventListener("click", triggerLogout);
+  }
+
+  const mobileLogoutBtn = document.getElementById("profileMobileLogoutBtn");
+  if (mobileLogoutBtn) {
+    mobileLogoutBtn.addEventListener("click", triggerLogout);
+  }
+
+  renderPanel("profile");
+}
+
 
 document.addEventListener("DOMContentLoaded", () => {
   console.log("DOM Fully Loaded - JavaScript Running");
@@ -2116,6 +2357,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initDailyReflectionStatsWidget();
   initWeeklyReflectionStatsWidget();
   initFeedbackForm();
+  initProfileBoardNav();
 
   checkAuthStatus({ isLoginPage, isRegisterPage, isProtectedPage, isHomePage }); // Check authentication status on page load
   initFocusMode();
@@ -2210,6 +2452,11 @@ async function checkAuthStatus({
     updateFocusLogWidget();
 
     updateNavTaskCounter();
+    document.dispatchEvent(
+      new CustomEvent("auth-status-resolved", {
+        detail: { loggedIn: true, user: data.user },
+      }),
+    );
   } else {
     // Protected pages should send logged-out users to login instead of showing a blank shell.
     if (isProtectedPage) {
@@ -2230,6 +2477,11 @@ async function checkAuthStatus({
     if (taskList) {
       taskList.innerHTML = ""; // Clear tasks when logged out
     }
+    document.dispatchEvent(
+      new CustomEvent("auth-status-resolved", {
+        detail: { loggedIn: false },
+      }),
+    );
   }
 }
 
