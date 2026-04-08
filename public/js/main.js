@@ -2528,6 +2528,52 @@ function initCalendarPage() {
 
   let visibleDate = new Date(todayYear, todayMonth, 1);
   let isTransitioning = false;
+  let dueDateLookup = new Set();
+
+
+  const toLocalDateKey = (value) => {
+    if (!value) return null;
+
+    if (typeof value === "string") {
+      const directMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (directMatch) {
+        return `${directMatch[1]}-${directMatch[2]}-${directMatch[3]}`;
+      }
+    }
+
+    const parsedDate = new Date(value);
+    if (Number.isNaN(parsedDate.getTime())) return null;
+
+    const year = parsedDate.getFullYear();
+    const month = String(parsedDate.getMonth() + 1).padStart(2, "0");
+    const day = String(parsedDate.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const buildVisibleDateKey = (year, month, day) => {
+    const normalizedMonth = String(month + 1).padStart(2, "0");
+    const normalizedDay = String(day).padStart(2, "0");
+    return `${year}-${normalizedMonth}-${normalizedDay}`;
+  };
+
+  const loadDueDateHighlights = async () => {
+    try {
+      const response = await apiFetch("/tasks", { credentials: "include" });
+      if (!response.ok) return;
+
+      const tasks = await response.json();
+      if (!Array.isArray(tasks)) return;
+
+      dueDateLookup = new Set(
+        tasks
+          .filter((task) => task?.status === "active" || task?.status === "completed")
+          .map((task) => toLocalDateKey(task?.dueDate))
+          .filter(Boolean),
+      );
+    } catch (error) {
+      console.error("Unable to load calendar due-date highlights:", error);
+    }
+  };
 
   const waitForAnimation = (element, fallbackMs = 360) =>
     new Promise((resolve) => {
@@ -2573,6 +2619,11 @@ function initCalendarPage() {
       dayNote.className = "calendar-day";
       dayNote.setAttribute("role", "gridcell");
       dayNote.setAttribute("aria-label", `${monthTitle.textContent} ${day}`);
+
+      const visibleDateKey = buildVisibleDateKey(year, month, day);
+      if (dueDateLookup.has(visibleDateKey)) {
+        dayNote.classList.add("has-due-task");
+      }
 
       if (animateIn) {
         dayNote.classList.add("calendar-note-entering");
@@ -2634,7 +2685,9 @@ function initCalendarPage() {
     transitionToMonth(new Date(todayYear, todayMonth, 1), { focusToday: true });
   });
 
-  renderCalendar({ animateIn: true });
+  loadDueDateHighlights().finally(() => {
+    renderCalendar({ animateIn: true });
+  });
 }
 
 async function updateNavTaskCounter() {

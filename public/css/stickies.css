@@ -592,6 +592,10 @@
   aspect-ratio: 1 / 1;
 }
 
+.calendar-day.has-due-task {
+  background: #f7dfe8;
+}
+
 .calendar-day::before {
   content: "";
   position: absolute;
