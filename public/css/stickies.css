@@ -569,6 +569,10 @@
   color: #4f3023;
 }
 
+.weekday-short {
+  display: none;
+}
+
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -685,6 +689,14 @@
 @media (max-width: 760px) {
   .calendar-weekdays span {
     font-size: 10px;
+  }
+
+  .weekday-full {
+    display: none;
+  }
+
+  .weekday-short {
+    display: inline;
   }
 
   .calendar-day,
