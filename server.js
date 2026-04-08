@@ -49,6 +49,11 @@ function normalizeBoardDefaultView(rawValue) {
   return VALID_BOARD_DEFAULT_VIEW_OPTIONS.has(candidate) ? candidate : "board";
 }
 
+function getDefaultViewPathForUser(user) {
+  const defaultView = normalizeBoardDefaultView(user?.settings?.board?.defaultView);
+  return defaultView === "calendar" ? "/calendar-page.html" : "/dashboard.html";
+}
+
 // Rate limiter for authenticated routes to protect expensive operations
 const authenticatedLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -795,7 +800,7 @@ app.get("/auth/google/callback", authRateLimiter, (req, res, next) => {
   const callbackURL = getGoogleCallbackUrlForRequest(req);
   passport.authenticate("google", { failureRedirect: "/login.html?error=sso_failed", callbackURL })(req, res, (authErr) => {
     if (authErr) return next(authErr);
-    return res.redirect("/dashboard.html");
+    return res.redirect(getDefaultViewPathForUser(req.user));
   });
 });
 
@@ -814,7 +819,7 @@ function handleAppleCallback(req, res, next) {
 
   return passport.authenticate("apple", { failureRedirect: "/login.html?error=sso_failed" })(req, res, (authErr) => {
     if (authErr) return next(authErr);
-    return res.redirect("/dashboard.html");
+    return res.redirect(getDefaultViewPathForUser(req.user));
   });
 }
 
@@ -1039,7 +1044,19 @@ app.post("/login", (req, res, next) => {
 
         return res.json({
           message: "Logged in successfully",
-          user: { id: user._id, firstName: user.firstName, lastName: user.lastName, email: user.email },
+          preferredDefaultPath: getDefaultViewPathForUser(user),
+          user: {
+            id: user._id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            email: user.email,
+            settings: {
+              board: {
+                default_task_sort: normalizeBoardTaskSort(user.settings?.board?.defaultTaskSort),
+                default_view: normalizeBoardDefaultView(user.settings?.board?.defaultView),
+              },
+            },
+          },
         });
       });
     });

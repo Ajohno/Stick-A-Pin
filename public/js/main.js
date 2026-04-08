@@ -2415,14 +2415,21 @@ document.addEventListener("DOMContentLoaded", () => {
         const data = await parseApiResponse(response);
 
         if (response.ok) {
+          hydrateBoardPreferences(data?.user);
+          const preferredDefaultPath =
+            typeof data?.preferredDefaultPath === "string"
+              ? data.preferredDefaultPath
+              : (normalizeDefaultView(data?.user?.settings?.board?.default_view) === "calendar"
+                ? "/calendar-page.html"
+                : "/dashboard.html");
+
           // alert("Login successful!");
           Toast.show({
             message: "Login Sucessful",
             type: "success",
             duration: 2000,
           });
-          // Auth pages should move you to the dashboard once logged in
-          window.location.href = "/dashboard.html";
+          window.location.href = preferredDefaultPath;
         } else {
           alert("Login failed: " + (data.error || "Unknown error"));
           Toast.show({
