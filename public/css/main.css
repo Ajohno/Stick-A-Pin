@@ -1941,9 +1941,223 @@ body.task-panel-open {
   padding-top: 2rem;
 }
 
+.corkboard.profile-board {
+  width: min(1240px, 96vw);
+  height: auto;
+  min-height: 72vh;
+  margin: 0 auto;
+  overflow: visible;
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: clamp(0.9rem, 2.2vw, 1.5rem);
+  align-items: start;
+  padding: clamp(0.9rem, 1.8vw, 1.4rem);
+}
+
+.profile-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.profile-user-card h2 {
+  margin: 0;
+  color: #2f2f2f;
+  text-decoration: none;
+  font-size: clamp(1.4rem, 2.8vw, 2rem);
+}
+
+.profile-user-subtitle {
+  margin-top: 0.2rem;
+  color: #735a4f;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.82rem;
+}
+
+.profile-side-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.profile-nav-link,
+.profile-logout-btn {
+  border: none;
+  width: 100%;
+  text-align: left;
+  font-family: "Quantico", sans-serif;
+  font-size: 1.02rem;
+  border-radius: 4px;
+  cursor: pointer;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.22);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.profile-nav-link {
+  background: #fff;
+  color: #272727;
+  padding: 0.85rem 1rem;
+}
+
+.profile-nav-link.is-active {
+  background: #f4eebf;
+  color: #1f1f1f;
+}
+
+.profile-logout-btn {
+  margin-top: 0.25rem;
+  padding: 0.8rem 1rem;
+  background: #d83434;
+  color: #fff;
+  font-weight: 700;
+}
+
+.profile-content-panel {
+  position: relative;
+  min-height: clamp(520px, 68vh, 860px);
+  padding: clamp(1rem, 2.2vw, 1.8rem) !important;
+  transform: rotate(-0.4deg);
+}
+
+.profile-mobile-stamps {
+  display: none;
+}
+
+.profile-stamp-link {
+  border: 2px solid #1f1f1f;
+  background: #1f1f1f;
+  color: #fff;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
+
+.profile-stamp-link.is-active {
+  background: #c63232;
+  border-color: #c63232;
+}
+
+.profile-stamp-link.logout-stamp {
+  background: #b51f1f;
+  border-color: #b51f1f;
+}
+
+.profile-content-panel.profile-note-leaving {
+  animation: profile-note-leave 340ms ease-in forwards;
+  pointer-events: none;
+}
+
+.profile-content-panel.profile-note-entering {
+  animation: profile-note-enter 360ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  pointer-events: none;
+}
+
+@keyframes profile-note-leave {
+  0% {
+    transform: translateX(0) translateY(0) rotate(-0.4deg);
+    opacity: 1;
+  }
+  30% {
+    transform: translateX(12px) translateY(-12px) rotate(1.2deg);
+  }
+  100% {
+    transform: translateX(120vw) translateY(-18px) rotate(3deg);
+    opacity: 0;
+  }
+}
+
+@keyframes profile-note-enter {
+  0% {
+    transform: translateX(120vw) translateY(-18px) rotate(3deg);
+    opacity: 0;
+  }
+  65% {
+    transform: translateX(-8px) translateY(0) rotate(-0.8deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(0) translateY(0) rotate(-0.4deg);
+    opacity: 1;
+  }
+}
+
+.profile-dynamic-content .widget-title {
+  margin-bottom: 0.35rem;
+}
+
+.profile-dynamic-content p {
+  width: auto;
+  justify-self: flex-start;
+}
+
+.profile-account-details {
+  margin-top: 0.4rem;
+}
+
+.profile-account-field {
+  margin: 0.7rem 0 0.55rem;
+}
+
+.profile-account-label {
+  margin: 0;
+  color: #c6534e;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.8rem !important;
+  font-family: "Quantico", sans-serif;
+  font-weight: 700;
+}
+
+.profile-account-value {
+  margin: 0.45rem 0 0 !important;
+  color: #3c3c3c;
+  font-size: clamp(1.45rem, 2.8vw, 2rem) !important;
+  font-family: "Itim", serif;
+}
+
+.profile-account-divider {
+  border-top: 2px dashed rgba(60, 60, 60, 0.16);
+}
+
+@media (max-width: 900px) {
+  .corkboard.profile-board {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-content-panel {
+    min-height: auto;
+    padding-top: 3.4rem !important;
+  }
+
+  .profile-side-nav {
+    display: none;
+  }
+
+  .profile-logout-btn {
+    display: none;
+  }
+
+  .profile-mobile-stamps {
+    position: absolute;
+    top: 0.6rem;
+    right: 0.7rem;
+    display: inline-flex;
+    gap: 0.45rem;
+    z-index: 3;
+  }
+}
+
 .feedback-note {
-  width: min(1180px, 94%);
-  padding: clamp(1rem, 2vw, 1.4rem);
+  width: min(1180px, 94%) !important;
+  padding: clamp(1rem, 2vw, 1.4rem) !important;
 }
 
 .feedback-intro {
@@ -1982,6 +2196,89 @@ body.task-panel-open {
 .feedback-form textarea {
   resize: vertical;
   min-height: 140px;
+}
+
+.feedback-attachment-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.8rem;
+  align-items: center;
+}
+
+.feedback-photo-btn {
+  border: 2px solid #c6534e;
+  border-radius: 999px;
+  padding: 0.35rem 0.85rem;
+  background: #fff2e3;
+  color: #612a27;
+  font-family: "Quantico", sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.feedback-photo-hint {
+  font-size: 0.83rem;
+  color: #5b4436;
+  font-family: "Quantico", sans-serif;
+}
+
+.feedback-attachment-list {
+  margin: 0.2rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.feedback-attachment-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  border: 1px dashed #c6534e;
+  border-radius: 8px;
+  padding: 0.35rem 0.6rem;
+  background: #fffdf7;
+  font-family: "Quantico", sans-serif;
+  font-size: 0.8rem;
+}
+
+.feedback-attachment-main {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.feedback-attachment-preview {
+  width: 42px;
+  height: 42px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #d8b39e;
+  flex-shrink: 0;
+  background: #f9f0e6;
+}
+
+.feedback-attachment-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.feedback-attachment-remove {
+  border: none;
+  border-radius: 6px;
+  background: #fce0db;
+  color: #8c2e2b;
+  font-family: "Quantico", sans-serif;
+  font-size: 0.78rem;
+  padding: 0.2rem 0.45rem;
+  cursor: pointer;
 }
 
 .feedback-form input[readonly] {
@@ -2032,6 +2329,11 @@ body.task-panel-open {
   .feedback-form textarea {
     font-size: 0.9rem;
     padding: 0.5rem 0.55rem;
+  }
+
+  .feedback-photo-btn {
+    width: 100%;
+    justify-content: center;
   }
 
   #feedbackSubmitBtn {
@@ -2100,6 +2402,15 @@ body.task-panel-open {
 
 .daily-email-time-label {
   white-space: nowrap;
+}
+
+.profile-settings-select {
+  border: 2px solid #c6534e;
+  border-radius: 8px;
+  padding: 0.35rem 0.45rem;
+  font-family: "Quantico", sans-serif;
+  background: #fff7ee;
+  width: min(100%, 16rem);
 }
 
 #dailyEmailTime {

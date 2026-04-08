@@ -45,6 +45,18 @@ const UserSchema = new mongoose.Schema(
       dailyEmailLastSentOn: { type: String, default: null },
       weeklyEmail: { type: Boolean, default: true },
       timezone: { type: String, default: "America/Jamaica" },
+      board: {
+        defaultTaskSort: {
+          type: String,
+          enum: ["created_date", "effort_level", "due_date"],
+          default: "created_date",
+        },
+        defaultView: {
+          type: String,
+          enum: ["board", "calendar"],
+          default: "board",
+        },
+      },
     },
 
     lastLoginAt: { type: Date },
