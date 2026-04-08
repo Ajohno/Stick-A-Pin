@@ -2505,10 +2505,190 @@ document.addEventListener("DOMContentLoaded", () => {
   initWeeklyReflectionStatsWidget();
   initFeedbackForm();
   initProfileBoardNav();
+  initCalendarPage();
 
   checkAuthStatus({ isLoginPage, isRegisterPage, isProtectedPage, isHomePage }); // Check authentication status on page load
   initFocusMode();
 });
+
+
+function initCalendarPage() {
+  const calendarGrid = document.getElementById("calendarGrid");
+  const monthTitle = document.getElementById("calendarMonthTitle");
+  const prevBtn = document.getElementById("calendarPrevBtn");
+  const nextBtn = document.getElementById("calendarNextBtn");
+  const todayBtn = document.getElementById("calendarTodayBtn");
+
+  if (!calendarGrid || !monthTitle || !prevBtn || !nextBtn || !todayBtn) return;
+
+  const today = new Date();
+  const todayYear = today.getFullYear();
+  const todayMonth = today.getMonth();
+  const todayDate = today.getDate();
+
+  let visibleDate = new Date(todayYear, todayMonth, 1);
+  let isTransitioning = false;
+  let dueDateLookup = new Set();
+
+
+  const toLocalDateKey = (value) => {
+    if (!value) return null;
+
+    if (typeof value === "string") {
+      const directMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (directMatch) {
+        return `${directMatch[1]}-${directMatch[2]}-${directMatch[3]}`;
+      }
+    }
+
+    const parsedDate = new Date(value);
+    if (Number.isNaN(parsedDate.getTime())) return null;
+
+    const year = parsedDate.getFullYear();
+    const month = String(parsedDate.getMonth() + 1).padStart(2, "0");
+    const day = String(parsedDate.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const buildVisibleDateKey = (year, month, day) => {
+    const normalizedMonth = String(month + 1).padStart(2, "0");
+    const normalizedDay = String(day).padStart(2, "0");
+    return `${year}-${normalizedMonth}-${normalizedDay}`;
+  };
+
+  const loadDueDateHighlights = async () => {
+    try {
+      const response = await apiFetch("/tasks", { credentials: "include" });
+      if (!response.ok) return;
+
+      const tasks = await response.json();
+      if (!Array.isArray(tasks)) return;
+
+      dueDateLookup = new Set(
+        tasks
+          .filter((task) => task?.status === "active")
+          .map((task) => toLocalDateKey(task?.dueDate))
+          .filter(Boolean),
+      );
+    } catch (error) {
+      console.error("Unable to load calendar due-date highlights:", error);
+    }
+  };
+
+  const waitForAnimation = (element, fallbackMs = 360) =>
+    new Promise((resolve) => {
+      if (!element) {
+        resolve();
+        return;
+      }
+
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        element.removeEventListener("animationend", finish);
+        resolve();
+      };
+
+      element.addEventListener("animationend", finish, { once: true });
+      window.setTimeout(finish, fallbackMs);
+    });
+
+  const renderCalendar = ({ animateIn = false } = {}) => {
+    const year = visibleDate.getFullYear();
+    const month = visibleDate.getMonth();
+    const firstDayOfMonth = new Date(year, month, 1).getDay();
+    const totalDays = new Date(year, month + 1, 0).getDate();
+
+    monthTitle.textContent = visibleDate.toLocaleString("en-US", {
+      month: "long",
+      year: "numeric",
+    });
+
+    calendarGrid.innerHTML = "";
+
+    for (let i = 0; i < firstDayOfMonth; i += 1) {
+      const emptySlot = document.createElement("div");
+      emptySlot.className = "calendar-empty";
+      emptySlot.setAttribute("aria-hidden", "true");
+      calendarGrid.appendChild(emptySlot);
+    }
+
+    for (let day = 1; day <= totalDays; day += 1) {
+      const dayNote = document.createElement("article");
+      dayNote.className = "calendar-day";
+      dayNote.setAttribute("role", "gridcell");
+      dayNote.setAttribute("aria-label", `${monthTitle.textContent} ${day}`);
+
+      const visibleDateKey = buildVisibleDateKey(year, month, day);
+      if (dueDateLookup.has(visibleDateKey)) {
+        dayNote.classList.add("has-due-task");
+      }
+
+      if (animateIn) {
+        dayNote.classList.add("calendar-note-entering");
+        dayNote.style.setProperty("--note-stagger", `${Math.min(day * 12, 260)}ms`);
+      }
+
+      const dayNumber = document.createElement("span");
+      dayNumber.className = "calendar-day-number";
+      dayNumber.textContent = String(day);
+      dayNote.appendChild(dayNumber);
+
+      const isToday = year === todayYear && month === todayMonth && day === todayDate;
+      if (isToday) {
+        dayNote.classList.add("today");
+        const todayLabel = document.createElement("span");
+        todayLabel.className = "calendar-today-label";
+        todayLabel.textContent = "today";
+        dayNote.appendChild(todayLabel);
+      }
+
+      calendarGrid.appendChild(dayNote);
+    }
+  };
+
+  const transitionToMonth = async (nextVisibleDate, { focusToday = false } = {}) => {
+    if (isTransitioning) return;
+    isTransitioning = true;
+
+    const existingNotes = Array.from(calendarGrid.querySelectorAll(".calendar-day"));
+    if (existingNotes.length) {
+      existingNotes.forEach((note, index) => {
+        note.classList.add("calendar-note-leaving");
+        note.style.setProperty("--note-stagger", `${Math.min(index * 10, 180)}ms`);
+      });
+
+      await waitForAnimation(existingNotes[existingNotes.length - 1], 360);
+    }
+
+    visibleDate = new Date(nextVisibleDate.getFullYear(), nextVisibleDate.getMonth(), 1);
+    renderCalendar({ animateIn: true });
+
+    if (focusToday) {
+      const todayCell = calendarGrid.querySelector(".calendar-day.today");
+      todayCell?.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+    }
+
+    isTransitioning = false;
+  };
+
+  prevBtn.addEventListener("click", () => {
+    transitionToMonth(new Date(visibleDate.getFullYear(), visibleDate.getMonth() - 1, 1));
+  });
+
+  nextBtn.addEventListener("click", () => {
+    transitionToMonth(new Date(visibleDate.getFullYear(), visibleDate.getMonth() + 1, 1));
+  });
+
+  todayBtn.addEventListener("click", () => {
+    transitionToMonth(new Date(todayYear, todayMonth, 1), { focusToday: true });
+  });
+
+  loadDueDateHighlights().finally(() => {
+    renderCalendar({ animateIn: true });
+  });
+}
 
 async function updateNavTaskCounter() {
   const counters = document.querySelectorAll(".item-counter");
