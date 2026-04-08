@@ -2527,8 +2527,28 @@ function initCalendarPage() {
   const todayDate = today.getDate();
 
   let visibleDate = new Date(todayYear, todayMonth, 1);
+  let isTransitioning = false;
 
-  const renderCalendar = () => {
+  const waitForAnimation = (element, fallbackMs = 360) =>
+    new Promise((resolve) => {
+      if (!element) {
+        resolve();
+        return;
+      }
+
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        element.removeEventListener("animationend", finish);
+        resolve();
+      };
+
+      element.addEventListener("animationend", finish, { once: true });
+      window.setTimeout(finish, fallbackMs);
+    });
+
+  const renderCalendar = ({ animateIn = false } = {}) => {
     const year = visibleDate.getFullYear();
     const month = visibleDate.getMonth();
     const firstDayOfMonth = new Date(year, month, 1).getDay();
@@ -2554,6 +2574,11 @@ function initCalendarPage() {
       dayNote.setAttribute("role", "gridcell");
       dayNote.setAttribute("aria-label", `${monthTitle.textContent} ${day}`);
 
+      if (animateIn) {
+        dayNote.classList.add("calendar-note-entering");
+        dayNote.style.setProperty("--note-stagger", `${Math.min(day * 12, 260)}ms`);
+      }
+
       const dayNumber = document.createElement("span");
       dayNumber.className = "calendar-day-number";
       dayNumber.textContent = String(day);
@@ -2572,25 +2597,44 @@ function initCalendarPage() {
     }
   };
 
+  const transitionToMonth = async (nextVisibleDate, { focusToday = false } = {}) => {
+    if (isTransitioning) return;
+    isTransitioning = true;
+
+    const existingNotes = Array.from(calendarGrid.querySelectorAll(".calendar-day"));
+    if (existingNotes.length) {
+      existingNotes.forEach((note, index) => {
+        note.classList.add("calendar-note-leaving");
+        note.style.setProperty("--note-stagger", `${Math.min(index * 10, 180)}ms`);
+      });
+
+      await waitForAnimation(existingNotes[existingNotes.length - 1], 360);
+    }
+
+    visibleDate = new Date(nextVisibleDate.getFullYear(), nextVisibleDate.getMonth(), 1);
+    renderCalendar({ animateIn: true });
+
+    if (focusToday) {
+      const todayCell = calendarGrid.querySelector(".calendar-day.today");
+      todayCell?.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+    }
+
+    isTransitioning = false;
+  };
+
   prevBtn.addEventListener("click", () => {
-    visibleDate = new Date(visibleDate.getFullYear(), visibleDate.getMonth() - 1, 1);
-    renderCalendar();
+    transitionToMonth(new Date(visibleDate.getFullYear(), visibleDate.getMonth() - 1, 1));
   });
 
   nextBtn.addEventListener("click", () => {
-    visibleDate = new Date(visibleDate.getFullYear(), visibleDate.getMonth() + 1, 1);
-    renderCalendar();
+    transitionToMonth(new Date(visibleDate.getFullYear(), visibleDate.getMonth() + 1, 1));
   });
 
   todayBtn.addEventListener("click", () => {
-    visibleDate = new Date(todayYear, todayMonth, 1);
-    renderCalendar();
-
-    const todayCell = calendarGrid.querySelector(".calendar-day.today");
-    todayCell?.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+    transitionToMonth(new Date(todayYear, todayMonth, 1), { focusToday: true });
   });
 
-  renderCalendar();
+  renderCalendar({ animateIn: true });
 }
 
 async function updateNavTaskCounter() {

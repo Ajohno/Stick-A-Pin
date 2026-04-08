@@ -575,7 +575,7 @@
 
 .calendar-day,
 .calendar-empty {
-  min-height: clamp(88px, 13vw, 140px);
+  min-height: clamp(64px, 8vw, 112px);
 }
 
 .calendar-day {
@@ -587,6 +587,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  aspect-ratio: 1 / 1;
 }
 
 .calendar-day::before {
@@ -633,6 +634,48 @@
   text-transform: lowercase;
 }
 
+
+
+.calendar-day.calendar-note-leaving {
+  animation: calendar-note-leave 300ms ease-in forwards;
+  animation-delay: var(--note-stagger, 0ms);
+  pointer-events: none;
+}
+
+.calendar-day.calendar-note-entering {
+  animation: calendar-note-enter 360ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  animation-delay: var(--note-stagger, 0ms);
+}
+
+@keyframes calendar-note-leave {
+  0% {
+    transform: translateX(0) translateY(0) rotate(-1deg);
+    opacity: 1;
+  }
+  35% {
+    transform: translateX(8px) translateY(-10px) rotate(1deg);
+  }
+  100% {
+    transform: translateX(110vw) translateY(-15px) rotate(3deg);
+    opacity: 0;
+  }
+}
+
+@keyframes calendar-note-enter {
+  0% {
+    transform: translateX(110vw) translateY(-15px) rotate(3deg);
+    opacity: 0;
+  }
+  70% {
+    transform: translateX(-6px) translateY(0) rotate(-0.8deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(0) translateY(0) rotate(-1deg);
+    opacity: 1;
+  }
+}
+
 @media (max-width: 760px) {
   .calendar-weekdays span {
     font-size: 10px;
@@ -640,7 +683,7 @@
 
   .calendar-day,
   .calendar-empty {
-    min-height: 72px;
+    min-height: 54px;
   }
 
   .calendar-day {
