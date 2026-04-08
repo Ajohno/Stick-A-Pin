@@ -495,10 +495,12 @@
    ============================================================ */
 .corkboard.calendar-board {
   width: min(1200px, 95vw);
-  height: fit-content;
-  min-height: 0;
+  height: auto !important;
+  min-height: max-content;
+  overflow: visible;
   margin: 0 auto;
   padding: clamp(16px, 2.5vw, 28px);
+  padding-bottom: clamp(28px, 4vw, 44px);
 }
 
 .calendar-shell {
