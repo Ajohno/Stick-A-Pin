@@ -36,6 +36,18 @@ const RESEND_WEBHOOK_SECRET = (process.env.RESEND_WEBHOOK_SECRET || "").trim();
 
 const DAILY_EMAIL_SCHEDULER_INTERVAL_MS = Number(process.env.DAILY_EMAIL_SCHEDULER_INTERVAL_MS || 60 * 1000);
 let dailyEmailSchedulerStarted = false;
+const VALID_BOARD_TASK_SORT_OPTIONS = new Set(["created_date", "effort_level", "due_date"]);
+const VALID_BOARD_DEFAULT_VIEW_OPTIONS = new Set(["board", "calendar"]);
+
+function normalizeBoardTaskSort(rawValue) {
+  const candidate = String(rawValue || "").trim();
+  return VALID_BOARD_TASK_SORT_OPTIONS.has(candidate) ? candidate : "created_date";
+}
+
+function normalizeBoardDefaultView(rawValue) {
+  const candidate = String(rawValue || "").trim();
+  return VALID_BOARD_DEFAULT_VIEW_OPTIONS.has(candidate) ? candidate : "board";
+}
 
 // Rate limiter for authenticated routes to protect expensive operations
 const authenticatedLimiter = rateLimit({
@@ -1560,6 +1572,58 @@ app.post("/feedback/report-bug", authenticatedLimiter, ensureAuthenticated, feed
   }
 });
 
+app.get("/settings/board-preferences", authenticatedLimiter, ensureAuthenticated, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select("settings.board.defaultTaskSort settings.board.defaultView");
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    return res.json({
+      board: {
+        default_task_sort: normalizeBoardTaskSort(user.settings?.board?.defaultTaskSort),
+        default_view: normalizeBoardDefaultView(user.settings?.board?.defaultView),
+      },
+    });
+  } catch (error) {
+    console.error("Error loading board preferences:", error);
+    return res.status(500).json({ error: "Unable to load board preferences" });
+  }
+});
+
+app.put("/settings/board-preferences", authenticatedLimiter, ensureAuthenticated, async (req, res) => {
+  try {
+    const defaultTaskSort = normalizeBoardTaskSort(req.body?.board?.default_task_sort);
+    const defaultView = normalizeBoardDefaultView(req.body?.board?.default_view);
+
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user.id,
+      {
+        $set: {
+          "settings.board.defaultTaskSort": defaultTaskSort,
+          "settings.board.defaultView": defaultView,
+        },
+      },
+      { new: true, runValidators: true }
+    ).select("settings.board.defaultTaskSort settings.board.defaultView");
+
+    if (!updatedUser) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    return res.json({
+      message: "Board preferences updated",
+      board: {
+        default_task_sort: normalizeBoardTaskSort(updatedUser.settings?.board?.defaultTaskSort),
+        default_view: normalizeBoardDefaultView(updatedUser.settings?.board?.defaultView),
+      },
+    });
+  } catch (error) {
+    console.error("Error saving board preferences:", error);
+    return res.status(500).json({ error: "Unable to save board preferences" });
+  }
+});
+
 
 // Route to check user authentication status
 app.get("/auth-status", (req, res) => {
@@ -1572,6 +1636,12 @@ app.get("/auth-status", (req, res) => {
       firstName: req.user.firstName,
       lastName: req.user.lastName,
       email: req.user.email,
+      settings: {
+        board: {
+          default_task_sort: normalizeBoardTaskSort(req.user.settings?.board?.defaultTaskSort),
+          default_view: normalizeBoardDefaultView(req.user.settings?.board?.defaultView),
+        },
+      },
     },
   });
 });
