@@ -2566,7 +2566,7 @@ function initCalendarPage() {
 
       dueDateLookup = new Set(
         tasks
-          .filter((task) => task?.status === "active" || task?.status === "completed")
+          .filter((task) => task?.status === "active")
           .map((task) => toLocalDateKey(task?.dueDate))
           .filter(Boolean),
       );
