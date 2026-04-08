@@ -165,10 +165,16 @@ function mapPreferenceSortToFilter(defaultTaskSort) {
 function setBoardPreferences(preferences = {}) {
   const nextTaskSort = normalizeDefaultTaskSort(preferences.defaultTaskSort);
   const nextDefaultView = normalizeDefaultView(preferences.defaultView);
+  const preferredPath =
+    nextDefaultView === "calendar" ? "/calendar-page.html" : "/dashboard.html";
 
   appPreferenceState.board.defaultTaskSort = nextTaskSort;
   appPreferenceState.board.defaultView = nextDefaultView;
   dashboardTaskState.filter = mapPreferenceSortToFilter(nextTaskSort);
+
+  document.querySelectorAll(".brand-link").forEach((linkEl) => {
+    linkEl.setAttribute("href", preferredPath);
+  });
 }
 
 function hydrateBoardPreferences(user = {}) {
@@ -1934,14 +1940,14 @@ function getProfilePanelMarkup(panelKey, user = null) {
           <div class="daily-email-settings" style="margin-top: 0.6rem;">
             <label class="daily-email-label" for="boardDefaultTaskSort">Default Task Sort</label>
             <select id="boardDefaultTaskSort" class="profile-settings-select">
-              <option value="created_date">created_date</option>
-              <option value="effort_level">effort_level</option>
-              <option value="due_date">due_date</option>
+              <option value="created_date">Date Created</option>
+              <option value="effort_level">Effort Level</option>
+              <option value="due_date">Due Date</option>
             </select>
             <label class="daily-email-label" for="boardDefaultView">Default View</label>
             <select id="boardDefaultView" class="profile-settings-select">
-              <option value="board">board</option>
-              <option value="calendar">calendar</option>
+              <option value="board">Board</option>
+              <option value="calendar">Calendar</option>
             </select>
           </div>
         </div>
