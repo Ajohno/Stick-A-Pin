@@ -495,8 +495,8 @@
    ============================================================ */
 .corkboard.calendar-board {
   width: min(1200px, 95vw);
-  height: auto;
-  min-height: calc(100vh - 110px);
+  height: fit-content;
+  min-height: 0;
   margin: 0 auto;
   padding: clamp(16px, 2.5vw, 28px);
 }
