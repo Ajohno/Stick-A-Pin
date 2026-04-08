@@ -1826,6 +1826,12 @@ function getProfilePanelMarkup(panelKey, user = null) {
     .join(" ")
     || String(user?.name || "Not available").trim();
   const emailAddress = String(user?.email || "Not available").trim();
+  const timezoneValue = String(
+    user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "Not available",
+  ).trim();
+  const languageValue = String(
+    user?.language || navigator.language || "Not available",
+  ).trim();
 
   return `
     <section class="profile-dynamic-content" aria-label="My profile">
@@ -1842,6 +1848,16 @@ function getProfilePanelMarkup(panelKey, user = null) {
         <div class="profile-account-field">
           <p class="profile-account-label">Email Address</p>
           <p class="profile-account-value">${emailAddress || "Not available"}</p>
+        </div>
+        <div class="profile-account-divider" aria-hidden="true"></div>
+        <div class="profile-account-field">
+          <p class="profile-account-label">Timezone</p>
+          <p class="profile-account-value">${timezoneValue || "Not available"}</p>
+        </div>
+        <div class="profile-account-divider" aria-hidden="true"></div>
+        <div class="profile-account-field">
+          <p class="profile-account-label">Language</p>
+          <p class="profile-account-value">${languageValue || "Not available"}</p>
         </div>
         <div class="profile-account-divider" aria-hidden="true"></div>
       </div>
