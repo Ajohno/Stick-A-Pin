@@ -2505,10 +2505,84 @@ document.addEventListener("DOMContentLoaded", () => {
   initWeeklyReflectionStatsWidget();
   initFeedbackForm();
   initProfileBoardNav();
+  initCalendarPage();
 
   checkAuthStatus({ isLoginPage, isRegisterPage, isProtectedPage, isHomePage }); // Check authentication status on page load
   initFocusMode();
 });
+
+
+function initCalendarPage() {
+  const calendarGrid = document.getElementById("calendarGrid");
+  const monthTitle = document.getElementById("calendarMonthTitle");
+  const prevBtn = document.getElementById("calendarPrevBtn");
+  const nextBtn = document.getElementById("calendarNextBtn");
+
+  if (!calendarGrid || !monthTitle || !prevBtn || !nextBtn) return;
+
+  const today = new Date();
+  const todayYear = today.getFullYear();
+  const todayMonth = today.getMonth();
+  const todayDate = today.getDate();
+
+  let visibleDate = new Date(todayYear, todayMonth, 1);
+
+  const renderCalendar = () => {
+    const year = visibleDate.getFullYear();
+    const month = visibleDate.getMonth();
+    const firstDayOfMonth = new Date(year, month, 1).getDay();
+    const totalDays = new Date(year, month + 1, 0).getDate();
+
+    monthTitle.textContent = visibleDate.toLocaleString("en-US", {
+      month: "long",
+      year: "numeric",
+    });
+
+    calendarGrid.innerHTML = "";
+
+    for (let i = 0; i < firstDayOfMonth; i += 1) {
+      const emptySlot = document.createElement("div");
+      emptySlot.className = "calendar-empty";
+      emptySlot.setAttribute("aria-hidden", "true");
+      calendarGrid.appendChild(emptySlot);
+    }
+
+    for (let day = 1; day <= totalDays; day += 1) {
+      const dayNote = document.createElement("article");
+      dayNote.className = "calendar-day";
+      dayNote.setAttribute("role", "gridcell");
+      dayNote.setAttribute("aria-label", `${monthTitle.textContent} ${day}`);
+
+      const dayNumber = document.createElement("span");
+      dayNumber.className = "calendar-day-number";
+      dayNumber.textContent = String(day);
+      dayNote.appendChild(dayNumber);
+
+      const isToday = year === todayYear && month === todayMonth && day === todayDate;
+      if (isToday) {
+        dayNote.classList.add("today");
+        const todayLabel = document.createElement("span");
+        todayLabel.className = "calendar-today-label";
+        todayLabel.textContent = "today";
+        dayNote.appendChild(todayLabel);
+      }
+
+      calendarGrid.appendChild(dayNote);
+    }
+  };
+
+  prevBtn.addEventListener("click", () => {
+    visibleDate = new Date(visibleDate.getFullYear(), visibleDate.getMonth() - 1, 1);
+    renderCalendar();
+  });
+
+  nextBtn.addEventListener("click", () => {
+    visibleDate = new Date(visibleDate.getFullYear(), visibleDate.getMonth() + 1, 1);
+    renderCalendar();
+  });
+
+  renderCalendar();
+}
 
 async function updateNavTaskCounter() {
   const counters = document.querySelectorAll(".item-counter");

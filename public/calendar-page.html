@@ -80,22 +80,31 @@
     </nav>
     <div id="nav-backdrop" aria-hidden="true"></div>
 
-    <main
-      class="corkboard placeholder-board"
-      style="max-width: 1100px; margin: 0 auto"
-    >
-      <section
-        class="sticky-note orange caution-tape page-placeholder"
-        aria-label="Calendar page coming soon"
-      >
-        <h2 class="widget-title">
-          <i class="fa-solid fa-calendar-days" style="color: #c6534e"></i>
-          Calendar
-        </h2>
-        <p>
-          This page is currently in progress. Check back soon for your full
-          calendar view.
-        </p>
+    <main class="corkboard calendar-board" aria-label="Monthly calendar">
+      <section class="calendar-shell" id="calendarApp">
+        <header class="calendar-header">
+          <h1 id="calendarMonthTitle" class="calendar-month-title">Month YYYY</h1>
+          <div class="calendar-controls" aria-label="Month navigation">
+            <button id="calendarPrevBtn" class="calendar-nav-btn" type="button" aria-label="Previous month">
+              <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+            </button>
+            <button id="calendarNextBtn" class="calendar-nav-btn" type="button" aria-label="Next month">
+              <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+            </button>
+          </div>
+        </header>
+
+        <div class="calendar-weekdays" aria-hidden="true">
+          <span>Sunday</span>
+          <span>Monday</span>
+          <span>Tuesday</span>
+          <span>Wednesday</span>
+          <span>Thursday</span>
+          <span>Friday</span>
+          <span>Saturday</span>
+        </div>
+
+        <div id="calendarGrid" class="calendar-grid" role="grid" aria-label="Calendar days"></div>
       </section>
     </main>
 
