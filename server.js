@@ -70,18 +70,6 @@ if (!process.env.SESSION_SECRET) {
 
 // Connect to MongoDB
 app.use(async (req, res, next) => {
-  const requestPath = String(req.path || "").toLowerCase();
-  const isStaticAssetRequest =
-    requestPath === "/"
-    || /\.(html|css|js|png|jpg|jpeg|gif|svg|ico|webmanifest|map|txt)$/i.test(requestPath)
-    || requestPath.startsWith("/assets/")
-    || requestPath.startsWith("/css/")
-    || requestPath.startsWith("/js/");
-
-  if (isStaticAssetRequest) {
-    return next();
-  }
-
   try {
     await connectDB();
     return next();
