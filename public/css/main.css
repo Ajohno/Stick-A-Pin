@@ -2404,6 +2404,15 @@ body.task-panel-open {
   white-space: nowrap;
 }
 
+.profile-settings-select {
+  border: 2px solid #c6534e;
+  border-radius: 8px;
+  padding: 0.35rem 0.45rem;
+  font-family: "Quantico", sans-serif;
+  background: #fff7ee;
+  width: min(100%, 16rem);
+}
+
 #dailyEmailTime {
   border: 2px solid #c6534e;
   border-radius: 8px;
