@@ -134,6 +134,57 @@ const dashboardTaskState = {
   allTasks: [],
 };
 
+const boardPreferenceDefaults = {
+  defaultTaskSort: "created_date",
+  defaultView: "board",
+};
+
+const appPreferenceState = {
+  board: {
+    defaultTaskSort: boardPreferenceDefaults.defaultTaskSort,
+    defaultView: boardPreferenceDefaults.defaultView,
+  },
+};
+
+function normalizeDefaultTaskSort(value) {
+  const allowed = new Set(["created_date", "effort_level", "due_date"]);
+  return allowed.has(value) ? value : boardPreferenceDefaults.defaultTaskSort;
+}
+
+function normalizeDefaultView(value) {
+  const allowed = new Set(["board", "calendar"]);
+  return allowed.has(value) ? value : boardPreferenceDefaults.defaultView;
+}
+
+function mapPreferenceSortToFilter(defaultTaskSort) {
+  if (defaultTaskSort === "effort_level") return "effort";
+  if (defaultTaskSort === "due_date") return "due-date";
+  return "task-list";
+}
+
+function setBoardPreferences(preferences = {}) {
+  const nextTaskSort = normalizeDefaultTaskSort(preferences.defaultTaskSort);
+  const nextDefaultView = normalizeDefaultView(preferences.defaultView);
+  const preferredPath =
+    nextDefaultView === "calendar" ? "/calendar-page.html" : "/dashboard.html";
+
+  appPreferenceState.board.defaultTaskSort = nextTaskSort;
+  appPreferenceState.board.defaultView = nextDefaultView;
+  dashboardTaskState.filter = mapPreferenceSortToFilter(nextTaskSort);
+
+  document.querySelectorAll(".brand-link").forEach((linkEl) => {
+    linkEl.setAttribute("href", preferredPath);
+  });
+}
+
+function hydrateBoardPreferences(user = {}) {
+  const boardSettings = user?.settings?.board || {};
+  setBoardPreferences({
+    defaultTaskSort: boardSettings.default_task_sort,
+    defaultView: boardSettings.default_view,
+  });
+}
+
 function formatFocusDuration(totalSeconds) {
   const safeSeconds = Math.max(0, parseInt(totalSeconds, 10) || 0);
   const minutes = Math.floor(safeSeconds / 60);
@@ -1769,6 +1820,80 @@ async function initFeedbackForm() {
   });
 }
 
+async function initBoardTaskPreferencesSettings() {
+  const sortSelectEl = document.getElementById("boardDefaultTaskSort");
+  const viewSelectEl = document.getElementById("boardDefaultView");
+  if (!sortSelectEl || !viewSelectEl) return;
+
+  sortSelectEl.value = normalizeDefaultTaskSort(appPreferenceState.board.defaultTaskSort);
+  viewSelectEl.value = normalizeDefaultView(appPreferenceState.board.defaultView);
+
+  const persistBoardPreferences = async (previousValues) => {
+    try {
+      const response = await apiFetch("/settings/board-preferences", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          board: {
+            default_task_sort: appPreferenceState.board.defaultTaskSort,
+            default_view: appPreferenceState.board.defaultView,
+          },
+        }),
+      });
+
+      const data = await parseApiResponse(response);
+      if (!response.ok) {
+        throw new Error(data?.error || "Unable to save board preferences.");
+      }
+
+      Toast.show({
+        message: "Board preferences saved",
+        type: "success",
+        duration: 1800,
+      });
+    } catch (error) {
+      setBoardPreferences(previousValues);
+      sortSelectEl.value = appPreferenceState.board.defaultTaskSort;
+      viewSelectEl.value = appPreferenceState.board.defaultView;
+      if (dashboardTaskState.allTasks?.length) {
+        updateTaskList(dashboardTaskState.allTasks);
+      }
+      Toast.show({
+        message: error.message || "Could not save board preferences.",
+        type: "error",
+        duration: 2800,
+      });
+    }
+  };
+
+  sortSelectEl.addEventListener("change", async () => {
+    const previousValues = {
+      defaultTaskSort: appPreferenceState.board.defaultTaskSort,
+      defaultView: appPreferenceState.board.defaultView,
+    };
+
+    setBoardPreferences({
+      defaultTaskSort: sortSelectEl.value,
+      defaultView: viewSelectEl.value,
+    });
+    updateTaskList(dashboardTaskState.allTasks);
+    await persistBoardPreferences(previousValues);
+  });
+
+  viewSelectEl.addEventListener("change", async () => {
+    const previousValues = {
+      defaultTaskSort: appPreferenceState.board.defaultTaskSort,
+      defaultView: appPreferenceState.board.defaultView,
+    };
+
+    setBoardPreferences({
+      defaultTaskSort: sortSelectEl.value,
+      defaultView: viewSelectEl.value,
+    });
+    await persistBoardPreferences(previousValues);
+  });
+}
+
 function getProfilePanelMarkup(panelKey, user = null) {
   if (panelKey === "support") {
     return `
@@ -1810,10 +1935,22 @@ function getProfilePanelMarkup(panelKey, user = null) {
           <i class="fa-solid fa-gear" style="color: #c6534e"></i>
           Settings
         </h2>
-        <p>
-          This page is currently in progress. Check back soon for settings
-          tools and options.
-        </p>
+        <div class="daily-reflection-card">
+          <h3 class="daily-reflection-title">Board &amp; Task Preferences</h3>
+          <div class="daily-email-settings" style="margin-top: 0.6rem;">
+            <label class="daily-email-label" for="boardDefaultTaskSort">Default Task Sort</label>
+            <select id="boardDefaultTaskSort" class="profile-settings-select">
+              <option value="created_date">Date Created</option>
+              <option value="effort_level">Effort Level</option>
+              <option value="due_date">Due Date</option>
+            </select>
+            <label class="daily-email-label" for="boardDefaultView">Default View</label>
+            <select id="boardDefaultView" class="profile-settings-select">
+              <option value="board">Board</option>
+              <option value="calendar">Calendar</option>
+            </select>
+          </div>
+        </div>
       </section>
     `;
   }
@@ -1890,6 +2027,9 @@ function initProfileBoardNav() {
 
     if (panelKey === "support") {
       initFeedbackForm();
+    }
+    if (panelKey === "settings") {
+      initBoardTaskPreferencesSettings();
     }
   };
 
@@ -2275,14 +2415,21 @@ document.addEventListener("DOMContentLoaded", () => {
         const data = await parseApiResponse(response);
 
         if (response.ok) {
+          hydrateBoardPreferences(data?.user);
+          const preferredDefaultPath =
+            typeof data?.preferredDefaultPath === "string"
+              ? data.preferredDefaultPath
+              : (normalizeDefaultView(data?.user?.settings?.board?.default_view) === "calendar"
+                ? "/calendar-page.html"
+                : "/dashboard.html");
+
           // alert("Login successful!");
           Toast.show({
             message: "Login Sucessful",
             type: "success",
             duration: 2000,
           });
-          // Auth pages should move you to the dashboard once logged in
-          window.location.href = "/dashboard.html";
+          window.location.href = preferredDefaultPath;
         } else {
           alert("Login failed: " + (data.error || "Unknown error"));
           Toast.show({
@@ -2410,14 +2557,24 @@ async function checkAuthStatus({
   }
 
   if (data.loggedIn) {
+    hydrateBoardPreferences(data?.user);
+
+    const preferredDefaultView = normalizeDefaultView(
+      appPreferenceState.board.defaultView,
+    );
+    const preferredDefaultPath =
+      preferredDefaultView === "calendar"
+        ? "/calendar-page.html"
+        : "/dashboard.html";
+
     if (isHomePage) {
-      window.location.href = "/dashboard.html";
+      window.location.href = preferredDefaultPath;
       return;
     }
 
     // Keep login/register pages from showing when already authenticated
     if (isLoginPage || isRegisterPage) {
-      window.location.href = "/dashboard.html";
+      window.location.href = preferredDefaultPath;
       return;
     }
 
