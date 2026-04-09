@@ -2140,6 +2140,7 @@ body.task-panel-open {
 
 .profile-delete-account-btn {
   align-self: flex-start;
+  margin-right: auto;
 }
 
 .profile-delete-actions .paper-button {
@@ -2169,10 +2170,10 @@ body.task-panel-open {
 }
 
 .profile-cancel-delete-btn {
-  background: linear-gradient(180deg, #ffffff 0%, #f1f1f1 100%);
-  color: #3a3a3a;
+  background: linear-gradient(180deg, #f2a3a3 0%, #de7f7f 100%);
+  color: #fff9f9;
   box-shadow:
-    0 4px 0 #c9c9c9,
+    0 4px 0 #b56363,
     2px 2px 0 #1f1f1f;
 }
 
