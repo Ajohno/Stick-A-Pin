@@ -2168,6 +2168,14 @@ body.task-panel-open {
   gap: 0.5rem;
 }
 
+.profile-cancel-delete-btn {
+  background: linear-gradient(180deg, #ffffff 0%, #f1f1f1 100%);
+  color: #3a3a3a;
+  box-shadow:
+    0 4px 0 #c9c9c9,
+    2px 2px 0 #1f1f1f;
+}
+
 .profile-confirm-delete-btn:disabled,
 .profile-cancel-delete-btn:disabled,
 .profile-delete-account-btn:disabled {

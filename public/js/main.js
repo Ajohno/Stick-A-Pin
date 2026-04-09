@@ -2099,8 +2099,7 @@ function initProfileBoardNav() {
         }
         deleteAccountContainer.hidden = false;
       } else {
-        panelStickyNote?.appendChild(deleteAccountContainer);
-        deleteAccountContainer.hidden = true;
+        deleteAccountContainer.remove();
         const deleteBtn = document.getElementById("profileDeleteAccountBtn");
         const confirmNote = document.getElementById("profileDeleteConfirmNote");
         if (deleteBtn) deleteBtn.hidden = false;
