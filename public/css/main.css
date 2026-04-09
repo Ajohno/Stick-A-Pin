@@ -2127,6 +2127,64 @@ body.task-panel-open {
   border-top: 2px dashed rgba(60, 60, 60, 0.16);
 }
 
+.profile-danger-zone {
+  margin-top: 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.profile-delete-account-btn {
+  align-self: flex-end;
+  border: 2px dashed #b54f6a;
+  background: #ffe0ea;
+  color: #842843;
+  font-family: "Quantico", sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  border-radius: 12px;
+  padding: 0.45rem 0.8rem;
+  cursor: pointer;
+}
+
+.profile-delete-confirm-note {
+  align-self: flex-end;
+  width: min(360px, 100%);
+  background: #ffd4e4;
+  border: 2px dashed #c65b7e;
+  border-radius: 16px;
+  padding: 0.75rem 0.8rem;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.12);
+}
+
+.profile-delete-confirm-note p {
+  margin: 0;
+  color: #5f2337;
+  font-size: 0.96rem;
+}
+
+.profile-delete-confirm-actions {
+  margin-top: 0.6rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.profile-cancel-delete-btn {
+  background: linear-gradient(180deg, #d6d6d6 0%, #bfbfbf 100%);
+}
+
+.profile-confirm-delete-btn {
+  background: linear-gradient(180deg, #e66d8b 0%, #c65376 100%);
+}
+
+.profile-confirm-delete-btn:disabled,
+.profile-cancel-delete-btn:disabled,
+.profile-delete-account-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
 @media (max-width: 900px) {
   .corkboard.profile-board {
     grid-template-columns: 1fr;
