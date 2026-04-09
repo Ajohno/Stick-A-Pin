@@ -2143,12 +2143,6 @@ body.task-panel-open {
   width: auto;
   min-width: 10.5rem;
   text-align: center;
-  border-color: #b54f6a;
-  background: linear-gradient(180deg, #f7b5c7 0%, #de6d8d 100%);
-  color: #fff8fb;
-  box-shadow:
-    0 4px 0 #8f3551,
-    2px 2px 0 #1f1f1f;
 }
 
 .profile-delete-confirm-note {
@@ -2169,14 +2163,6 @@ body.task-panel-open {
   display: flex;
   justify-content: flex-end;
   gap: 0.5rem;
-}
-
-.profile-cancel-delete-btn {
-  background: linear-gradient(180deg, #d6d6d6 0%, #bfbfbf 100%);
-}
-
-.profile-confirm-delete-btn {
-  background: linear-gradient(180deg, #e66d8b 0%, #c65376 100%);
 }
 
 .profile-confirm-delete-btn:disabled,
