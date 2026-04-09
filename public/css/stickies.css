@@ -699,7 +699,7 @@
 .calendar-task-composer {
   width: min(530px, 94vw);
   max-height: min(90vh, 760px);
-  overflow-y: auto;
+  overflow: visible;
 }
 
 #create-task-widget.calendar-task-composer .create-task-form-grid {
