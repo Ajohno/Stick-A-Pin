@@ -4,7 +4,6 @@ const mime = require("mime");
 const path = require("path");
 const crypto = require("crypto");
 const rateLimit = require("express-rate-limit");
-const rateLimit = require("express-rate-limit");
 const connectDB = require("./config/database"); // Connects to MongoDB
 const session = require("express-session"); // Handles sessions for logged-in users
 const passport = require("passport"); // Middleware for authentication
@@ -12,7 +11,6 @@ const bcrypt = require("bcryptjs"); // Used to hash passwords
 const User = require("./config/models/user"); // User model for the database
 const Task = require("./config/models/task"); // Task model for the database
 const FocusSession = require("./config/models/focusSession"); // FocusSession model for tracking focus sessions
-const rateLimit = require("express-rate-limit");
 const FeedbackReport = require("./config/models/feedbackReport"); // Feedback report model for durable rate limiting
 const InboundEmail = require("./config/models/inboundEmail"); // Resend inbound email storage
 const csrf = require("lusca").csrf; // CSRF protection middleware
@@ -95,10 +93,10 @@ app.use(async (req, res, next) => {
 // Middleware -----------------------------------------------------------------------------------
 const deleteAccountLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // limit account deletion attempts per IP per window
+  max: 3,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Too many requests. Please try again later." },
+  message: { error: "Too many account deletion attempts. Please try again later." },
 });
 
 
@@ -1089,15 +1087,6 @@ app.post("/logout", (req, res) => {
         });
     });
 });
-app.delete("/account", deleteAccountLimiter, ensureAuthenticated, async (req, res) => {
-const deleteAccountLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 3,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: "Too many account deletion attempts. Please try again later." },
-});
-
 app.delete("/account", deleteAccountLimiter, ensureAuthenticated, async (req, res) => {
   const userId = req.user?._id || req.user?.id;
   if (!userId) {
