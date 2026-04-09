@@ -36,10 +36,9 @@ const RESEND_WEBHOOK_SECRET = (process.env.RESEND_WEBHOOK_SECRET || "").trim();
 
 const DAILY_EMAIL_SCHEDULER_INTERVAL_MS = Number(process.env.DAILY_EMAIL_SCHEDULER_INTERVAL_MS || 60 * 1000);
 let dailyEmailSchedulerStarted = false;
-const VERCEL_ENV = String(process.env.VERCEL_ENV || "").trim().toLowerCase();
+const IS_VERCEL_RUNTIME = String(process.env.VERCEL || "").trim() === "1";
 const SHOULD_RUN_DAILY_REFLECTION_SCHEDULER =
-  String(process.env.ENABLE_DAILY_REFLECTION_SCHEDULER || "").trim().toLowerCase() === "true" ||
-  (!VERCEL_ENV || VERCEL_ENV === "production");
+  String(process.env.ENABLE_DAILY_REFLECTION_SCHEDULER || "").trim().toLowerCase() === "true";
 const VALID_BOARD_TASK_SORT_OPTIONS = new Set(["created_date", "effort_level", "due_date"]);
 const VALID_BOARD_DEFAULT_VIEW_OPTIONS = new Set(["board", "calendar"]);
 
@@ -1678,7 +1677,7 @@ app.get("/:file", (req, res) => {
     }
 });
 
-if (SHOULD_RUN_DAILY_REFLECTION_SCHEDULER) {
+if (SHOULD_RUN_DAILY_REFLECTION_SCHEDULER || (!IS_VERCEL_RUNTIME && require.main === module)) {
   startDailyReflectionScheduler();
 } else {
   console.log("Daily reflection scheduler disabled for this environment.");
