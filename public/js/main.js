@@ -1998,14 +1998,72 @@ function getProfilePanelMarkup(panelKey, user = null) {
         </div>
         <div class="profile-account-divider" aria-hidden="true"></div>
       </div>
+      <div id="profileDeleteActionsMount"></div>
     </section>
   `;
+}
+
+function initDeleteAccountFlow() {
+  const deleteBtn = document.getElementById("profileDeleteAccountBtn");
+  const confirmNote = document.getElementById("profileDeleteConfirmNote");
+  const cancelBtn = document.getElementById("profileCancelDeleteBtn");
+  const confirmBtn = document.getElementById("profileConfirmDeleteBtn");
+
+  if (!deleteBtn || !confirmNote || !cancelBtn || !confirmBtn) return;
+
+  const setBusyState = (isBusy) => {
+    confirmBtn.disabled = isBusy;
+    cancelBtn.disabled = isBusy;
+    deleteBtn.disabled = isBusy;
+    confirmBtn.textContent = isBusy ? "Deleting..." : "Yes, Delete";
+  };
+
+  deleteBtn.addEventListener("click", () => {
+    confirmNote.hidden = false;
+    deleteBtn.hidden = true;
+  });
+
+  cancelBtn.addEventListener("click", () => {
+    confirmNote.hidden = true;
+    deleteBtn.hidden = false;
+  });
+
+  confirmBtn.addEventListener("click", async () => {
+    setBusyState(true);
+    try {
+      const response = await apiFetch("/account", {
+        credentials: "include",
+        method: "DELETE",
+      });
+      const data = await parseApiResponse(response);
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Unable to delete account.");
+      }
+
+      Toast.show({
+        message: "Account deleted successfully.",
+        type: "success",
+        duration: 2200,
+      });
+      window.location.href = "/login.html";
+    } catch (error) {
+      console.error("Delete account failed:", error);
+      Toast.show({
+        message: error?.message || "Unable to delete account right now.",
+        type: "error",
+        duration: 3500,
+      });
+      setBusyState(false);
+    }
+  });
 }
 
 function initProfileBoardNav() {
   const panelContainer = document.getElementById("profilePanelContent");
   const navButtons = Array.from(document.querySelectorAll(".profile-panel-trigger"));
   const panelStickyNote = document.getElementById("profileContentPanel");
+  const deleteAccountContainer = document.getElementById("profileDeleteAccountContainer");
   if (!panelContainer || !navButtons.length) return;
 
   const userNameEl = document.getElementById("profileSidebarUserName");
@@ -2030,6 +2088,24 @@ function initProfileBoardNav() {
     }
     if (panelKey === "settings") {
       initBoardTaskPreferencesSettings();
+    }
+    if (deleteAccountContainer) {
+      if (panelKey === "profile") {
+        const deleteMount = document.getElementById("profileDeleteActionsMount");
+        if (deleteMount) {
+          deleteMount.appendChild(deleteAccountContainer);
+        } else {
+          panelContainer.appendChild(deleteAccountContainer);
+        }
+        deleteAccountContainer.hidden = false;
+      } else {
+        panelStickyNote?.appendChild(deleteAccountContainer);
+        deleteAccountContainer.hidden = true;
+        const deleteBtn = document.getElementById("profileDeleteAccountBtn");
+        const confirmNote = document.getElementById("profileDeleteConfirmNote");
+        if (deleteBtn) deleteBtn.hidden = false;
+        if (confirmNote) confirmNote.hidden = true;
+      }
     }
   };
 
@@ -2147,6 +2223,7 @@ function initProfileBoardNav() {
     mobileLogoutBtn.addEventListener("click", triggerLogout);
   }
 
+  initDeleteAccountFlow();
   renderPanel("profile");
 }
 

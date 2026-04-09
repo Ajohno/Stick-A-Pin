@@ -177,8 +177,8 @@ module.exports = function (passport) {
               avatarUrl,
               authProviders: {
                 google: {
-                  id: providerId || null,
-                  email: providerEmail || null,
+                  id: providerId || undefined,
+                  email: providerEmail || undefined,
                 },
               },
             });
@@ -188,95 +188,6 @@ module.exports = function (passport) {
             const recoveredUser = await recoverUserFromDuplicateProviderError({
               error,
               providerKey: "google",
-              providerId,
-              providerEmail,
-            });
-
-            if (recoveredUser) {
-              return done(null, recoveredUser);
-            }
-
-            return done(error);
-          }
-        }
-      )
-    );
-  }
-
-  const appleClientID = process.env.APPLE_CLIENT_ID;
-  const appleTeamID = process.env.APPLE_TEAM_ID;
-  const appleKeyID = process.env.APPLE_KEY_ID;
-  const appleCallbackURL = process.env.APPLE_CALLBACK_URL;
-  const applePrivateKeyRaw = process.env.APPLE_PRIVATE_KEY;
-
-  if (appleClientID && appleTeamID && appleKeyID && appleCallbackURL && applePrivateKeyRaw) {
-    const AppleStrategy = require("passport-apple");
-
-    passport.use(
-      new AppleStrategy(
-        {
-          clientID: appleClientID,
-          teamID: appleTeamID,
-          keyID: appleKeyID,
-          callbackURL: appleCallbackURL,
-          privateKeyString: applePrivateKeyRaw.replace(/\\n/g, "\n"),
-          passReqToCallback: false,
-        },
-        async (accessToken, refreshToken, idToken, profile, done) => {
-          let providerId = "";
-          let providerEmail = "";
-
-          try {
-            providerId = String(profile?.id || "").trim();
-            providerEmail = normalizeEmail(profile?.email);
-            let user = providerId
-              ? await User.findOne({ "authProviders.apple.id": providerId })
-              : null;
-
-            if (!user && providerEmail) {
-              user = await User.findOne({ email: providerEmail });
-            }
-
-            if (user) {
-              user.authProviders = user.authProviders || {};
-              user.authProviders.apple = user.authProviders.apple || {};
-
-              if (providerId) user.authProviders.apple.id = providerId;
-              if (providerEmail) user.authProviders.apple.email = providerEmail;
-              if (!user.email && providerEmail) user.email = providerEmail;
-              if (user.emailVerified === false) {
-                user.emailVerified = true;
-                user.emailVerifiedAt = user.emailVerifiedAt || new Date();
-              }
-
-              await user.save();
-              return done(null, user);
-            }
-
-            if (!providerEmail) {
-              return done(null, false, { message: "No email returned from Apple account" });
-            }
-
-            const { firstName, lastName } = splitName(profile, providerEmail);
-            const createdUser = await User.create({
-              firstName,
-              lastName,
-              email: providerEmail,
-              emailVerified: true,
-              emailVerifiedAt: new Date(),
-              authProviders: {
-                apple: {
-                  id: providerId || null,
-                  email: providerEmail || null,
-                },
-              },
-            });
-
-            return done(null, createdUser);
-          } catch (error) {
-            const recoveredUser = await recoverUserFromDuplicateProviderError({
-              error,
-              providerKey: "apple",
               providerId,
               providerEmail,
             });

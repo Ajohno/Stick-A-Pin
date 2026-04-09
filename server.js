@@ -3,6 +3,8 @@ const fs = require("fs");
 const mime = require("mime");
 const path = require("path");
 const crypto = require("crypto");
+const rateLimit = require("express-rate-limit");
+const rateLimit = require("express-rate-limit");
 const connectDB = require("./config/database"); // Connects to MongoDB
 const session = require("express-session"); // Handles sessions for logged-in users
 const passport = require("passport"); // Middleware for authentication
@@ -91,6 +93,14 @@ app.use(async (req, res, next) => {
 });
 
 // Middleware -----------------------------------------------------------------------------------
+const deleteAccountLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // limit account deletion attempts per IP per window
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests. Please try again later." },
+});
+
 
 // Ensure a user is logged in before accessing routes
 function ensureAuthenticated(req, res, next) {
@@ -644,7 +654,7 @@ app.use(session({
 // CSRF protection for routes using cookie-based sessions
 const csrfProtection = csrf();
 app.use((req, res, next) => {
-  if (req.path === "/auth/apple/callback" || req.path === "/webhooks/resend/receiving") {
+  if (req.path === "/webhooks/resend/receiving") {
     return next();
   }
 
@@ -828,31 +838,6 @@ app.get("/auth/google/callback", authRateLimiter, (req, res) => {
     return res.redirect(getDefaultViewPathForUser(req.user));
   });
 });
-
-app.get("/auth/apple", authRateLimiter, (req, res, next) => {
-  if (!isStrategyEnabled("apple")) {
-    return res.status(503).json({ error: "Apple login is not configured" });
-  }
-
-  passport.authenticate("apple", { scope: ["name", "email"] })(req, res, next);
-});
-
-function handleAppleCallback(req, res) {
-  if (!isStrategyEnabled("apple")) {
-    return redirectAuthFailure(req, res);
-  }
-
-  return passport.authenticate("apple", { failureRedirect: "/login.html?error=sso_failed" })(req, res, (authErr) => {
-    if (authErr) {
-      console.error("Apple OAuth callback failed:", authErr);
-      return redirectAuthFailure(req, res);
-    }
-    return res.redirect(getDefaultViewPathForUser(req.user));
-  });
-}
-
-app.get("/auth/apple/callback", authRateLimiter, handleAppleCallback);
-app.post("/auth/apple/callback", authRateLimiter, express.urlencoded({ extended: false }), handleAppleCallback);
 
 // Register Route
 app.post("/register", async (req, res) => {
@@ -1103,6 +1088,50 @@ app.post("/logout", (req, res) => {
           res.json({ message: "Logged out successfully" });
         });
     });
+});
+app.delete("/account", deleteAccountLimiter, ensureAuthenticated, async (req, res) => {
+const deleteAccountLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many account deletion attempts. Please try again later." },
+});
+
+app.delete("/account", deleteAccountLimiter, ensureAuthenticated, async (req, res) => {
+  const userId = req.user?._id || req.user?.id;
+  if (!userId) {
+    return res.status(400).json({ error: "Invalid user session" });
+  }
+
+  try {
+    const feedbackReports = await FeedbackReport.find({ userId }).select("_id");
+    const feedbackReportIds = feedbackReports.map((report) => report._id);
+
+    await Promise.all([
+      Task.deleteMany({ userId }),
+      FocusSession.deleteMany({ userId }),
+      FeedbackReport.deleteMany({ userId }),
+      feedbackReportIds.length
+        ? InboundEmail.deleteMany({ feedbackReportId: { $in: feedbackReportIds } })
+        : Promise.resolve(),
+      User.deleteOne({ _id: userId }),
+    ]);
+
+    req.logout((logoutError) => {
+      if (logoutError) {
+        console.error("Error during account deletion logout:", logoutError);
+      }
+
+      req.session.destroy(() => {
+        res.clearCookie("connect.sid");
+        return res.json({ message: "Account deleted successfully" });
+      });
+    });
+  } catch (error) {
+    console.error("Delete account failed:", error);
+    return res.status(500).json({ error: "Unable to delete account right now" });
+  }
 });
 
 // Serve index.html
