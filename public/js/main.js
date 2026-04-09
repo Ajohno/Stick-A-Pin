@@ -1998,6 +1998,7 @@ function getProfilePanelMarkup(panelKey, user = null) {
         </div>
         <div class="profile-account-divider" aria-hidden="true"></div>
       </div>
+      <div id="profileDeleteActionsMount"></div>
     </section>
   `;
 }
@@ -2089,8 +2090,17 @@ function initProfileBoardNav() {
       initBoardTaskPreferencesSettings();
     }
     if (deleteAccountContainer) {
-      deleteAccountContainer.hidden = panelKey !== "profile";
-      if (panelKey !== "profile") {
+      if (panelKey === "profile") {
+        const deleteMount = document.getElementById("profileDeleteActionsMount");
+        if (deleteMount) {
+          deleteMount.appendChild(deleteAccountContainer);
+        } else {
+          panelContainer.appendChild(deleteAccountContainer);
+        }
+        deleteAccountContainer.hidden = false;
+      } else {
+        panelStickyNote?.appendChild(deleteAccountContainer);
+        deleteAccountContainer.hidden = true;
         const deleteBtn = document.getElementById("profileDeleteAccountBtn");
         const confirmNote = document.getElementById("profileDeleteConfirmNote");
         if (deleteBtn) deleteBtn.hidden = false;
