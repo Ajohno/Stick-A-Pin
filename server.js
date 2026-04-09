@@ -793,7 +793,7 @@ function getGoogleCallbackUrlForRequest(req) {
 
 app.get("/auth/google", authRateLimiter, (req, res, next) => {
   if (!isStrategyEnabled("google")) {
-    return res.status(503).json({ error: "Google login is not configured" });
+    return res.redirect("/login.html?error=google_unavailable");
   }
 
   const callbackURL = getGoogleCallbackUrlForRequest(req);
