@@ -2754,17 +2754,17 @@ function initCalendarPage() {
 
     dueTasks.forEach((task) => {
       const listItem = document.createElement("li");
-      listItem.className = "calendar-due-task-item";
+      listItem.className = "calendar-due-task-item big-three-item";
 
       const completeInput = document.createElement("input");
       completeInput.type = "checkbox";
-      completeInput.className = "calendar-due-task-check";
+      completeInput.className = "task-check big-three-check";
       completeInput.checked = task.status === "completed";
       completeInput.setAttribute("aria-label", `Mark ${task.description || "task"} complete`);
 
       const descriptionButton = document.createElement("button");
       descriptionButton.type = "button";
-      descriptionButton.className = "calendar-due-task-trigger";
+      descriptionButton.className = "calendar-due-task-trigger big-three-details-trigger";
       descriptionButton.textContent = task.description || "Untitled task";
       descriptionButton.title = "Open task details";
 

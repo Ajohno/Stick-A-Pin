@@ -727,32 +727,15 @@
 }
 
 .calendar-due-task-item {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: start;
-  gap: 10px;
-}
-
-.calendar-due-task-check {
-  width: 18px;
-  height: 18px;
-  margin-top: 3px;
+  margin-bottom: 6px;
 }
 
 .calendar-due-task-trigger {
-  border: none;
-  background: transparent;
-  text-align: left;
-  padding: 0;
-  font-family: "Itim", serif;
-  color: #3c2318;
-  font-size: clamp(18px, 2vw, 24px);
-  line-height: 1.2;
-  cursor: pointer;
+  width: 100%;
 }
 
 .calendar-due-task-trigger:hover {
-  text-decoration: underline;
+  color: #8B3A2E;
 }
 
 .calendar-due-note-close {
