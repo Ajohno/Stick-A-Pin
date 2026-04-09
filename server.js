@@ -777,27 +777,12 @@ function redirectAuthFailure(req, res) {
 }
 
 
-function getGoogleCallbackUrlForRequest(req) {
-  const configuredCallback = (process.env.GOOGLE_CALLBACK_URL || "").trim();
-  if (configuredCallback) return configuredCallback;
-
-  const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
-  const protocol = forwardedProto || req.protocol || (process.env.NODE_ENV === "production" ? "https" : "http");
-  const hostHeader = String(req.headers["x-forwarded-host"] || req.headers.host || "").split(",")[0].trim();
-  const canonicalHost = hostHeader.replace(/^www\./i, "");
-
-  if (!canonicalHost) return "/auth/google/callback";
-
-  return `${protocol}://${canonicalHost}/auth/google/callback`;
-}
-
 app.get("/auth/google", authRateLimiter, (req, res, next) => {
   if (!isStrategyEnabled("google")) {
     return res.redirect("/login.html?error=google_unavailable");
   }
 
-  const callbackURL = getGoogleCallbackUrlForRequest(req);
-  passport.authenticate("google", { scope: ["profile", "email"], callbackURL })(req, res, next);
+  passport.authenticate("google", { scope: ["profile", "email"] })(req, res, next);
 });
 
 app.get("/auth/google/callback", authRateLimiter, (req, res, next) => {
@@ -805,8 +790,7 @@ app.get("/auth/google/callback", authRateLimiter, (req, res, next) => {
     return redirectAuthFailure(req, res);
   }
 
-  const callbackURL = getGoogleCallbackUrlForRequest(req);
-  passport.authenticate("google", { failureRedirect: "/login.html?error=sso_failed", callbackURL })(req, res, (authErr) => {
+  passport.authenticate("google", { failureRedirect: "/login.html?error=sso_failed" })(req, res, (authErr) => {
     if (authErr) return next(authErr);
     return res.redirect(getDefaultViewPathForUser(req.user));
   });
