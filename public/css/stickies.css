@@ -563,6 +563,8 @@
   gap: 7px;
   font-family: "Itim", serif;
   font-size: 18px;
+  background: #e3f2fd;
+  color: #2f5f86;
 }
 
 .calendar-weekdays {
@@ -698,6 +700,29 @@
   width: min(530px, 94vw);
   max-height: min(90vh, 760px);
   overflow-y: auto;
+}
+
+#create-task-widget.calendar-task-composer .create-task-form-grid {
+  grid-template-columns: 1fr;
+  grid-template-areas:
+    "task"
+    "due"
+    "effort"
+    "submit";
+}
+
+#create-task-widget.calendar-task-composer .task-field,
+#create-task-widget.calendar-task-composer .due-field,
+#create-task-widget.calendar-task-composer .effort-field {
+  margin-bottom: 0;
+  margin-left: 0;
+}
+
+#create-task-widget.calendar-task-composer #submitBtn {
+  justify-self: center;
+  align-self: center;
+  margin-top: 4px;
+  width: clamp(150px, 62%, 230px);
 }
 
 .calendar-due-note-overlay {
