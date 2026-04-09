@@ -146,6 +146,25 @@
           </button>
         </div>
         <div id="profilePanelContent"></div>
+        <div id="profileDeleteAccountContainer" class="profile-danger-zone profile-delete-actions" hidden>
+          <button id="profileDeleteAccountBtn" class="profile-delete-account-btn" type="button">
+            Delete Account
+          </button>
+          <div id="profileDeleteConfirmNote" class="profile-delete-confirm-note" hidden>
+            <p>
+              This will permanently delete your account and all related data.
+              This action cannot be undone.
+            </p>
+            <div class="profile-delete-confirm-actions">
+              <button id="profileCancelDeleteBtn" class="paper-button profile-cancel-delete-btn" type="button">
+                Cancel
+              </button>
+              <button id="profileConfirmDeleteBtn" class="paper-button profile-confirm-delete-btn" type="button">
+                Yes, Delete
+              </button>
+            </div>
+          </div>
+        </div>
       </section>
     </main>
 
