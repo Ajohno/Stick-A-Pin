@@ -36,6 +36,10 @@ const RESEND_WEBHOOK_SECRET = (process.env.RESEND_WEBHOOK_SECRET || "").trim();
 
 const DAILY_EMAIL_SCHEDULER_INTERVAL_MS = Number(process.env.DAILY_EMAIL_SCHEDULER_INTERVAL_MS || 60 * 1000);
 let dailyEmailSchedulerStarted = false;
+const VERCEL_ENV = String(process.env.VERCEL_ENV || "").trim().toLowerCase();
+const SHOULD_RUN_DAILY_REFLECTION_SCHEDULER =
+  String(process.env.ENABLE_DAILY_REFLECTION_SCHEDULER || "").trim().toLowerCase() === "true" ||
+  (!VERCEL_ENV || VERCEL_ENV === "production");
 const VALID_BOARD_TASK_SORT_OPTIONS = new Set(["created_date", "effort_level", "due_date"]);
 const VALID_BOARD_DEFAULT_VIEW_OPTIONS = new Set(["board", "calendar"]);
 
@@ -456,6 +460,8 @@ function getCurrentTimeInTimezone(timezone) {
 
 async function runDailyReflectionSchedulerTick() {
   try {
+    await connectDB();
+
     const now = new Date();
     const users = await User.find({
       "settings.dailyEmail": { $ne: false },
@@ -1672,7 +1678,11 @@ app.get("/:file", (req, res) => {
     }
 });
 
-startDailyReflectionScheduler();
+if (SHOULD_RUN_DAILY_REFLECTION_SCHEDULER) {
+  startDailyReflectionScheduler();
+} else {
+  console.log("Daily reflection scheduler disabled for this environment.");
+}
 
 if (require.main === module) {
     // Only execute when this file is run directly (local dev)
