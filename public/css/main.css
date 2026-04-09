@@ -2141,15 +2141,14 @@ body.task-panel-open {
 .profile-delete-account-btn {
   align-self: flex-start;
   width: auto;
-  border: 2px dashed #b54f6a;
-  background: #ffe8f0;
-  color: #842843;
-  font-family: "Quantico", sans-serif;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  border-radius: 12px;
-  padding: 0.45rem 0.8rem;
-  cursor: pointer;
+  min-width: 10.5rem;
+  text-align: center;
+  border-color: #b54f6a;
+  background: linear-gradient(180deg, #f7b5c7 0%, #de6d8d 100%);
+  color: #fff8fb;
+  box-shadow:
+    0 4px 0 #8f3551,
+    2px 2px 0 #1f1f1f;
 }
 
 .profile-delete-confirm-note {
