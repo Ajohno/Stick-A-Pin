@@ -18,12 +18,8 @@ const UserSchema = new mongoose.Schema(
 
     authProviders: {
       google: {
-        id: { type: String, default: null },
-        email: { type: String, default: null, lowercase: true, trim: true },
-      },
-      apple: {
-        id: { type: String, default: null },
-        email: { type: String, default: null, lowercase: true, trim: true },
+        id: { type: String, default: undefined },
+        email: { type: String, default: undefined, lowercase: true, trim: true },
       },
     },
 
@@ -64,7 +60,12 @@ const UserSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-UserSchema.index({ "authProviders.google.id": 1 }, { unique: true, sparse: true });
-UserSchema.index({ "authProviders.apple.id": 1 }, { unique: true, sparse: true });
-
+UserSchema.index(
+  { "authProviders.google.id": 1 },
+  {
+    unique: true,
+    sparse: true,
+    partialFilterExpression: { "authProviders.google.id": { $type: "string" } },
+  }
+);
 module.exports = mongoose.model("User", UserSchema);
