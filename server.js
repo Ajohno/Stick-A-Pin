@@ -36,6 +36,9 @@ const RESEND_WEBHOOK_SECRET = (process.env.RESEND_WEBHOOK_SECRET || "").trim();
 
 const DAILY_EMAIL_SCHEDULER_INTERVAL_MS = Number(process.env.DAILY_EMAIL_SCHEDULER_INTERVAL_MS || 60 * 1000);
 let dailyEmailSchedulerStarted = false;
+const IS_VERCEL_RUNTIME = String(process.env.VERCEL || "").trim() === "1";
+const SHOULD_RUN_DAILY_REFLECTION_SCHEDULER =
+  String(process.env.ENABLE_DAILY_REFLECTION_SCHEDULER || "").trim().toLowerCase() === "true";
 const VALID_BOARD_TASK_SORT_OPTIONS = new Set(["created_date", "effort_level", "due_date"]);
 const VALID_BOARD_DEFAULT_VIEW_OPTIONS = new Set(["board", "calendar"]);
 
@@ -456,6 +459,8 @@ function getCurrentTimeInTimezone(timezone) {
 
 async function runDailyReflectionSchedulerTick() {
   try {
+    await connectDB();
+
     const now = new Date();
     const users = await User.find({
       "settings.dailyEmail": { $ne: false },
@@ -639,7 +644,7 @@ app.use(session({
 // CSRF protection for routes using cookie-based sessions
 const csrfProtection = csrf();
 app.use((req, res, next) => {
-  if (req.path === "/auth/apple/callback" || req.path === "/webhooks/resend/receiving") {
+  if (req.path === "/webhooks/resend/receiving") {
     return next();
   }
 
@@ -761,7 +766,6 @@ const feedbackSubmissionLimiter = rateLimit({
   max: 5, // limit each user+IP to 5 feedback emails per hour
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => `${req.user?.id || "anonymous"}:${req.ip}`,
 });
 
 function isStrategyEnabled(name) {
@@ -776,63 +780,54 @@ function redirectAuthFailure(req, res) {
   return res.redirect("/login.html?error=sso_failed");
 }
 
+function getCanonicalGoogleAuthOrigin() {
+  const callbackUrl = String(process.env.GOOGLE_CALLBACK_URL || "").trim();
+  if (!callbackUrl) return "";
 
-function getGoogleCallbackUrlForRequest(req) {
-  const configuredCallback = (process.env.GOOGLE_CALLBACK_URL || "").trim();
-  if (configuredCallback) return configuredCallback;
-
-  const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
-  const protocol = forwardedProto || req.protocol || (process.env.NODE_ENV === "production" ? "https" : "http");
-  const hostHeader = String(req.headers["x-forwarded-host"] || req.headers.host || "").split(",")[0].trim();
-  const canonicalHost = hostHeader.replace(/^www\./i, "");
-
-  if (!canonicalHost) return "/auth/google/callback";
-
-  return `${protocol}://${canonicalHost}/auth/google/callback`;
+  try {
+    const parsed = new URL(callbackUrl);
+    return parsed.protocol && parsed.host ? `${parsed.protocol}//${parsed.host}` : "";
+  } catch (error) {
+    return "";
+  }
 }
+
+function getRequestOrigin(req) {
+  const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+  const protocol = forwardedProto || req.protocol || "https";
+  const host = String(req.headers["x-forwarded-host"] || req.headers.host || "").split(",")[0].trim();
+  if (!host) return "";
+  return `${protocol}://${host}`;
+}
+
 
 app.get("/auth/google", authRateLimiter, (req, res, next) => {
   if (!isStrategyEnabled("google")) {
-    return res.status(503).json({ error: "Google login is not configured" });
+    return res.redirect("/login.html?error=google_unavailable");
   }
 
-  const callbackURL = getGoogleCallbackUrlForRequest(req);
-  passport.authenticate("google", { scope: ["profile", "email"], callbackURL })(req, res, next);
+  const canonicalOrigin = getCanonicalGoogleAuthOrigin();
+  const requestOrigin = getRequestOrigin(req);
+  if (canonicalOrigin && requestOrigin && canonicalOrigin !== requestOrigin) {
+    return res.redirect(`${canonicalOrigin}/auth/google`);
+  }
+
+  passport.authenticate("google", { scope: ["profile", "email"] })(req, res, next);
 });
 
-app.get("/auth/google/callback", authRateLimiter, (req, res, next) => {
+app.get("/auth/google/callback", authRateLimiter, (req, res) => {
   if (!isStrategyEnabled("google")) {
     return redirectAuthFailure(req, res);
   }
 
-  const callbackURL = getGoogleCallbackUrlForRequest(req);
-  passport.authenticate("google", { failureRedirect: "/login.html?error=sso_failed", callbackURL })(req, res, (authErr) => {
-    if (authErr) return next(authErr);
+  passport.authenticate("google", { failureRedirect: "/login.html?error=sso_failed" })(req, res, (authErr) => {
+    if (authErr) {
+      console.error("Google OAuth callback failed:", authErr);
+      return redirectAuthFailure(req, res);
+    }
     return res.redirect(getDefaultViewPathForUser(req.user));
   });
 });
-
-app.get("/auth/apple", authRateLimiter, (req, res, next) => {
-  if (!isStrategyEnabled("apple")) {
-    return res.status(503).json({ error: "Apple login is not configured" });
-  }
-
-  passport.authenticate("apple", { scope: ["name", "email"] })(req, res, next);
-});
-
-function handleAppleCallback(req, res, next) {
-  if (!isStrategyEnabled("apple")) {
-    return redirectAuthFailure(req, res);
-  }
-
-  return passport.authenticate("apple", { failureRedirect: "/login.html?error=sso_failed" })(req, res, (authErr) => {
-    if (authErr) return next(authErr);
-    return res.redirect(getDefaultViewPathForUser(req.user));
-  });
-}
-
-app.get("/auth/apple/callback", authRateLimiter, handleAppleCallback);
-app.post("/auth/apple/callback", authRateLimiter, express.urlencoded({ extended: false }), handleAppleCallback);
 
 // Register Route
 app.post("/register", async (req, res) => {
@@ -1683,7 +1678,11 @@ app.get("/:file", (req, res) => {
     }
 });
 
-startDailyReflectionScheduler();
+if (SHOULD_RUN_DAILY_REFLECTION_SCHEDULER || (!IS_VERCEL_RUNTIME && require.main === module)) {
+  startDailyReflectionScheduler();
+} else {
+  console.log("Daily reflection scheduler disabled for this environment.");
+}
 
 if (require.main === module) {
     // Only execute when this file is run directly (local dev)
