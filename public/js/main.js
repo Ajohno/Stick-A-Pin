@@ -2518,6 +2518,10 @@ function initCalendarPage() {
   const prevBtn = document.getElementById("calendarPrevBtn");
   const nextBtn = document.getElementById("calendarNextBtn");
   const todayBtn = document.getElementById("calendarTodayBtn");
+  const newTaskBtn = document.getElementById("calendarNewTaskBtn");
+  const taskComposerOverlay = document.getElementById("calendarTaskComposerOverlay");
+  const taskComposer = taskComposerOverlay?.querySelector(".calendar-task-composer");
+  const taskComposerForm = document.getElementById("taskForm");
 
   if (!calendarGrid || !monthTitle || !prevBtn || !nextBtn || !todayBtn) return;
 
@@ -2529,6 +2533,40 @@ function initCalendarPage() {
   let visibleDate = new Date(todayYear, todayMonth, 1);
   let isTransitioning = false;
   let dueDateLookup = new Set();
+  let dueTasksByDate = new Map();
+  let isDueNoteTransitioning = false;
+  let pendingDueNoteReturn = null;
+  let isTaskComposerTransitioning = false;
+
+  const dueNoteOverlay = document.createElement("div");
+  dueNoteOverlay.className = "calendar-due-note-overlay";
+  dueNoteOverlay.setAttribute("hidden", "hidden");
+
+  const dueNote = document.createElement("section");
+  dueNote.className = "calendar-due-note";
+  dueNote.setAttribute("role", "dialog");
+  dueNote.setAttribute("aria-modal", "true");
+  dueNote.setAttribute("aria-labelledby", "calendarDueNoteTitle");
+
+  const dueNoteCloseBtn = document.createElement("button");
+  dueNoteCloseBtn.className = "calendar-due-note-close";
+  dueNoteCloseBtn.type = "button";
+  dueNoteCloseBtn.setAttribute("aria-label", "Close due tasks list");
+  dueNoteCloseBtn.textContent = "×";
+
+  const dueNoteTitle = document.createElement("h2");
+  dueNoteTitle.id = "calendarDueNoteTitle";
+  dueNoteTitle.className = "calendar-due-note-title";
+  dueNoteTitle.textContent = "Due tasks";
+
+  const dueNoteList = document.createElement("ul");
+  dueNoteList.className = "calendar-due-note-list";
+
+  dueNote.appendChild(dueNoteCloseBtn);
+  dueNote.appendChild(dueNoteTitle);
+  dueNote.appendChild(dueNoteList);
+  dueNoteOverlay.appendChild(dueNote);
+  document.body.appendChild(dueNoteOverlay);
 
 
   const toLocalDateKey = (value) => {
@@ -2564,12 +2602,19 @@ function initCalendarPage() {
       const tasks = await response.json();
       if (!Array.isArray(tasks)) return;
 
-      dueDateLookup = new Set(
-        tasks
-          .filter((task) => task?.status === "active")
-          .map((task) => toLocalDateKey(task?.dueDate))
-          .filter(Boolean),
-      );
+      const activeTasks = tasks.filter((task) => task?.status === "active");
+      const dueTaskPairs = activeTasks
+        .map((task) => ({ key: toLocalDateKey(task?.dueDate), task }))
+        .filter((entry) => entry.key);
+
+      dueDateLookup = new Set(dueTaskPairs.map((entry) => entry.key));
+
+      dueTasksByDate = dueTaskPairs.reduce((lookup, entry) => {
+        const existing = lookup.get(entry.key) || [];
+        existing.push(entry.task);
+        lookup.set(entry.key, existing);
+        return lookup;
+      }, new Map());
     } catch (error) {
       console.error("Unable to load calendar due-date highlights:", error);
     }
@@ -2593,6 +2638,224 @@ function initCalendarPage() {
       element.addEventListener("animationend", finish, { once: true });
       window.setTimeout(finish, fallbackMs);
     });
+
+  const closeDueTasksNote = async () => {
+    if (isDueNoteTransitioning || dueNoteOverlay.hasAttribute("hidden")) return;
+
+    isDueNoteTransitioning = true;
+    dueNote.classList.remove("calendar-note-entering");
+    dueNote.classList.add("calendar-note-leaving");
+    await waitForAnimation(dueNote, 320);
+
+    dueNote.classList.remove("calendar-note-leaving");
+    dueNoteOverlay.setAttribute("hidden", "hidden");
+    dueNoteOverlay.classList.remove("is-open");
+    isDueNoteTransitioning = false;
+  };
+
+  const refreshCalendarDueData = async () => {
+    await loadDueDateHighlights();
+    renderCalendar();
+  };
+
+  const buildCalendarTaskPanelHandlers = (task, syncCheckboxState) => {
+    const setTaskCompletion = async (isCompleted) => {
+      const updated = await updateTaskCompletionStatus(
+        task,
+        isCompleted,
+        null,
+        null,
+      );
+
+      if (!updated) return false;
+
+      syncCheckboxState?.(isCompleted);
+      await refreshCalendarDueData();
+      return true;
+    };
+
+    const saveTaskEdits = async (updates) => {
+      const updateResponse = await apiFetch(`/tasks/${task._id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+
+      const updateData = await parseApiResponse(updateResponse);
+      if (!updateResponse.ok) {
+        Toast.show({
+          message: updateData.error || "Error updating task",
+          type: "error",
+          duration: 3200,
+        });
+        return null;
+      }
+
+      task.description = updateData.description ?? task.description;
+      task.dueDate = updateData.dueDate ?? task.dueDate;
+      task.effortLevel = updateData.effortLevel ?? task.effortLevel;
+      await refreshCalendarDueData();
+      Toast.show({
+        message: "Task Updated",
+        type: "success",
+        duration: 2000,
+      });
+      return updateData;
+    };
+
+    const deleteTask = async () => {
+      const confirmDelete = confirm(
+        "Are you sure you want to delete this task?",
+      );
+      if (!confirmDelete) return;
+
+      const deleteResponse = await apiFetch(`/tasks/${task._id}`, {
+        method: "DELETE",
+      });
+
+      if (deleteResponse.ok) {
+        Toast.show({
+          message: "Task deleted",
+          type: "success",
+          duration: 2000,
+        });
+        await refreshCalendarDueData();
+        closeTaskDetailPanel();
+      } else {
+        Toast.show({
+          message: "Could not delete task",
+          type: "error",
+          duration: 3000,
+        });
+      }
+    };
+
+    return {
+      saveTaskEdits,
+      deleteTask,
+      toggleComplete: async () => {
+        const panelTaskComplete = document.getElementById("panelTaskComplete");
+        if (!panelTaskComplete) return;
+
+        panelTaskComplete.disabled = true;
+        const isCompleted = panelTaskComplete.checked;
+        const updated = await setTaskCompletion(isCompleted);
+
+        if (!updated) {
+          panelTaskComplete.checked = !isCompleted;
+        }
+        panelTaskComplete.disabled = false;
+      },
+    };
+  };
+
+  const openDueTasksNote = async (dateKey, dayLabel) => {
+    if (isDueNoteTransitioning) return;
+
+    const dueTasks = dueTasksByDate.get(dateKey);
+    if (!Array.isArray(dueTasks) || !dueTasks.length) return;
+
+    dueNoteTitle.textContent = `Due tasks for ${dayLabel}`;
+    dueNoteList.innerHTML = "";
+
+    dueTasks.forEach((task) => {
+      const listItem = document.createElement("li");
+      listItem.className = "calendar-due-task-item big-three-item";
+
+      const completeInput = document.createElement("input");
+      completeInput.type = "checkbox";
+      completeInput.className = "task-check big-three-check";
+      completeInput.checked = task.status === "completed";
+      completeInput.setAttribute("aria-label", `Mark ${task.description || "task"} complete`);
+
+      const descriptionButton = document.createElement("button");
+      descriptionButton.type = "button";
+      descriptionButton.className = "calendar-due-task-trigger big-three-details-trigger";
+      descriptionButton.textContent = task.description || "Untitled task";
+      descriptionButton.title = "Open task details";
+
+      const handlers = buildCalendarTaskPanelHandlers(task, (isCompleted) => {
+        completeInput.checked = isCompleted;
+      });
+
+      completeInput.addEventListener("click", (event) => {
+        event.stopPropagation();
+      });
+
+      completeInput.addEventListener("change", async () => {
+        completeInput.disabled = true;
+        const nextValue = completeInput.checked;
+        const updated = await updateTaskCompletionStatus(task, nextValue, null, null);
+        if (!updated) {
+          completeInput.checked = !nextValue;
+        } else {
+          await refreshCalendarDueData();
+        }
+        completeInput.disabled = false;
+      });
+
+      descriptionButton.addEventListener("click", async () => {
+        pendingDueNoteReturn = { dateKey, dayLabel };
+        await closeDueTasksNote();
+        openTaskDetailPanel(task, handlers);
+      });
+
+      listItem.append(completeInput, descriptionButton);
+      dueNoteList.appendChild(listItem);
+    });
+
+    dueNoteOverlay.removeAttribute("hidden");
+    dueNoteOverlay.classList.add("is-open");
+
+    dueNote.classList.remove("calendar-note-leaving");
+    dueNote.classList.remove("calendar-note-entering");
+
+    requestAnimationFrame(() => {
+      dueNote.classList.add("calendar-note-entering");
+      window.setTimeout(() => dueNoteCloseBtn.focus(), 50);
+    });
+  };
+
+  const reopenDueNoteFromDetailPanelClose = () => {
+    if (!pendingDueNoteReturn) return;
+
+    const detailPanel = document.getElementById("task-detail-panel");
+    if (detailPanel?.classList.contains("is-open")) return;
+
+    const { dateKey, dayLabel } = pendingDueNoteReturn;
+    pendingDueNoteReturn = null;
+    openDueTasksNote(dateKey, dayLabel);
+  };
+
+  const closeTaskComposer = async () => {
+    if (!taskComposerOverlay || !taskComposer || isTaskComposerTransitioning) return;
+    if (taskComposerOverlay.hasAttribute("hidden")) return;
+
+    isTaskComposerTransitioning = true;
+    taskComposer.classList.remove("calendar-note-entering");
+    taskComposer.classList.add("calendar-note-leaving");
+    await waitForAnimation(taskComposer, 320);
+
+    taskComposer.classList.remove("calendar-note-leaving");
+    taskComposerOverlay.setAttribute("hidden", "hidden");
+    taskComposerOverlay.classList.remove("is-open");
+    isTaskComposerTransitioning = false;
+  };
+
+  const openTaskComposer = () => {
+    if (!taskComposerOverlay || !taskComposer || isTaskComposerTransitioning) return;
+
+    taskComposerOverlay.removeAttribute("hidden");
+    taskComposerOverlay.classList.add("is-open");
+    taskComposer.classList.remove("calendar-note-leaving");
+    taskComposer.classList.remove("calendar-note-entering");
+
+    requestAnimationFrame(() => {
+      taskComposer.classList.add("calendar-note-entering");
+      const firstField = taskComposerForm?.querySelector("#taskDescription");
+      firstField?.focus();
+    });
+  };
 
   const renderCalendar = ({ animateIn = false } = {}) => {
     const year = visibleDate.getFullYear();
@@ -2623,6 +2886,26 @@ function initCalendarPage() {
       const visibleDateKey = buildVisibleDateKey(year, month, day);
       if (dueDateLookup.has(visibleDateKey)) {
         dayNote.classList.add("has-due-task");
+        dayNote.tabIndex = 0;
+        dayNote.setAttribute("aria-haspopup", "dialog");
+        dayNote.setAttribute("aria-label", `${monthTitle.textContent} ${day}, ${dueTasksByDate.get(visibleDateKey)?.length || 0} tasks due`);
+
+        const dayLabel = new Date(year, month, day).toLocaleDateString("en-US", {
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+        });
+
+        dayNote.addEventListener("click", () => {
+          openDueTasksNote(visibleDateKey, dayLabel);
+        });
+
+        dayNote.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            openDueTasksNote(visibleDateKey, dayLabel);
+          }
+        });
       }
 
       if (animateIn) {
@@ -2683,6 +2966,57 @@ function initCalendarPage() {
 
   todayBtn.addEventListener("click", () => {
     transitionToMonth(new Date(todayYear, todayMonth, 1), { focusToday: true });
+  });
+
+  newTaskBtn?.addEventListener("click", () => {
+    openTaskComposer();
+  });
+
+  dueNoteCloseBtn.addEventListener("click", () => {
+    closeDueTasksNote();
+  });
+
+  dueNoteOverlay.addEventListener("click", (event) => {
+    if (event.target === dueNoteOverlay) {
+      closeDueTasksNote();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeDueTasksNote();
+      closeTaskComposer();
+    }
+  });
+
+  taskComposerOverlay?.addEventListener("click", (event) => {
+    if (event.target === taskComposerOverlay) {
+      closeTaskComposer();
+    }
+  });
+
+  taskComposerForm?.addEventListener("task:created", async () => {
+    await closeTaskComposer();
+    await refreshCalendarDueData();
+  });
+
+  const taskDetailCloseButton = document.getElementById("taskDetailClose");
+  const taskDetailBackdrop = document.getElementById("task-detail-backdrop");
+  const taskDetailPanel = document.getElementById("task-detail-panel");
+
+  taskDetailCloseButton?.addEventListener("click", () => {
+    window.setTimeout(reopenDueNoteFromDetailPanelClose, 0);
+  });
+
+  taskDetailBackdrop?.addEventListener("click", () => {
+    window.setTimeout(reopenDueNoteFromDetailPanelClose, 0);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !pendingDueNoteReturn) return;
+    if (!taskDetailPanel?.classList.contains("is-open")) return;
+
+    window.setTimeout(reopenDueNoteFromDetailPanelClose, 0);
   });
 
   loadDueDateHighlights().finally(() => {
@@ -2962,6 +3296,10 @@ const submit = async function (event) {
       // Clear input fields after successful submission
       taskInput.value = "";
       dateInput.value = "";
+      const parentForm = taskInput.closest("form");
+      parentForm?.dispatchEvent(
+        new CustomEvent("task:created", { bubbles: true }),
+      );
       return;
     }
 
