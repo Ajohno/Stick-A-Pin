@@ -2518,6 +2518,10 @@ function initCalendarPage() {
   const prevBtn = document.getElementById("calendarPrevBtn");
   const nextBtn = document.getElementById("calendarNextBtn");
   const todayBtn = document.getElementById("calendarTodayBtn");
+  const newTaskBtn = document.getElementById("calendarNewTaskBtn");
+  const taskComposerOverlay = document.getElementById("calendarTaskComposerOverlay");
+  const taskComposer = taskComposerOverlay?.querySelector(".calendar-task-composer");
+  const taskComposerForm = document.getElementById("taskForm");
 
   if (!calendarGrid || !monthTitle || !prevBtn || !nextBtn || !todayBtn) return;
 
@@ -2532,6 +2536,7 @@ function initCalendarPage() {
   let dueTasksByDate = new Map();
   let isDueNoteTransitioning = false;
   let pendingDueNoteReturn = null;
+  let isTaskComposerTransitioning = false;
 
   const dueNoteOverlay = document.createElement("div");
   dueNoteOverlay.className = "calendar-due-note-overlay";
@@ -2822,6 +2827,36 @@ function initCalendarPage() {
     openDueTasksNote(dateKey, dayLabel);
   };
 
+  const closeTaskComposer = async () => {
+    if (!taskComposerOverlay || !taskComposer || isTaskComposerTransitioning) return;
+    if (taskComposerOverlay.hasAttribute("hidden")) return;
+
+    isTaskComposerTransitioning = true;
+    taskComposer.classList.remove("calendar-note-entering");
+    taskComposer.classList.add("calendar-note-leaving");
+    await waitForAnimation(taskComposer, 320);
+
+    taskComposer.classList.remove("calendar-note-leaving");
+    taskComposerOverlay.setAttribute("hidden", "hidden");
+    taskComposerOverlay.classList.remove("is-open");
+    isTaskComposerTransitioning = false;
+  };
+
+  const openTaskComposer = () => {
+    if (!taskComposerOverlay || !taskComposer || isTaskComposerTransitioning) return;
+
+    taskComposerOverlay.removeAttribute("hidden");
+    taskComposerOverlay.classList.add("is-open");
+    taskComposer.classList.remove("calendar-note-leaving");
+    taskComposer.classList.remove("calendar-note-entering");
+
+    requestAnimationFrame(() => {
+      taskComposer.classList.add("calendar-note-entering");
+      const firstField = taskComposerForm?.querySelector("#taskDescription");
+      firstField?.focus();
+    });
+  };
+
   const renderCalendar = ({ animateIn = false } = {}) => {
     const year = visibleDate.getFullYear();
     const month = visibleDate.getMonth();
@@ -2933,6 +2968,10 @@ function initCalendarPage() {
     transitionToMonth(new Date(todayYear, todayMonth, 1), { focusToday: true });
   });
 
+  newTaskBtn?.addEventListener("click", () => {
+    openTaskComposer();
+  });
+
   dueNoteCloseBtn.addEventListener("click", () => {
     closeDueTasksNote();
   });
@@ -2946,7 +2985,19 @@ function initCalendarPage() {
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       closeDueTasksNote();
+      closeTaskComposer();
     }
+  });
+
+  taskComposerOverlay?.addEventListener("click", (event) => {
+    if (event.target === taskComposerOverlay) {
+      closeTaskComposer();
+    }
+  });
+
+  taskComposerForm?.addEventListener("task:created", async () => {
+    await closeTaskComposer();
+    await refreshCalendarDueData();
   });
 
   const taskDetailCloseButton = document.getElementById("taskDetailClose");
@@ -3245,6 +3296,10 @@ const submit = async function (event) {
       // Clear input fields after successful submission
       taskInput.value = "";
       dateInput.value = "";
+      const parentForm = taskInput.closest("form");
+      parentForm?.dispatchEvent(
+        new CustomEvent("task:created", { bubbles: true }),
+      );
       return;
     }
 

@@ -553,6 +553,18 @@
   font-size: 18px;
 }
 
+.calendar-new-task-btn {
+  width: auto;
+  min-width: 118px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-family: "Itim", serif;
+  font-size: 18px;
+}
+
 .calendar-weekdays {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -653,16 +665,39 @@
 
 
 .calendar-day.calendar-note-leaving,
-.calendar-due-note.calendar-note-leaving {
+.calendar-due-note.calendar-note-leaving,
+.calendar-task-composer.calendar-note-leaving {
   animation: calendar-note-leave 300ms ease-in forwards;
   animation-delay: var(--note-stagger, 0ms);
   pointer-events: none;
 }
 
 .calendar-day.calendar-note-entering,
-.calendar-due-note.calendar-note-entering {
+.calendar-due-note.calendar-note-entering,
+.calendar-task-composer.calendar-note-entering {
   animation: calendar-note-enter 360ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
   animation-delay: var(--note-stagger, 0ms);
+}
+
+.calendar-task-composer-overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(33, 20, 15, 0.34);
+  z-index: 1080;
+  padding: 20px;
+}
+
+.calendar-task-composer-overlay.is-open {
+  display: flex;
+}
+
+.calendar-task-composer {
+  width: min(530px, 94vw);
+  max-height: min(90vh, 760px);
+  overflow-y: auto;
 }
 
 .calendar-due-note-overlay {
@@ -785,6 +820,15 @@
 @media (max-width: 760px) {
   .calendar-weekdays span {
     font-size: 10px;
+  }
+
+  .calendar-new-task-btn span {
+    display: none;
+  }
+
+  .calendar-new-task-btn {
+    min-width: 44px;
+    padding: 0;
   }
 
   .weekday-full {
