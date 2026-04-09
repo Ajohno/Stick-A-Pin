@@ -9,11 +9,24 @@ async function cleanupLegacyUserIndexes(db) {
         const usersCollection = db.collection("users");
         const indexes = await usersCollection.indexes();
         const hasLegacyUsernameIndex = indexes.some((index) => index.name === "username_1");
+        const hasLegacyAppleProviderIndex = indexes.some(
+            (index) => index.name === "authProviders.apple.id_1"
+        );
 
         if (hasLegacyUsernameIndex) {
             await usersCollection.dropIndex("username_1");
             console.log("🧹 Removed legacy users.username_1 index");
         }
+
+        if (hasLegacyAppleProviderIndex) {
+            await usersCollection.dropIndex("authProviders.apple.id_1");
+            console.log("🧹 Removed legacy users.authProviders.apple.id_1 index");
+        }
+
+        await usersCollection.updateMany(
+            { "authProviders.apple": { $exists: true } },
+            { $unset: { "authProviders.apple": "" } }
+        );
     } catch (error) {
         // Ignore missing collection/index races, surface everything else
         const ignorable = ["NamespaceNotFound", "IndexNotFound"];
