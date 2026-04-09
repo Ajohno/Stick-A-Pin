@@ -27,13 +27,32 @@ const EMAIL_VERIFICATION_TTL_MINUTES = Number(process.env.EMAIL_VERIFICATION_TTL
 const PASSWORD_RESET_TTL_MINUTES = Number(process.env.PASSWORD_RESET_TTL_MINUTES || 30);
 const APP_BASE_URL = process.env.APP_BASE_URL;
 const EMAIL_FROM = process.env.EMAIL_FROM || "Stick A Pin <no-reply@mail.stickapin.app>";
-const FEEDBACK_INBOX_EMAIL = (process.env.FEEDBACK_INBOX_EMAIL || "").trim();
+const FEEDBACK_INBOX_EMAIL = (process.env.FEEDBACK_INBOX_EMAIL || "support@stickapin.app").trim();
+const FEEDBACK_FROM_EMAIL = process.env.FEEDBACK_FROM_EMAIL || EMAIL_FROM;
 const FEEDBACK_HOURLY_LIMIT = Number(process.env.FEEDBACK_HOURLY_LIMIT || 5);
 const FEEDBACK_MIN_SECONDS_BETWEEN_REPORTS = Number(process.env.FEEDBACK_MIN_SECONDS_BETWEEN_REPORTS || 60);
+const FEEDBACK_REQUEST_BODY_LIMIT = process.env.FEEDBACK_REQUEST_BODY_LIMIT || "30mb";
 const RESEND_WEBHOOK_SECRET = (process.env.RESEND_WEBHOOK_SECRET || "").trim();
 
 const DAILY_EMAIL_SCHEDULER_INTERVAL_MS = Number(process.env.DAILY_EMAIL_SCHEDULER_INTERVAL_MS || 60 * 1000);
 let dailyEmailSchedulerStarted = false;
+const VALID_BOARD_TASK_SORT_OPTIONS = new Set(["created_date", "effort_level", "due_date"]);
+const VALID_BOARD_DEFAULT_VIEW_OPTIONS = new Set(["board", "calendar"]);
+
+function normalizeBoardTaskSort(rawValue) {
+  const candidate = String(rawValue || "").trim();
+  return VALID_BOARD_TASK_SORT_OPTIONS.has(candidate) ? candidate : "created_date";
+}
+
+function normalizeBoardDefaultView(rawValue) {
+  const candidate = String(rawValue || "").trim();
+  return VALID_BOARD_DEFAULT_VIEW_OPTIONS.has(candidate) ? candidate : "board";
+}
+
+function getDefaultViewPathForUser(user) {
+  const defaultView = normalizeBoardDefaultView(user?.settings?.board?.defaultView);
+  return defaultView === "calendar" ? "/calendar-page.html" : "/dashboard.html";
+}
 
 // Rate limiter for authenticated routes to protect expensive operations
 const authenticatedLimiter = rateLimit({
@@ -55,8 +74,16 @@ app.use(async (req, res, next) => {
     await connectDB();
     return next();
   } catch (error) {
-    console.error("Database unavailable for request", error);
-    return res.status(503).json({ error: "Service temporarily unavailable" });
+    console.error("Database unavailable for request (first attempt)", error);
+
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      await connectDB();
+      return next();
+    } catch (retryError) {
+      console.error("Database unavailable for request (retry failed)", retryError);
+      return res.status(503).json({ error: "Service temporarily unavailable" });
+    }
   }
 });
 
@@ -142,7 +169,7 @@ async function sendPasswordResetEmail(email, firstName, token, baseUrl) {
   }
 }
 
-async function sendBugFeedbackEmail({ user, subject, message, requestMeta = {} }) {
+async function sendBugFeedbackEmail({ user, subject, message, attachments = [], requestMeta = {} }) {
   if (!process.env.RESEND_API_KEY) {
     throw new Error("RESEND_API_KEY is not configured");
   }
@@ -152,23 +179,49 @@ async function sendBugFeedbackEmail({ user, subject, message, requestMeta = {} }
   }
 
   const safeSubject = String(subject || "").trim();
+  const feedbackReportId = String(requestMeta.feedbackReportId || "").trim();
   const safeMessage = String(message || "").trim();
   const safeName = `${user?.firstName || ""} ${user?.lastName || ""}`.trim() || "Unknown user";
   const safeEmail = String(user?.email || "").trim() || "unknown@unknown.local";
   const ip = String(requestMeta.ip || "unknown");
   const userAgent = String(requestMeta.userAgent || "unknown");
+  const safeAttachments = Array.isArray(attachments) ? attachments : [];
+  const resendAttachments = safeAttachments.map((attachment) => ({
+    filename: attachment.filename,
+    content: attachment.content,
+  }));
+  const attachmentSummary = safeAttachments.length
+    ? `
+      <p><strong>Image attachments:</strong></p>
+      <ul>
+        ${safeAttachments
+          .map((attachment) => {
+            const attachmentSizeKb = Math.max(
+              1,
+              Math.round((Number(attachment?.sizeBytes) || 0) / 1024)
+            );
+            return `<li>${escapeHtml(attachment?.filename || "image")} (${escapeHtml(
+              attachment?.contentType || "image/unknown"
+            )}, ${attachmentSizeKb} KB)</li>`;
+          })
+          .join("")}
+      </ul>
+    `
+    : "<p><strong>Image attachments:</strong> none</p>";
 
   const emailBodyHtml = `
+    <p><strong>Feedback Report ID:</strong> ${escapeHtml(feedbackReportId || "unknown")}</p>
     <p><strong>Reporter:</strong> ${escapeHtml(safeName)} (${escapeHtml(safeEmail)})</p>
     <p><strong>Submitted:</strong> ${escapeHtml(new Date().toISOString())}</p>
     <p><strong>IP:</strong> ${escapeHtml(ip)}</p>
     <p><strong>User-Agent:</strong> ${escapeHtml(userAgent)}</p>
+    ${attachmentSummary}
     <hr />
     <p><strong>Details</strong></p>
     <p>${escapeHtml(safeMessage).replace(/\n/g, "<br />")}</p>
   `;
 
-  async function sendWithFromAddress(fromAddress) {
+  async function sendFeedbackEmail(fromAddress) {
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -179,23 +232,33 @@ async function sendBugFeedbackEmail({ user, subject, message, requestMeta = {} }
         from: fromAddress,
         to: [inboxAddress],
         reply_to: safeEmail,
-        subject: `[Bug Report] ${safeSubject}`,
+        subject: safeSubject,
         html: emailBodyHtml,
+        attachments: resendAttachments,
       }),
     });
 
-    if (response.ok) return null;
+    if (response.ok) return;
+
     const failure = await response.text();
-    return `Resend API request failed (${response.status}): ${failure}`;
+    throw new Error(`Resend API request failed (${response.status}): ${failure}`);
   }
 
-  const preferredFrom = `${safeName} <${safeEmail}>`;
-  const preferredError = await sendWithFromAddress(preferredFrom);
-  if (!preferredError) return;
+  const primarySender = FEEDBACK_FROM_EMAIL;
+  const fallbackSender = EMAIL_FROM;
 
-  const fallbackError = await sendWithFromAddress(EMAIL_FROM);
-  if (fallbackError) {
-    throw new Error(fallbackError);
+  try {
+    await sendFeedbackEmail(primarySender);
+  } catch (error) {
+    const shouldRetryWithFallback =
+      primarySender !== fallbackSender &&
+      String(error?.message || "").includes("not authorized to send emails from");
+
+    if (!shouldRetryWithFallback) {
+      throw error;
+    }
+
+    await sendFeedbackEmail(fallbackSender);
   }
 }
 
@@ -221,6 +284,20 @@ function extractEmailAddress(value) {
   const angleMatch = text.match(/<([^>]+)>/);
   if (angleMatch?.[1]) return angleMatch[1].trim();
   return text;
+}
+
+function extractFeedbackReportIdFromEmail({ subject = "", to = [] }) {
+  const subjectText = String(subject || "");
+  const subjectMatch = subjectText.match(/\[FR:([a-fA-F0-9]{24})\]/);
+  if (subjectMatch?.[1]) return subjectMatch[1].toLowerCase();
+
+  for (const recipient of Array.isArray(to) ? to : []) {
+    const normalized = String(recipient || "").toLowerCase();
+    const plusMatch = normalized.match(/\+fr_([a-f0-9]{24})@/);
+    if (plusMatch?.[1]) return plusMatch[1];
+  }
+
+  return null;
 }
 
 function parseSvixSecret(secret) {
@@ -606,6 +683,10 @@ app.post("/webhooks/resend/receiving", resendWebhookLimiter, express.raw({ type:
       console.error("Unable to fetch full received email content from Resend:", error);
       return { text: null, html: null, attachments: [] };
     });
+    const feedbackReportId = extractFeedbackReportIdFromEmail({
+      subject: eventData.subject,
+      to: Array.isArray(eventData.to) ? eventData.to : [],
+    });
 
     await InboundEmail.updateOne(
       { eventId: String(eventData.id || event.id || emailId) },
@@ -618,6 +699,7 @@ app.post("/webhooks/resend/receiving", resendWebhookLimiter, express.raw({ type:
           to: Array.isArray(eventData.to) ? eventData.to : [],
           cc: Array.isArray(eventData.cc) ? eventData.cc : [],
           bcc: Array.isArray(eventData.bcc) ? eventData.bcc : [],
+          feedbackReportId: feedbackReportId || null,
           subject: eventData.subject || null,
           createdAtProvider: eventData.created_at ? new Date(eventData.created_at) : null,
           text: content.text,
@@ -641,11 +723,20 @@ app.get("/csrf-token", (req, res) => {
   res.json({ csrfToken: req.csrfToken() });
 });
 
-app.use(express.json()); // Middleware to parse JSON request body
-app.use(express.urlencoded({ extended: false })); // Parses form data
+app.use(express.json({ limit: FEEDBACK_REQUEST_BODY_LIMIT })); // Middleware to parse JSON request body
+app.use(express.urlencoded({ extended: false, limit: FEEDBACK_REQUEST_BODY_LIMIT })); // Parses form data
 
 // Serve static files from the "public" directory
 app.use(express.static("public"));
+
+app.use((error, req, res, next) => {
+  if (error?.type === "entity.too.large") {
+    return res.status(413).json({
+      error: "Attachment payload is too large. Please upload smaller images or fewer attachments.",
+    });
+  }
+  return next(error);
+});
 
 // ROUTES -----------------------------------------------------------------------------------
 
@@ -686,38 +777,25 @@ function redirectAuthFailure(req, res) {
 }
 
 
-function getGoogleCallbackUrlForRequest(req) {
-  const configuredCallback = (process.env.GOOGLE_CALLBACK_URL || "").trim();
-  if (configuredCallback) return configuredCallback;
-
-  const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
-  const protocol = forwardedProto || req.protocol || (process.env.NODE_ENV === "production" ? "https" : "http");
-  const hostHeader = String(req.headers["x-forwarded-host"] || req.headers.host || "").split(",")[0].trim();
-  const canonicalHost = hostHeader.replace(/^www\./i, "");
-
-  if (!canonicalHost) return "/auth/google/callback";
-
-  return `${protocol}://${canonicalHost}/auth/google/callback`;
-}
-
 app.get("/auth/google", authRateLimiter, (req, res, next) => {
   if (!isStrategyEnabled("google")) {
-    return res.status(503).json({ error: "Google login is not configured" });
+    return res.redirect("/login.html?error=google_unavailable");
   }
 
-  const callbackURL = getGoogleCallbackUrlForRequest(req);
-  passport.authenticate("google", { scope: ["profile", "email"], callbackURL })(req, res, next);
+  passport.authenticate("google", { scope: ["profile", "email"] })(req, res, next);
 });
 
-app.get("/auth/google/callback", authRateLimiter, (req, res, next) => {
+app.get("/auth/google/callback", authRateLimiter, (req, res) => {
   if (!isStrategyEnabled("google")) {
     return redirectAuthFailure(req, res);
   }
 
-  const callbackURL = getGoogleCallbackUrlForRequest(req);
-  passport.authenticate("google", { failureRedirect: "/login.html?error=sso_failed", callbackURL })(req, res, (authErr) => {
-    if (authErr) return next(authErr);
-    return res.redirect("/dashboard.html");
+  passport.authenticate("google", { failureRedirect: "/login.html?error=sso_failed" })(req, res, (authErr) => {
+    if (authErr) {
+      console.error("Google OAuth callback failed:", authErr);
+      return redirectAuthFailure(req, res);
+    }
+    return res.redirect(getDefaultViewPathForUser(req.user));
   });
 });
 
@@ -729,14 +807,17 @@ app.get("/auth/apple", authRateLimiter, (req, res, next) => {
   passport.authenticate("apple", { scope: ["name", "email"] })(req, res, next);
 });
 
-function handleAppleCallback(req, res, next) {
+function handleAppleCallback(req, res) {
   if (!isStrategyEnabled("apple")) {
     return redirectAuthFailure(req, res);
   }
 
   return passport.authenticate("apple", { failureRedirect: "/login.html?error=sso_failed" })(req, res, (authErr) => {
-    if (authErr) return next(authErr);
-    return res.redirect("/dashboard.html");
+    if (authErr) {
+      console.error("Apple OAuth callback failed:", authErr);
+      return redirectAuthFailure(req, res);
+    }
+    return res.redirect(getDefaultViewPathForUser(req.user));
   });
 }
 
@@ -961,7 +1042,19 @@ app.post("/login", (req, res, next) => {
 
         return res.json({
           message: "Logged in successfully",
-          user: { id: user._id, firstName: user.firstName, lastName: user.lastName, email: user.email },
+          preferredDefaultPath: getDefaultViewPathForUser(user),
+          user: {
+            id: user._id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            email: user.email,
+            settings: {
+              board: {
+                default_task_sort: normalizeBoardTaskSort(user.settings?.board?.defaultTaskSort),
+                default_view: normalizeBoardDefaultView(user.settings?.board?.defaultView),
+              },
+            },
+          },
         });
       });
     });
@@ -1377,6 +1470,9 @@ app.post("/feedback/report-bug", authenticatedLimiter, ensureAuthenticated, feed
   try {
     const subject = String(req.body?.subject || "").trim();
     const message = String(req.body?.message || "").trim();
+    const incomingAttachments = Array.isArray(req.body?.attachments) ? req.body.attachments : [];
+    const MAX_ATTACHMENTS = 3;
+    const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 
     if (subject.length < 5 || subject.length > 120) {
       return res.status(400).json({ error: "Bug summary must be between 5 and 120 characters." });
@@ -1384,6 +1480,45 @@ app.post("/feedback/report-bug", authenticatedLimiter, ensureAuthenticated, feed
 
     if (message.length < 10 || message.length > 2000) {
       return res.status(400).json({ error: "Bug details must be between 10 and 2000 characters." });
+    }
+
+    if (incomingAttachments.length > MAX_ATTACHMENTS) {
+      return res.status(400).json({ error: "You can attach up to 3 images per bug report." });
+    }
+
+    const attachments = [];
+    let totalAttachmentBytes = 0;
+    const feedbackReportId = new FeedbackReport()._id;
+
+    for (const attachment of incomingAttachments) {
+      const filename = String(attachment?.filename || "").trim();
+      const contentType = String(attachment?.contentType || "").trim().toLowerCase();
+      const base64Data = String(attachment?.base64Data || "").trim();
+
+      if (!filename || !contentType || !base64Data) {
+        return res.status(400).json({ error: "Each attachment must include a file name, type, and image data." });
+      }
+
+      if (!contentType.startsWith("image/")) {
+        return res.status(400).json({ error: "Only image attachments are supported in bug reports." });
+      }
+
+      const fileBuffer = Buffer.from(base64Data, "base64");
+      if (!fileBuffer.length) {
+        return res.status(400).json({ error: `Attachment "${filename}" is empty or invalid.` });
+      }
+
+      if (fileBuffer.length > MAX_ATTACHMENT_BYTES) {
+        return res.status(400).json({ error: `Attachment "${filename}" exceeds the 5 MB file size limit.` });
+      }
+
+      totalAttachmentBytes += fileBuffer.length;
+      attachments.push({
+        filename,
+        contentType,
+        sizeBytes: fileBuffer.length,
+        content: base64Data,
+      });
     }
 
     const user = await User.findById(req.user.id).select("firstName lastName email");
@@ -1423,16 +1558,21 @@ app.post("/feedback/report-bug", authenticatedLimiter, ensureAuthenticated, feed
       user,
       subject,
       message,
+      attachments,
       requestMeta: {
         ip: req.ip,
         userAgent: req.get("user-agent"),
+        feedbackReportId: feedbackReportId.toString(),
       },
     });
 
     await FeedbackReport.create({
+      _id: feedbackReportId,
       userId: user._id,
       subject,
       message,
+      attachmentCount: attachments.length,
+      attachmentBytes: totalAttachmentBytes,
       ipAddress: req.ip,
       userAgent: req.get("user-agent"),
     });
@@ -1444,6 +1584,58 @@ app.post("/feedback/report-bug", authenticatedLimiter, ensureAuthenticated, feed
   } catch (error) {
     console.error("Error sending bug feedback email:", error);
     return res.status(500).json({ error: error?.message || "Unable to send bug report right now." });
+  }
+});
+
+app.get("/settings/board-preferences", authenticatedLimiter, ensureAuthenticated, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select("settings.board.defaultTaskSort settings.board.defaultView");
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    return res.json({
+      board: {
+        default_task_sort: normalizeBoardTaskSort(user.settings?.board?.defaultTaskSort),
+        default_view: normalizeBoardDefaultView(user.settings?.board?.defaultView),
+      },
+    });
+  } catch (error) {
+    console.error("Error loading board preferences:", error);
+    return res.status(500).json({ error: "Unable to load board preferences" });
+  }
+});
+
+app.put("/settings/board-preferences", authenticatedLimiter, ensureAuthenticated, async (req, res) => {
+  try {
+    const defaultTaskSort = normalizeBoardTaskSort(req.body?.board?.default_task_sort);
+    const defaultView = normalizeBoardDefaultView(req.body?.board?.default_view);
+
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user.id,
+      {
+        $set: {
+          "settings.board.defaultTaskSort": defaultTaskSort,
+          "settings.board.defaultView": defaultView,
+        },
+      },
+      { new: true, runValidators: true }
+    ).select("settings.board.defaultTaskSort settings.board.defaultView");
+
+    if (!updatedUser) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    return res.json({
+      message: "Board preferences updated",
+      board: {
+        default_task_sort: normalizeBoardTaskSort(updatedUser.settings?.board?.defaultTaskSort),
+        default_view: normalizeBoardDefaultView(updatedUser.settings?.board?.defaultView),
+      },
+    });
+  } catch (error) {
+    console.error("Error saving board preferences:", error);
+    return res.status(500).json({ error: "Unable to save board preferences" });
   }
 });
 
@@ -1459,6 +1651,12 @@ app.get("/auth-status", (req, res) => {
       firstName: req.user.firstName,
       lastName: req.user.lastName,
       email: req.user.email,
+      settings: {
+        board: {
+          default_task_sort: normalizeBoardTaskSort(req.user.settings?.board?.defaultTaskSort),
+          default_view: normalizeBoardDefaultView(req.user.settings?.board?.defaultView),
+        },
+      },
     },
   });
 });

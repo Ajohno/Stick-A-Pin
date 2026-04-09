@@ -4,6 +4,7 @@ const InboundEmailSchema = new mongoose.Schema(
   {
     eventId: { type: String, required: true, unique: true, trim: true },
     emailId: { type: String, required: true, trim: true, index: true },
+    feedbackReportId: { type: mongoose.Schema.Types.ObjectId, ref: "FeedbackReport", default: null, index: true },
     messageId: { type: String, default: null, trim: true },
     from: { type: String, default: null, trim: true },
     to: { type: [String], default: [] },

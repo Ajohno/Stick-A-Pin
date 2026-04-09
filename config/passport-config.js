@@ -59,6 +59,27 @@ function buildCallbackUrl(pathname) {
   return `${baseUrl.replace(/\/$/, "")}${pathname}`;
 }
 
+async function recoverUserFromDuplicateProviderError({
+  error,
+  providerKey,
+  providerId,
+  providerEmail,
+}) {
+  if (!error || error.code !== 11000) return null;
+
+  if (providerId) {
+    const userByProviderId = await User.findOne({ [`authProviders.${providerKey}.id`]: providerId });
+    if (userByProviderId) return userByProviderId;
+  }
+
+  if (providerEmail) {
+    const userByEmail = await User.findOne({ email: providerEmail });
+    if (userByEmail) return userByEmail;
+  }
+
+  return null;
+}
+
 module.exports = function (passport) {
   passport.use(
     new LocalStrategy(
@@ -161,6 +182,17 @@ module.exports = function (passport) {
 
             return done(null, createdUser);
           } catch (error) {
+            const recoveredUser = await recoverUserFromDuplicateProviderError({
+              error,
+              providerKey: "google",
+              providerId,
+              providerEmail,
+            });
+
+            if (recoveredUser) {
+              return done(null, recoveredUser);
+            }
+
             return done(error);
           }
         }
@@ -237,6 +269,17 @@ module.exports = function (passport) {
 
             return done(null, createdUser);
           } catch (error) {
+            const recoveredUser = await recoverUserFromDuplicateProviderError({
+              error,
+              providerKey: "apple",
+              providerId,
+              providerEmail,
+            });
+
+            if (recoveredUser) {
+              return done(null, recoveredUser);
+            }
+
             return done(error);
           }
         }

@@ -58,9 +58,6 @@
         <li>
           <a href="/calendar-page.html" class="nav-item active">Calendar</a>
         </li>
-        <li><a href="/feedback-page.html" class="nav-item">Feedback</a></li>
-        <li><a href="/settings-page.html" class="nav-item">Settings</a></li>
-        <li><a href="#" id="logoutBtn" class="nav-item">Logout</a></li>
       </ul>
 
       <div class="nav-right">
@@ -83,24 +80,94 @@
     </nav>
     <div id="nav-backdrop" aria-hidden="true"></div>
 
-    <main
-      class="corkboard placeholder-board"
-      style="max-width: 1100px; margin: 0 auto"
-    >
-      <section
-        class="sticky-note orange caution-tape page-placeholder"
-        aria-label="Calendar page coming soon"
-      >
-        <h2 class="widget-title">
-          <i class="fa-solid fa-calendar-days" style="color: #c6534e"></i>
-          Calendar
-        </h2>
-        <p>
-          This page is currently in progress. Check back soon for your full
-          calendar view.
-        </p>
+    <main class="corkboard calendar-board" aria-label="Monthly calendar">
+      <section class="calendar-shell" id="calendarApp">
+        <header class="calendar-header">
+          <h1 id="calendarMonthTitle" class="calendar-month-title">Month YYYY</h1>
+          <div class="calendar-controls" aria-label="Month navigation">
+            <button id="calendarNewTaskBtn" class="calendar-nav-btn calendar-new-task-btn" type="button" aria-label="Create new task">
+              <i class="fa-solid fa-plus" aria-hidden="true"></i>
+              <span>New Task</span>
+            </button>
+            <button id="calendarPrevBtn" class="calendar-nav-btn" type="button" aria-label="Previous month">
+              <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+            </button>
+            <button id="calendarNextBtn" class="calendar-nav-btn" type="button" aria-label="Next month">
+              <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+            </button>
+            <button id="calendarTodayBtn" class="calendar-nav-btn calendar-today-btn" type="button" aria-label="Jump to current month and day">
+              Today
+            </button>
+          </div>
+        </header>
+
+        <div class="calendar-weekdays" aria-hidden="true">
+          <span><span class="weekday-full">Sunday</span><span class="weekday-short">Sun</span></span>
+          <span><span class="weekday-full">Monday</span><span class="weekday-short">Mon</span></span>
+          <span><span class="weekday-full">Tuesday</span><span class="weekday-short">Tue</span></span>
+          <span><span class="weekday-full">Wednesday</span><span class="weekday-short">Wed</span></span>
+          <span><span class="weekday-full">Thursday</span><span class="weekday-short">Thur</span></span>
+          <span><span class="weekday-full">Friday</span><span class="weekday-short">Fri</span></span>
+          <span><span class="weekday-full">Saturday</span><span class="weekday-short">Sat</span></span>
+        </div>
+
+        <div id="calendarGrid" class="calendar-grid" role="grid" aria-label="Calendar days"></div>
       </section>
     </main>
+
+    <div id="calendarTaskComposerOverlay" class="calendar-task-composer-overlay" hidden>
+      <div id="create-task-widget" class="sticky-note blue tape calendar-task-composer">
+        <form
+          id="taskForm"
+          class="paper-form create-task-form-grid"
+          data-auto-close-on-submit="true"
+        >
+          <div class="paper-field task-field">
+            <label for="taskDescription">Task</label>
+            <input
+              id="taskDescription"
+              type="text"
+              name="description"
+              placeholder="What do you need to do?"
+              required
+            />
+          </div>
+
+          <div class="paper-field due-field">
+            <label for="dueDate">Due Date</label>
+            <input id="dueDate" type="date" name="dueDate" />
+          </div>
+
+          <div class="paper-field effort-field">
+            <label>Effort Level (1–5)</label>
+            <div class="effort-options" role="radiogroup" aria-label="Effort level">
+              <label class="effort-option">
+                <input type="radio" name="effortLevel" value="1" required />
+                1
+              </label>
+              <label class="effort-option">
+                <input type="radio" name="effortLevel" value="2" />
+                2
+              </label>
+              <label class="effort-option">
+                <input type="radio" name="effortLevel" value="3" checked />
+                3
+              </label>
+              <label class="effort-option">
+                <input type="radio" name="effortLevel" value="4" />
+                4
+              </label>
+              <label class="effort-option">
+                <input type="radio" name="effortLevel" value="5" />
+                5
+              </label>
+            </div>
+          </div>
+
+          <button id="submitBtn" class="paper-button" type="submit">Pin it!</button>
+        </form>
+      </div>
+    </div>
 
     <div
       id="toast"
@@ -125,5 +192,103 @@
       </button>
       <div class="toast__progress"></div>
     </div>
+
+    <aside id="task-detail-panel" class="task-detail-panel" aria-hidden="true">
+      <div class="task-detail-panel__header">
+        <h3>Task Details</h3>
+        <button
+          id="taskDetailClose"
+          class="task-detail-close"
+          type="button"
+          aria-label="Close task details"
+        >
+          ×
+        </button>
+      </div>
+
+      <div class="task-detail-actions">
+        <button
+          type="button"
+          id="panelBigThreeBtn"
+          class="task-action-btn big-three-btn"
+          aria-label="Toggle Big 3 task"
+        >
+          <i
+            class="fa-regular fa-star"
+            style="color: rgba(237, 28, 28, 1)"
+            aria-hidden="true"
+          ></i>
+          <span>Big 3</span>
+        </button>
+        <button type="button" id="panelEditBtn" class="task-action-btn">
+          <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
+          <span>Edit</span>
+        </button>
+        <button type="button" id="panelDeleteBtn" class="task-action-btn">
+          <i class="fa-solid fa-eraser" aria-hidden="true"></i>
+          <span>Delete</span>
+        </button>
+      </div>
+
+      <div class="task-detail-content">
+        <p class="task-detail-label">Task Description</p>
+        <p id="panelTaskDescription" class="task-detail-value"></p>
+        <input
+          id="panelTaskDescriptionInput"
+          class="task-detail-input"
+          type="text"
+          hidden
+        />
+
+        <p class="task-detail-label">Due Date</p>
+        <p id="panelTaskDueDate" class="task-detail-value"></p>
+        <input
+          id="panelTaskDueDateInput"
+          class="task-detail-input"
+          type="date"
+          hidden
+        />
+
+        <p class="task-detail-label">Effort Level</p>
+        <p id="panelTaskEffort" class="task-detail-value"></p>
+        <div
+          id="panelTaskEffortInput"
+          class="effort-options task-detail-effort-options"
+          role="radiogroup"
+          aria-label="Edit effort level"
+          hidden
+        >
+          <label class="effort-option"
+            ><input type="radio" name="panelEffortLevel" value="1" />1</label
+          >
+          <label class="effort-option"
+            ><input type="radio" name="panelEffortLevel" value="2" />2</label
+          >
+          <label class="effort-option"
+            ><input type="radio" name="panelEffortLevel" value="3" />3</label
+          >
+          <label class="effort-option"
+            ><input type="radio" name="panelEffortLevel" value="4" />4</label
+          >
+          <label class="effort-option"
+            ><input type="radio" name="panelEffortLevel" value="5" />5</label
+          >
+        </div>
+
+        <label
+          class="task-detail-complete checkbox-container"
+          aria-label="Mark task complete from details panel"
+        >
+          <input type="checkbox" id="panelTaskComplete" />
+          <span class="checkmark"></span>
+          <span class="task-detail-complete-text">Mark as complete</span>
+        </label>
+      </div>
+    </aside>
+    <div
+      id="task-detail-backdrop"
+      class="task-detail-backdrop"
+      aria-hidden="true"
+    ></div>
   </body>
 </html>

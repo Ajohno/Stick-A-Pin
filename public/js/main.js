@@ -134,6 +134,57 @@ const dashboardTaskState = {
   allTasks: [],
 };
 
+const boardPreferenceDefaults = {
+  defaultTaskSort: "created_date",
+  defaultView: "board",
+};
+
+const appPreferenceState = {
+  board: {
+    defaultTaskSort: boardPreferenceDefaults.defaultTaskSort,
+    defaultView: boardPreferenceDefaults.defaultView,
+  },
+};
+
+function normalizeDefaultTaskSort(value) {
+  const allowed = new Set(["created_date", "effort_level", "due_date"]);
+  return allowed.has(value) ? value : boardPreferenceDefaults.defaultTaskSort;
+}
+
+function normalizeDefaultView(value) {
+  const allowed = new Set(["board", "calendar"]);
+  return allowed.has(value) ? value : boardPreferenceDefaults.defaultView;
+}
+
+function mapPreferenceSortToFilter(defaultTaskSort) {
+  if (defaultTaskSort === "effort_level") return "effort";
+  if (defaultTaskSort === "due_date") return "due-date";
+  return "task-list";
+}
+
+function setBoardPreferences(preferences = {}) {
+  const nextTaskSort = normalizeDefaultTaskSort(preferences.defaultTaskSort);
+  const nextDefaultView = normalizeDefaultView(preferences.defaultView);
+  const preferredPath =
+    nextDefaultView === "calendar" ? "/calendar-page.html" : "/dashboard.html";
+
+  appPreferenceState.board.defaultTaskSort = nextTaskSort;
+  appPreferenceState.board.defaultView = nextDefaultView;
+  dashboardTaskState.filter = mapPreferenceSortToFilter(nextTaskSort);
+
+  document.querySelectorAll(".brand-link").forEach((linkEl) => {
+    linkEl.setAttribute("href", preferredPath);
+  });
+}
+
+function hydrateBoardPreferences(user = {}) {
+  const boardSettings = user?.settings?.board || {};
+  setBoardPreferences({
+    defaultTaskSort: boardSettings.default_task_sort,
+    defaultView: boardSettings.default_view,
+  });
+}
+
 function formatFocusDuration(totalSeconds) {
   const safeSeconds = Math.max(0, parseInt(totalSeconds, 10) || 0);
   const minutes = Math.floor(safeSeconds / 60);
@@ -1519,6 +1570,9 @@ async function initDailyEmailSettings() {
 }
 
 async function initFeedbackForm() {
+  const MAX_FEEDBACK_ATTACHMENTS = 3;
+  const MAX_FEEDBACK_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+
   const feedbackForm = document.getElementById("feedbackForm");
   if (!feedbackForm) return;
 
@@ -1526,6 +1580,162 @@ async function initFeedbackForm() {
   const subjectEl = document.getElementById("feedbackSubject");
   const messageEl = document.getElementById("feedbackMessage");
   const submitBtn = document.getElementById("feedbackSubmitBtn");
+  const photoBtn = document.getElementById("feedbackPhotoBtn");
+  const photoInput = document.getElementById("feedbackPhotoInput");
+  const attachmentListEl = document.getElementById("feedbackAttachmentList");
+  let feedbackAttachments = [];
+  let attachmentIdCounter = 0;
+
+  function formatAttachmentSize(sizeInBytes) {
+    if (!Number.isFinite(sizeInBytes)) return "0 KB";
+    if (sizeInBytes < 1024 * 1024) {
+      return `${Math.max(1, Math.round(sizeInBytes / 1024))} KB`;
+    }
+    return `${(sizeInBytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  function renderAttachmentList() {
+    if (!attachmentListEl) return;
+    attachmentListEl.innerHTML = "";
+
+    feedbackAttachments.forEach((attachment) => {
+      const item = document.createElement("li");
+      item.className = "feedback-attachment-item";
+
+      const attachmentMain = document.createElement("div");
+      attachmentMain.className = "feedback-attachment-main";
+
+      const preview = document.createElement("img");
+      preview.className = "feedback-attachment-preview";
+      preview.src = attachment.previewUrl;
+      preview.alt = `Preview of ${attachment.file.name}`;
+
+      const label = document.createElement("span");
+      label.className = "feedback-attachment-text";
+      label.textContent = `${attachment.file.name} (${formatAttachmentSize(attachment.file.size)})`;
+
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className = "feedback-attachment-remove";
+      removeBtn.textContent = "Remove";
+      removeBtn.addEventListener("click", () => {
+        const toRemove = feedbackAttachments.find((itemAttachment) => itemAttachment.id === attachment.id);
+        if (toRemove?.previewUrl) {
+          URL.revokeObjectURL(toRemove.previewUrl);
+        }
+        feedbackAttachments = feedbackAttachments.filter((itemAttachment) => itemAttachment.id !== attachment.id);
+        renderAttachmentList();
+      });
+
+      attachmentMain.append(preview, label);
+      item.append(attachmentMain, removeBtn);
+      attachmentListEl.appendChild(item);
+    });
+  }
+
+  function addAttachmentFiles(candidateFiles) {
+    const selectedFiles = Array.from(candidateFiles || []);
+    if (!selectedFiles.length) return;
+
+    const existingKeys = new Set(
+      feedbackAttachments.map((attachment) => `${attachment.file.name}:${attachment.file.size}:${attachment.file.lastModified}`),
+    );
+
+    for (const file of selectedFiles) {
+      const fileKey = `${file.name}:${file.size}:${file.lastModified}`;
+      if (!file.type?.startsWith("image/")) {
+        Toast.show({
+          message: "Only image files can be attached to bug reports.",
+          type: "warning",
+          duration: 3000,
+        });
+        continue;
+      }
+
+      if (file.size > MAX_FEEDBACK_ATTACHMENT_BYTES) {
+        Toast.show({
+          message: `Image "${file.name}" is too large. Use files up to 5 MB.`,
+          type: "warning",
+          duration: 3200,
+        });
+        continue;
+      }
+
+      if (feedbackAttachments.length >= MAX_FEEDBACK_ATTACHMENTS) {
+        Toast.show({
+          message: "You can attach up to 3 images per bug report.",
+          type: "warning",
+          duration: 3000,
+        });
+        break;
+      }
+
+      if (existingKeys.has(fileKey)) {
+        continue;
+      }
+
+      feedbackAttachments.push({
+        id: ++attachmentIdCounter,
+        file,
+        previewUrl: URL.createObjectURL(file),
+      });
+      existingKeys.add(fileKey);
+    }
+
+    renderAttachmentList();
+  }
+
+  function resetAttachments() {
+    feedbackAttachments.forEach((attachment) => {
+      if (attachment.previewUrl) {
+        URL.revokeObjectURL(attachment.previewUrl);
+      }
+    });
+    feedbackAttachments = [];
+    if (photoInput) photoInput.value = "";
+    renderAttachmentList();
+  }
+
+  async function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result || "");
+        const base64Data = result.includes(",") ? result.split(",")[1] : "";
+        if (!base64Data) {
+          reject(new Error(`Unable to read "${file.name}"`));
+          return;
+        }
+        resolve(base64Data);
+      };
+      reader.onerror = () => reject(new Error(`Unable to read "${file.name}"`));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  if (photoBtn && photoInput) {
+    photoBtn.addEventListener("click", () => {
+      photoInput.click();
+    });
+
+    photoInput.addEventListener("change", (event) => {
+      addAttachmentFiles(event.target?.files);
+      photoInput.value = "";
+    });
+  }
+
+  if (messageEl) {
+    messageEl.addEventListener("paste", (event) => {
+      const clipboardItems = Array.from(event.clipboardData?.items || []);
+      const imageFiles = clipboardItems
+        .filter((item) => item.kind === "file" && item.type?.startsWith("image/"))
+        .map((item) => item.getAsFile())
+        .filter(Boolean);
+
+      if (!imageFiles.length) return;
+      addAttachmentFiles(imageFiles);
+    });
+  }
 
   try {
     const authResponse = await apiFetch("/auth-status", {
@@ -1567,11 +1777,19 @@ async function initFeedbackForm() {
     submitBtn.disabled = true;
 
     try {
+      const attachments = await Promise.all(
+        feedbackAttachments.map(async (attachment) => ({
+          filename: attachment.file.name || "attachment.png",
+          contentType: attachment.file.type || "image/png",
+          base64Data: await fileToBase64(attachment.file),
+        })),
+      );
+
       const response = await apiFetch("/feedback/report-bug", {
         credentials: "include",
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subject, message }),
+        body: JSON.stringify({ subject, message, attachments }),
       });
 
       const data = await parseApiResponse(response);
@@ -1583,6 +1801,7 @@ async function initFeedbackForm() {
       if (emailEl) {
         emailEl.value = data?.fromEmail || emailEl.value;
       }
+      resetAttachments();
 
       Toast.show({
         message: "Thanks! Your bug report was emailed to support.",
@@ -1599,6 +1818,336 @@ async function initFeedbackForm() {
       submitBtn.disabled = false;
     }
   });
+}
+
+async function initBoardTaskPreferencesSettings() {
+  const sortSelectEl = document.getElementById("boardDefaultTaskSort");
+  const viewSelectEl = document.getElementById("boardDefaultView");
+  if (!sortSelectEl || !viewSelectEl) return;
+
+  sortSelectEl.value = normalizeDefaultTaskSort(appPreferenceState.board.defaultTaskSort);
+  viewSelectEl.value = normalizeDefaultView(appPreferenceState.board.defaultView);
+
+  const persistBoardPreferences = async (previousValues) => {
+    try {
+      const response = await apiFetch("/settings/board-preferences", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          board: {
+            default_task_sort: appPreferenceState.board.defaultTaskSort,
+            default_view: appPreferenceState.board.defaultView,
+          },
+        }),
+      });
+
+      const data = await parseApiResponse(response);
+      if (!response.ok) {
+        throw new Error(data?.error || "Unable to save board preferences.");
+      }
+
+      Toast.show({
+        message: "Board preferences saved",
+        type: "success",
+        duration: 1800,
+      });
+    } catch (error) {
+      setBoardPreferences(previousValues);
+      sortSelectEl.value = appPreferenceState.board.defaultTaskSort;
+      viewSelectEl.value = appPreferenceState.board.defaultView;
+      if (dashboardTaskState.allTasks?.length) {
+        updateTaskList(dashboardTaskState.allTasks);
+      }
+      Toast.show({
+        message: error.message || "Could not save board preferences.",
+        type: "error",
+        duration: 2800,
+      });
+    }
+  };
+
+  sortSelectEl.addEventListener("change", async () => {
+    const previousValues = {
+      defaultTaskSort: appPreferenceState.board.defaultTaskSort,
+      defaultView: appPreferenceState.board.defaultView,
+    };
+
+    setBoardPreferences({
+      defaultTaskSort: sortSelectEl.value,
+      defaultView: viewSelectEl.value,
+    });
+    updateTaskList(dashboardTaskState.allTasks);
+    await persistBoardPreferences(previousValues);
+  });
+
+  viewSelectEl.addEventListener("change", async () => {
+    const previousValues = {
+      defaultTaskSort: appPreferenceState.board.defaultTaskSort,
+      defaultView: appPreferenceState.board.defaultView,
+    };
+
+    setBoardPreferences({
+      defaultTaskSort: sortSelectEl.value,
+      defaultView: viewSelectEl.value,
+    });
+    await persistBoardPreferences(previousValues);
+  });
+}
+
+function getProfilePanelMarkup(panelKey, user = null) {
+  if (panelKey === "support") {
+    return `
+      <section class="profile-dynamic-content" aria-label="Help and support">
+        <h2 class="widget-title">
+          <i class="fa-solid fa-comment-dots" style="color: #c6534e"></i>
+          Feedback
+        </h2>
+        <p class="feedback-intro">
+          Report bugs you run into while using Stick A Pin. We'll send your
+          note straight to our support inbox.
+        </p>
+        <form id="feedbackForm" class="feedback-form" novalidate>
+          <label for="feedbackEmail">Your account email</label>
+          <input id="feedbackEmail" type="email" readonly />
+          <label for="feedbackSubject">Bug summary</label>
+          <input id="feedbackSubject" name="feedbackSubject" type="text" maxlength="120" placeholder="Short summary of the issue" required />
+          <label for="feedbackMessage">What happened?</label>
+          <div class="feedback-attachment-toolbar">
+            <button id="feedbackPhotoBtn" class="feedback-photo-btn" type="button" aria-controls="feedbackPhotoInput feedbackAttachmentList">
+              <i class="fa-regular fa-image" aria-hidden="true"></i>
+              Add photo
+            </button>
+            <span class="feedback-photo-hint">Paste images into the details box or upload from your device.</span>
+          </div>
+          <input id="feedbackPhotoInput" name="feedbackPhotos" type="file" accept="image/*" multiple hidden />
+          <textarea id="feedbackMessage" name="feedbackMessage" maxlength="2000" rows="6" placeholder="Steps to reproduce, expected result, and what you saw." required></textarea>
+          <ul id="feedbackAttachmentList" class="feedback-attachment-list" aria-live="polite"></ul>
+          <button id="feedbackSubmitBtn" type="submit">Send bug report</button>
+        </form>
+      </section>
+    `;
+  }
+
+  if (panelKey === "settings") {
+    return `
+      <section class="profile-dynamic-content" aria-label="Settings">
+        <h2 class="widget-title">
+          <i class="fa-solid fa-gear" style="color: #c6534e"></i>
+          Settings
+        </h2>
+        <div class="daily-reflection-card">
+          <h3 class="daily-reflection-title">Board &amp; Task Preferences</h3>
+          <div class="daily-email-settings" style="margin-top: 0.6rem;">
+            <label class="daily-email-label" for="boardDefaultTaskSort">Default Task Sort</label>
+            <select id="boardDefaultTaskSort" class="profile-settings-select">
+              <option value="created_date">Date Created</option>
+              <option value="effort_level">Effort Level</option>
+              <option value="due_date">Due Date</option>
+            </select>
+            <label class="daily-email-label" for="boardDefaultView">Default View</label>
+            <select id="boardDefaultView" class="profile-settings-select">
+              <option value="board">Board</option>
+              <option value="calendar">Calendar</option>
+            </select>
+          </div>
+        </div>
+      </section>
+    `;
+  }
+
+  const fullName = [
+    String(user?.firstName || "").trim(),
+    String(user?.lastName || "").trim(),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    || String(user?.name || "Not available").trim();
+  const emailAddress = String(user?.email || "Not available").trim();
+  const timezoneValue = String(
+    user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "Not available",
+  ).trim();
+  const languageValue = String(
+    user?.language || navigator.language || "Not available",
+  ).trim();
+
+  return `
+    <section class="profile-dynamic-content" aria-label="My profile">
+      <h2 class="widget-title">
+        <i class="fa-solid fa-user" style="color: #c6534e"></i>
+        My Profile
+      </h2>
+      <div class="profile-account-details">
+        <div class="profile-account-field">
+          <p class="profile-account-label">Display Name</p>
+          <p class="profile-account-value">${fullName || "Not available"}</p>
+        </div>
+        <div class="profile-account-divider" aria-hidden="true"></div>
+        <div class="profile-account-field">
+          <p class="profile-account-label">Email Address</p>
+          <p class="profile-account-value">${emailAddress || "Not available"}</p>
+        </div>
+        <div class="profile-account-divider" aria-hidden="true"></div>
+        <div class="profile-account-field">
+          <p class="profile-account-label">Timezone</p>
+          <p class="profile-account-value">${timezoneValue || "Not available"}</p>
+        </div>
+        <div class="profile-account-divider" aria-hidden="true"></div>
+        <div class="profile-account-field">
+          <p class="profile-account-label">Language</p>
+          <p class="profile-account-value">${languageValue || "Not available"}</p>
+        </div>
+        <div class="profile-account-divider" aria-hidden="true"></div>
+      </div>
+    </section>
+  `;
+}
+
+function initProfileBoardNav() {
+  const panelContainer = document.getElementById("profilePanelContent");
+  const navButtons = Array.from(document.querySelectorAll(".profile-panel-trigger"));
+  const panelStickyNote = document.getElementById("profileContentPanel");
+  if (!panelContainer || !navButtons.length) return;
+
+  const userNameEl = document.getElementById("profileSidebarUserName");
+  let currentUser = null;
+  const applyUserName = (user) => {
+    if (!userNameEl) return;
+    const firstName = String(user?.firstName || "").trim();
+    const lastName = String(user?.lastName || "").trim();
+    const combinedName = [firstName, lastName].filter(Boolean).join(" ");
+    const rawName = combinedName || String(user?.name || "User").trim();
+    userNameEl.textContent = rawName || "User";
+  };
+
+  const renderPanel = (panelKey) => {
+    panelContainer.innerHTML = getProfilePanelMarkup(panelKey, currentUser);
+    navButtons.forEach((button) => {
+      button.classList.toggle("is-active", button.dataset.panel === panelKey);
+    });
+
+    if (panelKey === "support") {
+      initFeedbackForm();
+    }
+    if (panelKey === "settings") {
+      initBoardTaskPreferencesSettings();
+    }
+  };
+
+  const waitForAnimation = (element, timeoutMs = 420) =>
+    new Promise((resolve) => {
+      if (!element) {
+        resolve();
+        return;
+      }
+
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        element.removeEventListener("animationend", finish);
+        resolve();
+      };
+
+      element.addEventListener("animationend", finish, { once: true });
+      window.setTimeout(finish, timeoutMs);
+    });
+
+  let activePanelKey = "profile";
+  let transitionInFlight = false;
+  let queuedPanelKey = null;
+
+  const transitionToPanel = async (panelKey) => {
+    if (!panelStickyNote) {
+      renderPanel(panelKey);
+      activePanelKey = panelKey;
+      return;
+    }
+
+    transitionInFlight = true;
+    panelStickyNote.classList.add("in-view-hover", "profile-note-leaving");
+    await waitForAnimation(panelStickyNote, 380);
+
+    panelStickyNote.classList.remove("profile-note-leaving");
+    renderPanel(panelKey);
+    activePanelKey = panelKey;
+
+    panelStickyNote.classList.add("profile-note-entering", "in-view-hover");
+    await waitForAnimation(panelStickyNote, 420);
+    panelStickyNote.classList.remove("profile-note-entering", "in-view-hover");
+    transitionInFlight = false;
+
+    if (queuedPanelKey && queuedPanelKey !== activePanelKey) {
+      const nextPanel = queuedPanelKey;
+      queuedPanelKey = null;
+      transitionToPanel(nextPanel);
+    }
+  };
+
+  navButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const requestedPanel = button.dataset.panel || "profile";
+      if (requestedPanel === activePanelKey && !transitionInFlight) return;
+
+      if (transitionInFlight) {
+        queuedPanelKey = requestedPanel;
+        return;
+      }
+
+      transitionToPanel(requestedPanel);
+    });
+  });
+
+  document.addEventListener("auth-status-resolved", (event) => {
+    if (event?.detail?.loggedIn) {
+      currentUser = event.detail.user || null;
+      applyUserName(currentUser);
+      if (activePanelKey === "profile") {
+        renderPanel("profile");
+      }
+    }
+  });
+
+  const triggerLogout = async () => {
+    const navLogoutBtn = document.getElementById("logoutBtn");
+    if (navLogoutBtn) {
+      navLogoutBtn.click();
+      return;
+    }
+
+    try {
+      const response = await apiFetch("/logout", {
+        credentials: "include",
+        method: "POST",
+      });
+
+      if (response.ok) {
+        Toast.show({
+          message: "Logged out successfully",
+          type: "success",
+          duration: 2000,
+        });
+        window.location.href = "/login.html";
+      } else {
+        const data = await parseApiResponse(response);
+        alert("Logout failed: " + (data.error || "Unknown error"));
+      }
+    } catch (error) {
+      console.error("Logout request failed:", error);
+      alert("Logout failed due to a network/server issue.");
+    }
+  };
+
+  const sidebarLogoutBtn = document.getElementById("profileSidebarLogoutBtn");
+  if (sidebarLogoutBtn) {
+    sidebarLogoutBtn.addEventListener("click", triggerLogout);
+  }
+
+  const mobileLogoutBtn = document.getElementById("profileMobileLogoutBtn");
+  if (mobileLogoutBtn) {
+    mobileLogoutBtn.addEventListener("click", triggerLogout);
+  }
+
+  renderPanel("profile");
 }
 
 
@@ -1845,6 +2394,12 @@ document.addEventListener("DOMContentLoaded", () => {
         type: "error",
         duration: 3500,
       });
+    } else if (authError === "google_unavailable") {
+      Toast.show({
+        message: "Google sign-in is not configured yet. Please use email and password.",
+        type: "error",
+        duration: 4000,
+      });
     }
 
     loginForm.addEventListener("submit", async (event) => {
@@ -1866,14 +2421,21 @@ document.addEventListener("DOMContentLoaded", () => {
         const data = await parseApiResponse(response);
 
         if (response.ok) {
+          hydrateBoardPreferences(data?.user);
+          const preferredDefaultPath =
+            typeof data?.preferredDefaultPath === "string"
+              ? data.preferredDefaultPath
+              : (normalizeDefaultView(data?.user?.settings?.board?.default_view) === "calendar"
+                ? "/calendar-page.html"
+                : "/dashboard.html");
+
           // alert("Login successful!");
           Toast.show({
             message: "Login Sucessful",
             type: "success",
             duration: 2000,
           });
-          // Auth pages should move you to the dashboard once logged in
-          window.location.href = "/dashboard.html";
+          window.location.href = preferredDefaultPath;
         } else {
           alert("Login failed: " + (data.error || "Unknown error"));
           Toast.show({
@@ -1948,10 +2510,527 @@ document.addEventListener("DOMContentLoaded", () => {
   initDailyReflectionStatsWidget();
   initWeeklyReflectionStatsWidget();
   initFeedbackForm();
+  initProfileBoardNav();
+  initCalendarPage();
 
   checkAuthStatus({ isLoginPage, isRegisterPage, isProtectedPage, isHomePage }); // Check authentication status on page load
   initFocusMode();
 });
+
+
+function initCalendarPage() {
+  const calendarGrid = document.getElementById("calendarGrid");
+  const monthTitle = document.getElementById("calendarMonthTitle");
+  const prevBtn = document.getElementById("calendarPrevBtn");
+  const nextBtn = document.getElementById("calendarNextBtn");
+  const todayBtn = document.getElementById("calendarTodayBtn");
+  const newTaskBtn = document.getElementById("calendarNewTaskBtn");
+  const taskComposerOverlay = document.getElementById("calendarTaskComposerOverlay");
+  const taskComposer = taskComposerOverlay?.querySelector(".calendar-task-composer");
+  const taskComposerForm = document.getElementById("taskForm");
+
+  if (!calendarGrid || !monthTitle || !prevBtn || !nextBtn || !todayBtn) return;
+
+  const today = new Date();
+  const todayYear = today.getFullYear();
+  const todayMonth = today.getMonth();
+  const todayDate = today.getDate();
+
+  let visibleDate = new Date(todayYear, todayMonth, 1);
+  let isTransitioning = false;
+  let dueDateLookup = new Set();
+  let dueTasksByDate = new Map();
+  let isDueNoteTransitioning = false;
+  let pendingDueNoteReturn = null;
+  let isTaskComposerTransitioning = false;
+
+  const dueNoteOverlay = document.createElement("div");
+  dueNoteOverlay.className = "calendar-due-note-overlay";
+  dueNoteOverlay.setAttribute("hidden", "hidden");
+
+  const dueNote = document.createElement("section");
+  dueNote.className = "calendar-due-note";
+  dueNote.setAttribute("role", "dialog");
+  dueNote.setAttribute("aria-modal", "true");
+  dueNote.setAttribute("aria-labelledby", "calendarDueNoteTitle");
+
+  const dueNoteCloseBtn = document.createElement("button");
+  dueNoteCloseBtn.className = "calendar-due-note-close";
+  dueNoteCloseBtn.type = "button";
+  dueNoteCloseBtn.setAttribute("aria-label", "Close due tasks list");
+  dueNoteCloseBtn.textContent = "×";
+
+  const dueNoteTitle = document.createElement("h2");
+  dueNoteTitle.id = "calendarDueNoteTitle";
+  dueNoteTitle.className = "calendar-due-note-title";
+  dueNoteTitle.textContent = "Due tasks";
+
+  const dueNoteList = document.createElement("ul");
+  dueNoteList.className = "calendar-due-note-list";
+
+  dueNote.appendChild(dueNoteCloseBtn);
+  dueNote.appendChild(dueNoteTitle);
+  dueNote.appendChild(dueNoteList);
+  dueNoteOverlay.appendChild(dueNote);
+  document.body.appendChild(dueNoteOverlay);
+
+
+  const toLocalDateKey = (value) => {
+    if (!value) return null;
+
+    if (typeof value === "string") {
+      const directMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (directMatch) {
+        return `${directMatch[1]}-${directMatch[2]}-${directMatch[3]}`;
+      }
+    }
+
+    const parsedDate = new Date(value);
+    if (Number.isNaN(parsedDate.getTime())) return null;
+
+    const year = parsedDate.getFullYear();
+    const month = String(parsedDate.getMonth() + 1).padStart(2, "0");
+    const day = String(parsedDate.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const buildVisibleDateKey = (year, month, day) => {
+    const normalizedMonth = String(month + 1).padStart(2, "0");
+    const normalizedDay = String(day).padStart(2, "0");
+    return `${year}-${normalizedMonth}-${normalizedDay}`;
+  };
+
+  const loadDueDateHighlights = async () => {
+    try {
+      const response = await apiFetch("/tasks", { credentials: "include" });
+      if (!response.ok) return;
+
+      const tasks = await response.json();
+      if (!Array.isArray(tasks)) return;
+
+      const activeTasks = tasks.filter((task) => task?.status === "active");
+      const dueTaskPairs = activeTasks
+        .map((task) => ({ key: toLocalDateKey(task?.dueDate), task }))
+        .filter((entry) => entry.key);
+
+      dueDateLookup = new Set(dueTaskPairs.map((entry) => entry.key));
+
+      dueTasksByDate = dueTaskPairs.reduce((lookup, entry) => {
+        const existing = lookup.get(entry.key) || [];
+        existing.push(entry.task);
+        lookup.set(entry.key, existing);
+        return lookup;
+      }, new Map());
+    } catch (error) {
+      console.error("Unable to load calendar due-date highlights:", error);
+    }
+  };
+
+  const waitForAnimation = (element, fallbackMs = 360) =>
+    new Promise((resolve) => {
+      if (!element) {
+        resolve();
+        return;
+      }
+
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        element.removeEventListener("animationend", finish);
+        resolve();
+      };
+
+      element.addEventListener("animationend", finish, { once: true });
+      window.setTimeout(finish, fallbackMs);
+    });
+
+  const closeDueTasksNote = async () => {
+    if (isDueNoteTransitioning || dueNoteOverlay.hasAttribute("hidden")) return;
+
+    isDueNoteTransitioning = true;
+    dueNote.classList.remove("calendar-note-entering");
+    dueNote.classList.add("calendar-note-leaving");
+    await waitForAnimation(dueNote, 320);
+
+    dueNote.classList.remove("calendar-note-leaving");
+    dueNoteOverlay.setAttribute("hidden", "hidden");
+    dueNoteOverlay.classList.remove("is-open");
+    isDueNoteTransitioning = false;
+  };
+
+  const refreshCalendarDueData = async () => {
+    await loadDueDateHighlights();
+    renderCalendar();
+  };
+
+  const buildCalendarTaskPanelHandlers = (task, syncCheckboxState) => {
+    const setTaskCompletion = async (isCompleted) => {
+      const updated = await updateTaskCompletionStatus(
+        task,
+        isCompleted,
+        null,
+        null,
+      );
+
+      if (!updated) return false;
+
+      syncCheckboxState?.(isCompleted);
+      await refreshCalendarDueData();
+      return true;
+    };
+
+    const saveTaskEdits = async (updates) => {
+      const updateResponse = await apiFetch(`/tasks/${task._id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+
+      const updateData = await parseApiResponse(updateResponse);
+      if (!updateResponse.ok) {
+        Toast.show({
+          message: updateData.error || "Error updating task",
+          type: "error",
+          duration: 3200,
+        });
+        return null;
+      }
+
+      task.description = updateData.description ?? task.description;
+      task.dueDate = updateData.dueDate ?? task.dueDate;
+      task.effortLevel = updateData.effortLevel ?? task.effortLevel;
+      await refreshCalendarDueData();
+      Toast.show({
+        message: "Task Updated",
+        type: "success",
+        duration: 2000,
+      });
+      return updateData;
+    };
+
+    const deleteTask = async () => {
+      const confirmDelete = confirm(
+        "Are you sure you want to delete this task?",
+      );
+      if (!confirmDelete) return;
+
+      const deleteResponse = await apiFetch(`/tasks/${task._id}`, {
+        method: "DELETE",
+      });
+
+      if (deleteResponse.ok) {
+        Toast.show({
+          message: "Task deleted",
+          type: "success",
+          duration: 2000,
+        });
+        await refreshCalendarDueData();
+        closeTaskDetailPanel();
+      } else {
+        Toast.show({
+          message: "Could not delete task",
+          type: "error",
+          duration: 3000,
+        });
+      }
+    };
+
+    return {
+      saveTaskEdits,
+      deleteTask,
+      toggleComplete: async () => {
+        const panelTaskComplete = document.getElementById("panelTaskComplete");
+        if (!panelTaskComplete) return;
+
+        panelTaskComplete.disabled = true;
+        const isCompleted = panelTaskComplete.checked;
+        const updated = await setTaskCompletion(isCompleted);
+
+        if (!updated) {
+          panelTaskComplete.checked = !isCompleted;
+        }
+        panelTaskComplete.disabled = false;
+      },
+    };
+  };
+
+  const openDueTasksNote = async (dateKey, dayLabel) => {
+    if (isDueNoteTransitioning) return;
+
+    const dueTasks = dueTasksByDate.get(dateKey);
+    if (!Array.isArray(dueTasks) || !dueTasks.length) return;
+
+    dueNoteTitle.textContent = `Due tasks for ${dayLabel}`;
+    dueNoteList.innerHTML = "";
+
+    dueTasks.forEach((task) => {
+      const listItem = document.createElement("li");
+      listItem.className = "calendar-due-task-item big-three-item";
+
+      const completeInput = document.createElement("input");
+      completeInput.type = "checkbox";
+      completeInput.className = "task-check big-three-check";
+      completeInput.checked = task.status === "completed";
+      completeInput.setAttribute("aria-label", `Mark ${task.description || "task"} complete`);
+
+      const descriptionButton = document.createElement("button");
+      descriptionButton.type = "button";
+      descriptionButton.className = "calendar-due-task-trigger big-three-details-trigger";
+      descriptionButton.textContent = task.description || "Untitled task";
+      descriptionButton.title = "Open task details";
+
+      const handlers = buildCalendarTaskPanelHandlers(task, (isCompleted) => {
+        completeInput.checked = isCompleted;
+      });
+
+      completeInput.addEventListener("click", (event) => {
+        event.stopPropagation();
+      });
+
+      completeInput.addEventListener("change", async () => {
+        completeInput.disabled = true;
+        const nextValue = completeInput.checked;
+        const updated = await updateTaskCompletionStatus(task, nextValue, null, null);
+        if (!updated) {
+          completeInput.checked = !nextValue;
+        } else {
+          await refreshCalendarDueData();
+        }
+        completeInput.disabled = false;
+      });
+
+      descriptionButton.addEventListener("click", async () => {
+        pendingDueNoteReturn = { dateKey, dayLabel };
+        await closeDueTasksNote();
+        openTaskDetailPanel(task, handlers);
+      });
+
+      listItem.append(completeInput, descriptionButton);
+      dueNoteList.appendChild(listItem);
+    });
+
+    dueNoteOverlay.removeAttribute("hidden");
+    dueNoteOverlay.classList.add("is-open");
+
+    dueNote.classList.remove("calendar-note-leaving");
+    dueNote.classList.remove("calendar-note-entering");
+
+    requestAnimationFrame(() => {
+      dueNote.classList.add("calendar-note-entering");
+      window.setTimeout(() => dueNoteCloseBtn.focus(), 50);
+    });
+  };
+
+  const reopenDueNoteFromDetailPanelClose = () => {
+    if (!pendingDueNoteReturn) return;
+
+    const detailPanel = document.getElementById("task-detail-panel");
+    if (detailPanel?.classList.contains("is-open")) return;
+
+    const { dateKey, dayLabel } = pendingDueNoteReturn;
+    pendingDueNoteReturn = null;
+    openDueTasksNote(dateKey, dayLabel);
+  };
+
+  const closeTaskComposer = async () => {
+    if (!taskComposerOverlay || !taskComposer || isTaskComposerTransitioning) return;
+    if (taskComposerOverlay.hasAttribute("hidden")) return;
+
+    isTaskComposerTransitioning = true;
+    taskComposer.classList.remove("calendar-note-entering");
+    taskComposer.classList.add("calendar-note-leaving");
+    await waitForAnimation(taskComposer, 320);
+
+    taskComposer.classList.remove("calendar-note-leaving");
+    taskComposerOverlay.setAttribute("hidden", "hidden");
+    taskComposerOverlay.classList.remove("is-open");
+    isTaskComposerTransitioning = false;
+  };
+
+  const openTaskComposer = () => {
+    if (!taskComposerOverlay || !taskComposer || isTaskComposerTransitioning) return;
+
+    taskComposerOverlay.removeAttribute("hidden");
+    taskComposerOverlay.classList.add("is-open");
+    taskComposer.classList.remove("calendar-note-leaving");
+    taskComposer.classList.remove("calendar-note-entering");
+
+    requestAnimationFrame(() => {
+      taskComposer.classList.add("calendar-note-entering");
+      const firstField = taskComposerForm?.querySelector("#taskDescription");
+      firstField?.focus();
+    });
+  };
+
+  const renderCalendar = ({ animateIn = false } = {}) => {
+    const year = visibleDate.getFullYear();
+    const month = visibleDate.getMonth();
+    const firstDayOfMonth = new Date(year, month, 1).getDay();
+    const totalDays = new Date(year, month + 1, 0).getDate();
+
+    monthTitle.textContent = visibleDate.toLocaleString("en-US", {
+      month: "long",
+      year: "numeric",
+    });
+
+    calendarGrid.innerHTML = "";
+
+    for (let i = 0; i < firstDayOfMonth; i += 1) {
+      const emptySlot = document.createElement("div");
+      emptySlot.className = "calendar-empty";
+      emptySlot.setAttribute("aria-hidden", "true");
+      calendarGrid.appendChild(emptySlot);
+    }
+
+    for (let day = 1; day <= totalDays; day += 1) {
+      const dayNote = document.createElement("article");
+      dayNote.className = "calendar-day";
+      dayNote.setAttribute("role", "gridcell");
+      dayNote.setAttribute("aria-label", `${monthTitle.textContent} ${day}`);
+
+      const visibleDateKey = buildVisibleDateKey(year, month, day);
+      if (dueDateLookup.has(visibleDateKey)) {
+        dayNote.classList.add("has-due-task");
+        dayNote.tabIndex = 0;
+        dayNote.setAttribute("aria-haspopup", "dialog");
+        dayNote.setAttribute("aria-label", `${monthTitle.textContent} ${day}, ${dueTasksByDate.get(visibleDateKey)?.length || 0} tasks due`);
+
+        const dayLabel = new Date(year, month, day).toLocaleDateString("en-US", {
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+        });
+
+        dayNote.addEventListener("click", () => {
+          openDueTasksNote(visibleDateKey, dayLabel);
+        });
+
+        dayNote.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            openDueTasksNote(visibleDateKey, dayLabel);
+          }
+        });
+      }
+
+      if (animateIn) {
+        dayNote.classList.add("calendar-note-entering");
+        dayNote.style.setProperty("--note-stagger", `${Math.min(day * 12, 260)}ms`);
+      }
+
+      const dayNumber = document.createElement("span");
+      dayNumber.className = "calendar-day-number";
+      dayNumber.textContent = String(day);
+      dayNote.appendChild(dayNumber);
+
+      const isToday = year === todayYear && month === todayMonth && day === todayDate;
+      if (isToday) {
+        dayNote.classList.add("today");
+        const todayLabel = document.createElement("span");
+        todayLabel.className = "calendar-today-label";
+        todayLabel.textContent = "today";
+        dayNote.appendChild(todayLabel);
+      }
+
+      calendarGrid.appendChild(dayNote);
+    }
+  };
+
+  const transitionToMonth = async (nextVisibleDate, { focusToday = false } = {}) => {
+    if (isTransitioning) return;
+    isTransitioning = true;
+
+    const existingNotes = Array.from(calendarGrid.querySelectorAll(".calendar-day"));
+    if (existingNotes.length) {
+      existingNotes.forEach((note, index) => {
+        note.classList.add("calendar-note-leaving");
+        note.style.setProperty("--note-stagger", `${Math.min(index * 10, 180)}ms`);
+      });
+
+      await waitForAnimation(existingNotes[existingNotes.length - 1], 360);
+    }
+
+    visibleDate = new Date(nextVisibleDate.getFullYear(), nextVisibleDate.getMonth(), 1);
+    renderCalendar({ animateIn: true });
+
+    if (focusToday) {
+      const todayCell = calendarGrid.querySelector(".calendar-day.today");
+      if (todayCell instanceof HTMLElement) {
+        todayCell.focus({ preventScroll: true });
+      }
+    }
+
+    isTransitioning = false;
+  };
+
+  prevBtn.addEventListener("click", () => {
+    transitionToMonth(new Date(visibleDate.getFullYear(), visibleDate.getMonth() - 1, 1));
+  });
+
+  nextBtn.addEventListener("click", () => {
+    transitionToMonth(new Date(visibleDate.getFullYear(), visibleDate.getMonth() + 1, 1));
+  });
+
+  todayBtn.addEventListener("click", () => {
+    transitionToMonth(new Date(todayYear, todayMonth, 1), { focusToday: true });
+  });
+
+  newTaskBtn?.addEventListener("click", () => {
+    openTaskComposer();
+  });
+
+  dueNoteCloseBtn.addEventListener("click", () => {
+    closeDueTasksNote();
+  });
+
+  dueNoteOverlay.addEventListener("click", (event) => {
+    if (event.target === dueNoteOverlay) {
+      closeDueTasksNote();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeDueTasksNote();
+      closeTaskComposer();
+    }
+  });
+
+  taskComposerOverlay?.addEventListener("click", (event) => {
+    if (event.target === taskComposerOverlay) {
+      closeTaskComposer();
+    }
+  });
+
+  taskComposerForm?.addEventListener("task:created", async () => {
+    await closeTaskComposer();
+    await refreshCalendarDueData();
+  });
+
+  const taskDetailCloseButton = document.getElementById("taskDetailClose");
+  const taskDetailBackdrop = document.getElementById("task-detail-backdrop");
+  const taskDetailPanel = document.getElementById("task-detail-panel");
+
+  taskDetailCloseButton?.addEventListener("click", () => {
+    window.setTimeout(reopenDueNoteFromDetailPanelClose, 0);
+  });
+
+  taskDetailBackdrop?.addEventListener("click", () => {
+    window.setTimeout(reopenDueNoteFromDetailPanelClose, 0);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !pendingDueNoteReturn) return;
+    if (!taskDetailPanel?.classList.contains("is-open")) return;
+
+    window.setTimeout(reopenDueNoteFromDetailPanelClose, 0);
+  });
+
+  loadDueDateHighlights().finally(() => {
+    renderCalendar({ animateIn: true });
+  });
+}
 
 async function updateNavTaskCounter() {
   const counters = document.querySelectorAll(".item-counter");
@@ -2000,14 +3079,24 @@ async function checkAuthStatus({
   }
 
   if (data.loggedIn) {
+    hydrateBoardPreferences(data?.user);
+
+    const preferredDefaultView = normalizeDefaultView(
+      appPreferenceState.board.defaultView,
+    );
+    const preferredDefaultPath =
+      preferredDefaultView === "calendar"
+        ? "/calendar-page.html"
+        : "/dashboard.html";
+
     if (isHomePage) {
-      window.location.href = "/dashboard.html";
+      window.location.href = preferredDefaultPath;
       return;
     }
 
     // Keep login/register pages from showing when already authenticated
     if (isLoginPage || isRegisterPage) {
-      window.location.href = "/dashboard.html";
+      window.location.href = preferredDefaultPath;
       return;
     }
 
@@ -2042,6 +3131,11 @@ async function checkAuthStatus({
     updateFocusLogWidget();
 
     updateNavTaskCounter();
+    document.dispatchEvent(
+      new CustomEvent("auth-status-resolved", {
+        detail: { loggedIn: true, user: data.user },
+      }),
+    );
   } else {
     // Protected pages should send logged-out users to login instead of showing a blank shell.
     if (isProtectedPage) {
@@ -2062,6 +3156,11 @@ async function checkAuthStatus({
     if (taskList) {
       taskList.innerHTML = ""; // Clear tasks when logged out
     }
+    document.dispatchEvent(
+      new CustomEvent("auth-status-resolved", {
+        detail: { loggedIn: false },
+      }),
+    );
   }
 }
 
@@ -2205,6 +3304,10 @@ const submit = async function (event) {
       // Clear input fields after successful submission
       taskInput.value = "";
       dateInput.value = "";
+      const parentForm = taskInput.closest("form");
+      parentForm?.dispatchEvent(
+        new CustomEvent("task:created", { bubbles: true }),
+      );
       return;
     }
 

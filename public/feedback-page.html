@@ -54,11 +54,6 @@
       <ul class="nav-links" id="nav-drawer">
         <li><a href="/dashboard.html" class="nav-item">Board</a></li>
         <li><a href="/calendar-page.html" class="nav-item">Calendar</a></li>
-        <li>
-          <a href="/feedback-page.html" class="nav-item active">Feedback</a>
-        </li>
-        <li><a href="/settings-page.html" class="nav-item">Settings</a></li>
-        <li><a href="#" id="logoutBtn" class="nav-item">Logout</a></li>
       </ul>
       <div class="nav-right">
         <div class="nav-status">
@@ -108,6 +103,28 @@
           />
 
           <label for="feedbackMessage">What happened?</label>
+          <div class="feedback-attachment-toolbar">
+            <button
+              id="feedbackPhotoBtn"
+              class="feedback-photo-btn"
+              type="button"
+              aria-controls="feedbackPhotoInput feedbackAttachmentList"
+            >
+              <i class="fa-regular fa-image" aria-hidden="true"></i>
+              Add photo
+            </button>
+            <span class="feedback-photo-hint"
+              >Paste images into the details box or upload from your device.</span
+            >
+          </div>
+          <input
+            id="feedbackPhotoInput"
+            name="feedbackPhotos"
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+          />
           <textarea
             id="feedbackMessage"
             name="feedbackMessage"
@@ -116,6 +133,11 @@
             placeholder="Steps to reproduce, expected result, and what you saw."
             required
           ></textarea>
+          <ul
+            id="feedbackAttachmentList"
+            class="feedback-attachment-list"
+            aria-live="polite"
+          ></ul>
 
           <button id="feedbackSubmitBtn" type="submit">
             Send bug report
