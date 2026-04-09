@@ -128,9 +128,12 @@ module.exports = function (passport) {
           callbackURL: googleCallbackURL,
         },
         async (accessToken, refreshToken, profile, done) => {
+          let providerId = "";
+          let providerEmail = "";
+
           try {
-            const providerId = String(profile?.id || "").trim();
-            const providerEmail = normalizeEmail(
+            providerId = String(profile?.id || "").trim();
+            providerEmail = normalizeEmail(
               profile?.emails?.find((entry) => entry?.value)?.value
             );
             const avatarUrl = profile?.photos?.[0]?.value || null;
@@ -220,10 +223,12 @@ module.exports = function (passport) {
           passReqToCallback: false,
         },
         async (accessToken, refreshToken, idToken, profile, done) => {
-          try {
-            const providerId = String(profile?.id || "").trim();
-            const providerEmail = normalizeEmail(profile?.email);
+          let providerId = "";
+          let providerEmail = "";
 
+          try {
+            providerId = String(profile?.id || "").trim();
+            providerEmail = normalizeEmail(profile?.email);
             let user = providerId
               ? await User.findOne({ "authProviders.apple.id": providerId })
               : null;
