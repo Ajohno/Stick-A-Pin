@@ -761,7 +761,6 @@ const feedbackSubmissionLimiter = rateLimit({
   max: 5, // limit each user+IP to 5 feedback emails per hour
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => `${req.user?.id || "anonymous"}:${req.ip}`,
 });
 
 function isStrategyEnabled(name) {
@@ -777,37 +776,24 @@ function redirectAuthFailure(req, res) {
 }
 
 
-function getGoogleCallbackUrlForRequest(req) {
-  const configuredCallback = (process.env.GOOGLE_CALLBACK_URL || "").trim();
-  if (configuredCallback) return configuredCallback;
-
-  const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
-  const protocol = forwardedProto || req.protocol || (process.env.NODE_ENV === "production" ? "https" : "http");
-  const hostHeader = String(req.headers["x-forwarded-host"] || req.headers.host || "").split(",")[0].trim();
-  const canonicalHost = hostHeader.replace(/^www\./i, "");
-
-  if (!canonicalHost) return "/auth/google/callback";
-
-  return `${protocol}://${canonicalHost}/auth/google/callback`;
-}
-
 app.get("/auth/google", authRateLimiter, (req, res, next) => {
   if (!isStrategyEnabled("google")) {
-    return res.status(503).json({ error: "Google login is not configured" });
+    return res.redirect("/login.html?error=google_unavailable");
   }
 
-  const callbackURL = getGoogleCallbackUrlForRequest(req);
-  passport.authenticate("google", { scope: ["profile", "email"], callbackURL })(req, res, next);
+  passport.authenticate("google", { scope: ["profile", "email"] })(req, res, next);
 });
 
-app.get("/auth/google/callback", authRateLimiter, (req, res, next) => {
+app.get("/auth/google/callback", authRateLimiter, (req, res) => {
   if (!isStrategyEnabled("google")) {
     return redirectAuthFailure(req, res);
   }
 
-  const callbackURL = getGoogleCallbackUrlForRequest(req);
-  passport.authenticate("google", { failureRedirect: "/login.html?error=sso_failed", callbackURL })(req, res, (authErr) => {
-    if (authErr) return next(authErr);
+  passport.authenticate("google", { failureRedirect: "/login.html?error=sso_failed" })(req, res, (authErr) => {
+    if (authErr) {
+      console.error("Google OAuth callback failed:", authErr);
+      return redirectAuthFailure(req, res);
+    }
     return res.redirect(getDefaultViewPathForUser(req.user));
   });
 });
@@ -820,13 +806,16 @@ app.get("/auth/apple", authRateLimiter, (req, res, next) => {
   passport.authenticate("apple", { scope: ["name", "email"] })(req, res, next);
 });
 
-function handleAppleCallback(req, res, next) {
+function handleAppleCallback(req, res) {
   if (!isStrategyEnabled("apple")) {
     return redirectAuthFailure(req, res);
   }
 
   return passport.authenticate("apple", { failureRedirect: "/login.html?error=sso_failed" })(req, res, (authErr) => {
-    if (authErr) return next(authErr);
+    if (authErr) {
+      console.error("Apple OAuth callback failed:", authErr);
+      return redirectAuthFailure(req, res);
+    }
     return res.redirect(getDefaultViewPathForUser(req.user));
   });
 }
