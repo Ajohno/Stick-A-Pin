@@ -2140,8 +2140,11 @@ body.task-panel-open {
 
 .profile-delete-account-btn {
   align-self: flex-start;
+}
+
+.profile-delete-actions .paper-button {
   width: auto;
-  min-width: 10.5rem;
+  min-width: 9.5rem;
   text-align: center;
 }
 
