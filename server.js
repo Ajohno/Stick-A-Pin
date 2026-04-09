@@ -785,13 +785,16 @@ app.get("/auth/google", authRateLimiter, (req, res, next) => {
   passport.authenticate("google", { scope: ["profile", "email"] })(req, res, next);
 });
 
-app.get("/auth/google/callback", authRateLimiter, (req, res, next) => {
+app.get("/auth/google/callback", authRateLimiter, (req, res) => {
   if (!isStrategyEnabled("google")) {
     return redirectAuthFailure(req, res);
   }
 
   passport.authenticate("google", { failureRedirect: "/login.html?error=sso_failed" })(req, res, (authErr) => {
-    if (authErr) return next(authErr);
+    if (authErr) {
+      console.error("Google OAuth callback failed:", authErr);
+      return redirectAuthFailure(req, res);
+    }
     return res.redirect(getDefaultViewPathForUser(req.user));
   });
 });
@@ -804,13 +807,16 @@ app.get("/auth/apple", authRateLimiter, (req, res, next) => {
   passport.authenticate("apple", { scope: ["name", "email"] })(req, res, next);
 });
 
-function handleAppleCallback(req, res, next) {
+function handleAppleCallback(req, res) {
   if (!isStrategyEnabled("apple")) {
     return redirectAuthFailure(req, res);
   }
 
   return passport.authenticate("apple", { failureRedirect: "/login.html?error=sso_failed" })(req, res, (authErr) => {
-    if (authErr) return next(authErr);
+    if (authErr) {
+      console.error("Apple OAuth callback failed:", authErr);
+      return redirectAuthFailure(req, res);
+    }
     return res.redirect(getDefaultViewPathForUser(req.user));
   });
 }
