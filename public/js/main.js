@@ -2950,7 +2950,9 @@ function initCalendarPage() {
 
     if (focusToday) {
       const todayCell = calendarGrid.querySelector(".calendar-day.today");
-      todayCell?.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+      if (todayCell instanceof HTMLElement) {
+        todayCell.focus({ preventScroll: true });
+      }
     }
 
     isTransitioning = false;
