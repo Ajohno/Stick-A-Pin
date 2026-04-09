@@ -4,6 +4,7 @@ const mime = require("mime");
 const path = require("path");
 const crypto = require("crypto");
 const rateLimit = require("express-rate-limit");
+const rateLimit = require("express-rate-limit");
 const connectDB = require("./config/database"); // Connects to MongoDB
 const session = require("express-session"); // Handles sessions for logged-in users
 const passport = require("passport"); // Middleware for authentication
@@ -92,6 +93,14 @@ app.use(async (req, res, next) => {
 });
 
 // Middleware -----------------------------------------------------------------------------------
+const deleteAccountLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // limit account deletion attempts per IP per window
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests. Please try again later." },
+});
+
 
 // Ensure a user is logged in before accessing routes
 function ensureAuthenticated(req, res, next) {
@@ -1080,7 +1089,7 @@ app.post("/logout", (req, res) => {
         });
     });
 });
-
+app.delete("/account", deleteAccountLimiter, ensureAuthenticated, async (req, res) => {
 const deleteAccountLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 3,
