@@ -2394,6 +2394,12 @@ document.addEventListener("DOMContentLoaded", () => {
         type: "error",
         duration: 3500,
       });
+    } else if (authError === "google_unavailable") {
+      Toast.show({
+        message: "Google sign-in is not configured yet. Please use email and password.",
+        type: "error",
+        duration: 4000,
+      });
     }
 
     loginForm.addEventListener("submit", async (event) => {
