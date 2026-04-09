@@ -3,6 +3,7 @@ const fs = require("fs");
 const mime = require("mime");
 const path = require("path");
 const crypto = require("crypto");
+const rateLimit = require("express-rate-limit");
 const connectDB = require("./config/database"); // Connects to MongoDB
 const session = require("express-session"); // Handles sessions for logged-in users
 const passport = require("passport"); // Middleware for authentication
@@ -1080,7 +1081,15 @@ app.post("/logout", (req, res) => {
     });
 });
 
-app.delete("/account", ensureAuthenticated, async (req, res) => {
+const deleteAccountLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many account deletion attempts. Please try again later." },
+});
+
+app.delete("/account", deleteAccountLimiter, ensureAuthenticated, async (req, res) => {
   const userId = req.user?._id || req.user?.id;
   if (!userId) {
     return res.status(400).json({ error: "Invalid user session" });
