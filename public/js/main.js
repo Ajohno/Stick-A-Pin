@@ -1998,8 +1998,85 @@ function getProfilePanelMarkup(panelKey, user = null) {
         </div>
         <div class="profile-account-divider" aria-hidden="true"></div>
       </div>
+
+      <div class="profile-danger-zone profile-delete-actions">
+        <button id="profileDeleteAccountBtn" class="profile-delete-account-btn" type="button">
+          Delete Account
+        </button>
+
+        <div id="profileDeleteConfirmNote" class="profile-delete-confirm-note" hidden>
+          <p>
+            This will permanently delete your account and all related data.
+            This action cannot be undone.
+          </p>
+          <div class="profile-delete-confirm-actions">
+            <button id="profileCancelDeleteBtn" class="paper-button profile-cancel-delete-btn" type="button">
+              Cancel
+            </button>
+            <button id="profileConfirmDeleteBtn" class="paper-button profile-confirm-delete-btn" type="button">
+              Yes, Delete
+            </button>
+          </div>
+        </div>
+      </div>
     </section>
   `;
+}
+
+function initDeleteAccountFlow() {
+  const deleteBtn = document.getElementById("profileDeleteAccountBtn");
+  const confirmNote = document.getElementById("profileDeleteConfirmNote");
+  const cancelBtn = document.getElementById("profileCancelDeleteBtn");
+  const confirmBtn = document.getElementById("profileConfirmDeleteBtn");
+
+  if (!deleteBtn || !confirmNote || !cancelBtn || !confirmBtn) return;
+
+  const setBusyState = (isBusy) => {
+    confirmBtn.disabled = isBusy;
+    cancelBtn.disabled = isBusy;
+    deleteBtn.disabled = isBusy;
+    confirmBtn.textContent = isBusy ? "Deleting..." : "Yes, Delete";
+  };
+
+  deleteBtn.addEventListener("click", () => {
+    confirmNote.hidden = false;
+    deleteBtn.hidden = true;
+  });
+
+  cancelBtn.addEventListener("click", () => {
+    confirmNote.hidden = true;
+    deleteBtn.hidden = false;
+  });
+
+  confirmBtn.addEventListener("click", async () => {
+    setBusyState(true);
+    try {
+      const response = await apiFetch("/account", {
+        credentials: "include",
+        method: "DELETE",
+      });
+      const data = await parseApiResponse(response);
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Unable to delete account.");
+      }
+
+      Toast.show({
+        message: "Account deleted successfully.",
+        type: "success",
+        duration: 2200,
+      });
+      window.location.href = "/login.html";
+    } catch (error) {
+      console.error("Delete account failed:", error);
+      Toast.show({
+        message: error?.message || "Unable to delete account right now.",
+        type: "error",
+        duration: 3500,
+      });
+      setBusyState(false);
+    }
+  });
 }
 
 function initProfileBoardNav() {
@@ -2030,6 +2107,9 @@ function initProfileBoardNav() {
     }
     if (panelKey === "settings") {
       initBoardTaskPreferencesSettings();
+    }
+    if (panelKey === "profile") {
+      initDeleteAccountFlow();
     }
   };
 
@@ -2393,6 +2473,12 @@ document.addEventListener("DOMContentLoaded", () => {
         message: "Social sign-in failed. Please try again.",
         type: "error",
         duration: 3500,
+      });
+    } else if (authError === "google_unavailable") {
+      Toast.show({
+        message: "Google sign-in is not configured yet. Please use email and password.",
+        type: "error",
+        duration: 4000,
       });
     }
 
