@@ -2531,6 +2531,7 @@ function initCalendarPage() {
   let dueDateLookup = new Set();
   let dueTasksByDate = new Map();
   let isDueNoteTransitioning = false;
+  let pendingDueNoteReturn = null;
 
   const dueNoteOverlay = document.createElement("div");
   dueNoteOverlay.className = "calendar-due-note-overlay";
@@ -2789,6 +2790,7 @@ function initCalendarPage() {
       });
 
       descriptionButton.addEventListener("click", async () => {
+        pendingDueNoteReturn = { dateKey, dayLabel };
         await closeDueTasksNote();
         openTaskDetailPanel(task, handlers);
       });
@@ -2807,6 +2809,17 @@ function initCalendarPage() {
       dueNote.classList.add("calendar-note-entering");
       window.setTimeout(() => dueNoteCloseBtn.focus(), 50);
     });
+  };
+
+  const reopenDueNoteFromDetailPanelClose = () => {
+    if (!pendingDueNoteReturn) return;
+
+    const detailPanel = document.getElementById("task-detail-panel");
+    if (detailPanel?.classList.contains("is-open")) return;
+
+    const { dateKey, dayLabel } = pendingDueNoteReturn;
+    pendingDueNoteReturn = null;
+    openDueTasksNote(dateKey, dayLabel);
   };
 
   const renderCalendar = ({ animateIn = false } = {}) => {
@@ -2934,6 +2947,25 @@ function initCalendarPage() {
     if (event.key === "Escape") {
       closeDueTasksNote();
     }
+  });
+
+  const taskDetailCloseButton = document.getElementById("taskDetailClose");
+  const taskDetailBackdrop = document.getElementById("task-detail-backdrop");
+  const taskDetailPanel = document.getElementById("task-detail-panel");
+
+  taskDetailCloseButton?.addEventListener("click", () => {
+    window.setTimeout(reopenDueNoteFromDetailPanelClose, 0);
+  });
+
+  taskDetailBackdrop?.addEventListener("click", () => {
+    window.setTimeout(reopenDueNoteFromDetailPanelClose, 0);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !pendingDueNoteReturn) return;
+    if (!taskDetailPanel?.classList.contains("is-open")) return;
+
+    window.setTimeout(reopenDueNoteFromDetailPanelClose, 0);
   });
 
   loadDueDateHighlights().finally(() => {
