@@ -2529,6 +2529,38 @@ function initCalendarPage() {
   let visibleDate = new Date(todayYear, todayMonth, 1);
   let isTransitioning = false;
   let dueDateLookup = new Set();
+  let dueTasksByDate = new Map();
+  let isDueNoteTransitioning = false;
+
+  const dueNoteOverlay = document.createElement("div");
+  dueNoteOverlay.className = "calendar-due-note-overlay";
+  dueNoteOverlay.setAttribute("hidden", "hidden");
+
+  const dueNote = document.createElement("section");
+  dueNote.className = "calendar-due-note";
+  dueNote.setAttribute("role", "dialog");
+  dueNote.setAttribute("aria-modal", "true");
+  dueNote.setAttribute("aria-labelledby", "calendarDueNoteTitle");
+
+  const dueNoteCloseBtn = document.createElement("button");
+  dueNoteCloseBtn.className = "calendar-due-note-close";
+  dueNoteCloseBtn.type = "button";
+  dueNoteCloseBtn.setAttribute("aria-label", "Close due tasks list");
+  dueNoteCloseBtn.textContent = "×";
+
+  const dueNoteTitle = document.createElement("h2");
+  dueNoteTitle.id = "calendarDueNoteTitle";
+  dueNoteTitle.className = "calendar-due-note-title";
+  dueNoteTitle.textContent = "Due tasks";
+
+  const dueNoteList = document.createElement("ul");
+  dueNoteList.className = "calendar-due-note-list";
+
+  dueNote.appendChild(dueNoteCloseBtn);
+  dueNote.appendChild(dueNoteTitle);
+  dueNote.appendChild(dueNoteList);
+  dueNoteOverlay.appendChild(dueNote);
+  document.body.appendChild(dueNoteOverlay);
 
 
   const toLocalDateKey = (value) => {
@@ -2564,12 +2596,19 @@ function initCalendarPage() {
       const tasks = await response.json();
       if (!Array.isArray(tasks)) return;
 
-      dueDateLookup = new Set(
-        tasks
-          .filter((task) => task?.status === "active")
-          .map((task) => toLocalDateKey(task?.dueDate))
-          .filter(Boolean),
-      );
+      const activeTasks = tasks.filter((task) => task?.status === "active");
+      const dueTaskPairs = activeTasks
+        .map((task) => ({ key: toLocalDateKey(task?.dueDate), task }))
+        .filter((entry) => entry.key);
+
+      dueDateLookup = new Set(dueTaskPairs.map((entry) => entry.key));
+
+      dueTasksByDate = dueTaskPairs.reduce((lookup, entry) => {
+        const existing = lookup.get(entry.key) || [];
+        existing.push(entry.task);
+        lookup.set(entry.key, existing);
+        return lookup;
+      }, new Map());
     } catch (error) {
       console.error("Unable to load calendar due-date highlights:", error);
     }
@@ -2593,6 +2632,47 @@ function initCalendarPage() {
       element.addEventListener("animationend", finish, { once: true });
       window.setTimeout(finish, fallbackMs);
     });
+
+  const closeDueTasksNote = async () => {
+    if (isDueNoteTransitioning || dueNoteOverlay.hasAttribute("hidden")) return;
+
+    isDueNoteTransitioning = true;
+    dueNote.classList.remove("calendar-note-entering");
+    dueNote.classList.add("calendar-note-leaving");
+    await waitForAnimation(dueNote, 320);
+
+    dueNote.classList.remove("calendar-note-leaving");
+    dueNoteOverlay.setAttribute("hidden", "hidden");
+    dueNoteOverlay.classList.remove("is-open");
+    isDueNoteTransitioning = false;
+  };
+
+  const openDueTasksNote = async (dateKey, dayLabel) => {
+    if (isDueNoteTransitioning) return;
+
+    const dueTasks = dueTasksByDate.get(dateKey);
+    if (!Array.isArray(dueTasks) || !dueTasks.length) return;
+
+    dueNoteTitle.textContent = `Due tasks for ${dayLabel}`;
+    dueNoteList.innerHTML = "";
+
+    dueTasks.forEach((task) => {
+      const listItem = document.createElement("li");
+      listItem.textContent = task?.task || task?.name || "Untitled task";
+      dueNoteList.appendChild(listItem);
+    });
+
+    dueNoteOverlay.removeAttribute("hidden");
+    dueNoteOverlay.classList.add("is-open");
+
+    dueNote.classList.remove("calendar-note-leaving");
+    dueNote.classList.remove("calendar-note-entering");
+
+    requestAnimationFrame(() => {
+      dueNote.classList.add("calendar-note-entering");
+      window.setTimeout(() => dueNoteCloseBtn.focus(), 50);
+    });
+  };
 
   const renderCalendar = ({ animateIn = false } = {}) => {
     const year = visibleDate.getFullYear();
@@ -2623,6 +2703,26 @@ function initCalendarPage() {
       const visibleDateKey = buildVisibleDateKey(year, month, day);
       if (dueDateLookup.has(visibleDateKey)) {
         dayNote.classList.add("has-due-task");
+        dayNote.tabIndex = 0;
+        dayNote.setAttribute("aria-haspopup", "dialog");
+        dayNote.setAttribute("aria-label", `${monthTitle.textContent} ${day}, ${dueTasksByDate.get(visibleDateKey)?.length || 0} tasks due`);
+
+        const dayLabel = new Date(year, month, day).toLocaleDateString("en-US", {
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+        });
+
+        dayNote.addEventListener("click", () => {
+          openDueTasksNote(visibleDateKey, dayLabel);
+        });
+
+        dayNote.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            openDueTasksNote(visibleDateKey, dayLabel);
+          }
+        });
       }
 
       if (animateIn) {
@@ -2683,6 +2783,22 @@ function initCalendarPage() {
 
   todayBtn.addEventListener("click", () => {
     transitionToMonth(new Date(todayYear, todayMonth, 1), { focusToday: true });
+  });
+
+  dueNoteCloseBtn.addEventListener("click", () => {
+    closeDueTasksNote();
+  });
+
+  dueNoteOverlay.addEventListener("click", (event) => {
+    if (event.target === dueNoteOverlay) {
+      closeDueTasksNote();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeDueTasksNote();
+    }
   });
 
   loadDueDateHighlights().finally(() => {

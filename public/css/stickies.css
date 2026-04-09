@@ -569,6 +569,10 @@
   color: #4f3023;
 }
 
+.weekday-short {
+  display: none;
+}
+
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -594,6 +598,12 @@
 
 .calendar-day.has-due-task {
   background: #f7dfe8;
+  cursor: pointer;
+}
+
+.calendar-day.has-due-task:focus-visible {
+  outline: 3px solid #c83939;
+  outline-offset: 2px;
 }
 
 .calendar-day::before {
@@ -642,15 +652,93 @@
 
 
 
-.calendar-day.calendar-note-leaving {
+.calendar-day.calendar-note-leaving,
+.calendar-due-note.calendar-note-leaving {
   animation: calendar-note-leave 300ms ease-in forwards;
   animation-delay: var(--note-stagger, 0ms);
   pointer-events: none;
 }
 
-.calendar-day.calendar-note-entering {
+.calendar-day.calendar-note-entering,
+.calendar-due-note.calendar-note-entering {
   animation: calendar-note-enter 360ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
   animation-delay: var(--note-stagger, 0ms);
+}
+
+.calendar-due-note-overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(33, 20, 15, 0.34);
+  z-index: 1100;
+  padding: 20px;
+}
+
+.calendar-due-note-overlay.is-open {
+  display: flex;
+}
+
+.calendar-due-note {
+  position: relative;
+  width: min(520px, 92vw);
+  min-height: 260px;
+  background: #f7dfe8;
+  border-radius: 4px;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.24);
+  padding: 24px 24px 20px;
+  transform: rotate(-1deg);
+}
+
+.calendar-due-note::before {
+  content: "";
+  position: absolute;
+  top: -11px;
+  left: 50%;
+  transform: translateX(-50%) rotate(3deg);
+  width: 68px;
+  height: 18px;
+  background: rgba(245, 229, 197, 0.85);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+}
+
+.calendar-due-note-title {
+  margin: 0 28px 12px 0;
+  font-family: "Itim", serif;
+  color: #4f3023;
+  font-size: clamp(26px, 3vw, 34px);
+}
+
+.calendar-due-note-list {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 8px;
+  max-height: min(45vh, 320px);
+  overflow-y: auto;
+}
+
+.calendar-due-note-list li {
+  font-family: "Itim", serif;
+  color: #3c2318;
+  font-size: clamp(18px, 2vw, 24px);
+  line-height: 1.2;
+}
+
+.calendar-due-note-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 50%;
+  background: #fff8ea;
+  color: #6b4a35;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
 }
 
 @keyframes calendar-note-leave {
@@ -685,6 +773,14 @@
 @media (max-width: 760px) {
   .calendar-weekdays span {
     font-size: 10px;
+  }
+
+  .weekday-full {
+    display: none;
+  }
+
+  .weekday-short {
+    display: inline;
   }
 
   .calendar-day,
