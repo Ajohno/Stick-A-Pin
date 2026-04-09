@@ -2647,6 +2647,102 @@ function initCalendarPage() {
     isDueNoteTransitioning = false;
   };
 
+  const refreshCalendarDueData = async () => {
+    await loadDueDateHighlights();
+    renderCalendar();
+  };
+
+  const buildCalendarTaskPanelHandlers = (task, syncCheckboxState) => {
+    const setTaskCompletion = async (isCompleted) => {
+      const updated = await updateTaskCompletionStatus(
+        task,
+        isCompleted,
+        null,
+        null,
+      );
+
+      if (!updated) return false;
+
+      syncCheckboxState?.(isCompleted);
+      await refreshCalendarDueData();
+      return true;
+    };
+
+    const saveTaskEdits = async (updates) => {
+      const updateResponse = await apiFetch(`/tasks/${task._id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+
+      const updateData = await parseApiResponse(updateResponse);
+      if (!updateResponse.ok) {
+        Toast.show({
+          message: updateData.error || "Error updating task",
+          type: "error",
+          duration: 3200,
+        });
+        return null;
+      }
+
+      task.description = updateData.description ?? task.description;
+      task.dueDate = updateData.dueDate ?? task.dueDate;
+      task.effortLevel = updateData.effortLevel ?? task.effortLevel;
+      await refreshCalendarDueData();
+      Toast.show({
+        message: "Task Updated",
+        type: "success",
+        duration: 2000,
+      });
+      return updateData;
+    };
+
+    const deleteTask = async () => {
+      const confirmDelete = confirm(
+        "Are you sure you want to delete this task?",
+      );
+      if (!confirmDelete) return;
+
+      const deleteResponse = await apiFetch(`/tasks/${task._id}`, {
+        method: "DELETE",
+      });
+
+      if (deleteResponse.ok) {
+        Toast.show({
+          message: "Task deleted",
+          type: "success",
+          duration: 2000,
+        });
+        await refreshCalendarDueData();
+        closeTaskDetailPanel();
+      } else {
+        Toast.show({
+          message: "Could not delete task",
+          type: "error",
+          duration: 3000,
+        });
+      }
+    };
+
+    return {
+      saveTaskEdits,
+      deleteTask,
+      toggleComplete: async () => {
+        const panelTaskComplete = document.getElementById("panelTaskComplete");
+        if (!panelTaskComplete) return;
+
+        panelTaskComplete.disabled = true;
+        const isCompleted = panelTaskComplete.checked;
+        const updated = await setTaskCompletion(isCompleted);
+
+        if (!updated) {
+          panelTaskComplete.checked = !isCompleted;
+        }
+        panelTaskComplete.disabled = false;
+      },
+    };
+  };
+
   const openDueTasksNote = async (dateKey, dayLabel) => {
     if (isDueNoteTransitioning) return;
 
@@ -2658,7 +2754,46 @@ function initCalendarPage() {
 
     dueTasks.forEach((task) => {
       const listItem = document.createElement("li");
-      listItem.textContent = task?.task || task?.name || "Untitled task";
+      listItem.className = "calendar-due-task-item";
+
+      const completeInput = document.createElement("input");
+      completeInput.type = "checkbox";
+      completeInput.className = "calendar-due-task-check";
+      completeInput.checked = task.status === "completed";
+      completeInput.setAttribute("aria-label", `Mark ${task.description || "task"} complete`);
+
+      const descriptionButton = document.createElement("button");
+      descriptionButton.type = "button";
+      descriptionButton.className = "calendar-due-task-trigger";
+      descriptionButton.textContent = task.description || "Untitled task";
+      descriptionButton.title = "Open task details";
+
+      const handlers = buildCalendarTaskPanelHandlers(task, (isCompleted) => {
+        completeInput.checked = isCompleted;
+      });
+
+      completeInput.addEventListener("click", (event) => {
+        event.stopPropagation();
+      });
+
+      completeInput.addEventListener("change", async () => {
+        completeInput.disabled = true;
+        const nextValue = completeInput.checked;
+        const updated = await updateTaskCompletionStatus(task, nextValue, null, null);
+        if (!updated) {
+          completeInput.checked = !nextValue;
+        } else {
+          await refreshCalendarDueData();
+        }
+        completeInput.disabled = false;
+      });
+
+      descriptionButton.addEventListener("click", async () => {
+        await closeDueTasksNote();
+        openTaskDetailPanel(task, handlers);
+      });
+
+      listItem.append(completeInput, descriptionButton);
       dueNoteList.appendChild(listItem);
     });
 
