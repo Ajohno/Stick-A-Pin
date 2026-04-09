@@ -780,10 +780,36 @@ function redirectAuthFailure(req, res) {
   return res.redirect("/login.html?error=sso_failed");
 }
 
+function getCanonicalGoogleAuthOrigin() {
+  const callbackUrl = String(process.env.GOOGLE_CALLBACK_URL || "").trim();
+  if (!callbackUrl) return "";
+
+  try {
+    const parsed = new URL(callbackUrl);
+    return parsed.protocol && parsed.host ? `${parsed.protocol}//${parsed.host}` : "";
+  } catch (error) {
+    return "";
+  }
+}
+
+function getRequestOrigin(req) {
+  const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+  const protocol = forwardedProto || req.protocol || "https";
+  const host = String(req.headers["x-forwarded-host"] || req.headers.host || "").split(",")[0].trim();
+  if (!host) return "";
+  return `${protocol}://${host}`;
+}
+
 
 app.get("/auth/google", authRateLimiter, (req, res, next) => {
   if (!isStrategyEnabled("google")) {
     return res.redirect("/login.html?error=google_unavailable");
+  }
+
+  const canonicalOrigin = getCanonicalGoogleAuthOrigin();
+  const requestOrigin = getRequestOrigin(req);
+  if (canonicalOrigin && requestOrigin && canonicalOrigin !== requestOrigin) {
+    return res.redirect(`${canonicalOrigin}/auth/google`);
   }
 
   passport.authenticate("google", { scope: ["profile", "email"] })(req, res, next);
