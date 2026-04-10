@@ -2452,16 +2452,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const data = await parseApiResponse(response);
         if (response.ok) {
-          notify(
-            data.message ||
-              "If that account exists, a password reset email has been sent.",
-            "success",
-            3000,
-          );
           Toast.show({
-            message: "Reset email request sent",
+            message:
+              data.message ||
+              "If that account exists, a password reset email has been sent.",
             type: "success",
-            duration: 2400,
+            duration: 3200,
           });
         } else {
           notify(data.error || "Could not process reset request.");
