@@ -382,25 +382,11 @@ p{
 .password-criteria-note{
   position: relative;
   margin: -2px 0 2px;
-  padding: 10px 12px;
-  background: #fde1e8;
-  border: 1px dashed #b08a77;
-  border-radius: 10px 8px 11px 9px;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+  padding: 12px 12px 10px;
   color: #6a4b3e;
   text-align: left;
-}
-
-.password-criteria-note--pink::before{
-  content: "";
-  position: absolute;
-  top: -12px;
-  left: 20px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #f6f7fb 0 30%, #be445f 34% 100%);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  z-index: 1;
+  transform: rotate(-1deg);
 }
 
 .password-criteria-title{
@@ -408,6 +394,18 @@ p{
   font-size: 0.95rem;
   color: #5d4136;
   justify-self: start;
+}
+
+.password-criteria-list{
+  margin-top: 0.2rem;
+}
+
+.password-criteria-list .big-three-item{
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.password-criteria-check{
+  cursor: default;
 }
 
 .password-criteria-note ul{

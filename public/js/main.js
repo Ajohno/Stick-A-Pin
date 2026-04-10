@@ -2252,6 +2252,31 @@ document.addEventListener("DOMContentLoaded", () => {
       /\d/.test(password)
     );
   };
+  const getPasswordCriteriaState = (value) => {
+    const password = String(value || "");
+    return {
+      length: password.length >= 12,
+      uppercase: /[A-Z]/.test(password),
+      lowercase: /[a-z]/.test(password),
+      number: /\d/.test(password),
+    };
+  };
+  const wirePasswordCriteriaChecklist = (inputEl, checklistEl) => {
+    if (!inputEl || !checklistEl) return;
+
+    const syncChecklist = () => {
+      const state = getPasswordCriteriaState(inputEl.value || "");
+      checklistEl
+        .querySelectorAll(".password-criteria-check[data-rule]")
+        .forEach((checkboxEl) => {
+          const rule = checkboxEl.dataset.rule;
+          checkboxEl.checked = Boolean(state[rule]);
+        });
+    };
+
+    inputEl.addEventListener("input", syncChecklist);
+    syncChecklist();
+  };
 
   // Page flags let us adjust behavior for standalone login/register views
   const isLoginPage = document.body.classList.contains("login-page");
@@ -2269,6 +2294,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Registration handler (used on register.html)
   const registerForm = document.getElementById("registerForm");
+  const registerPasswordInput = document.getElementById("registerPassword");
+  const registerPasswordCriteria = document.getElementById("registerPasswordCriteria");
+  wirePasswordCriteriaChecklist(registerPasswordInput, registerPasswordCriteria);
   if (registerForm) {
     registerForm.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -2437,6 +2465,8 @@ document.addEventListener("DOMContentLoaded", () => {
   if (resetPasswordForm) {
     const params = new URLSearchParams(window.location.search);
     const emailInput = document.getElementById("resetPasswordEmail");
+    const resetPasswordInput = document.getElementById("resetPasswordNew");
+    const resetPasswordCriteria = document.getElementById("resetPasswordCriteria");
     const tokenFromUrl = String(params.get("token") || "").trim();
     if (tokenFromUrl) {
       params.delete("token");
@@ -2447,6 +2477,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (emailInput && params.get("email"))
       emailInput.value = params.get("email");
+    wirePasswordCriteriaChecklist(resetPasswordInput, resetPasswordCriteria);
 
     resetPasswordForm.addEventListener("submit", async (event) => {
       event.preventDefault();
