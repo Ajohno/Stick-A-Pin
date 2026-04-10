@@ -2294,7 +2294,11 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
       if (!isStrongPassword(password)) {
-        alert(PASSWORD_POLICY_MESSAGE);
+        Toast.show({
+          message: PASSWORD_POLICY_MESSAGE,
+          type: "error",
+          duration: 4200,
+        });
         return;
       }
 
@@ -2434,6 +2438,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const params = new URLSearchParams(window.location.search);
     const emailInput = document.getElementById("resetPasswordEmail");
     const tokenFromUrl = String(params.get("token") || "").trim();
+    if (tokenFromUrl) {
+      params.delete("token");
+      const remainingQuery = params.toString();
+      const nextUrl = `${window.location.pathname}${remainingQuery ? `?${remainingQuery}` : ""}`;
+      window.history.replaceState(null, "", nextUrl);
+    }
 
     if (emailInput && params.get("email"))
       emailInput.value = params.get("email");
@@ -2457,7 +2467,11 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
       if (!isStrongPassword(newPassword)) {
-        alert(PASSWORD_POLICY_MESSAGE);
+        Toast.show({
+          message: PASSWORD_POLICY_MESSAGE,
+          type: "error",
+          duration: 4200,
+        });
         return;
       }
 
