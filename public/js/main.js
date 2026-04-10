@@ -16,6 +16,16 @@ async function parseApiResponse(response) {
   return { error: text || "Unexpected server response" };
 }
 
+function notify(message, type = "error", duration = 3200) {
+  if (typeof Toast !== "undefined" && typeof Toast.show === "function") {
+    Toast.show({ message, type, duration });
+    return;
+  }
+
+  // Fallback only for pages that do not render the toast container.
+  window.alert(message);
+}
+
 
 let csrfTokenPromise = null;
 
@@ -2216,11 +2226,11 @@ function initProfileBoardNav() {
         window.location.href = "/login.html";
       } else {
         const data = await parseApiResponse(response);
-        alert("Logout failed: " + (data.error || "Unknown error"));
+        notify(`Logout failed: ${data.error || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Logout request failed:", error);
-      alert("Logout failed due to a network/server issue.");
+      notify("Logout failed due to a network/server issue.");
     }
   };
 
@@ -2312,13 +2322,13 @@ document.addEventListener("DOMContentLoaded", () => {
       const confirmPassword = document.getElementById("registerConfirm").value;
 
       if (!firstName || !lastName || !email) {
-        alert("Please fill in first name, last name, and email.");
+        notify("Please fill in first name, last name, and email.");
         return;
       }
 
       // Simple client-side guard to match the confirm password box
       if (password !== confirmPassword) {
-        alert("Passwords do not match.");
+        notify("Passwords do not match.");
         return;
       }
       if (!isStrongPassword(password)) {
@@ -2349,11 +2359,11 @@ document.addEventListener("DOMContentLoaded", () => {
           }).toString();
           window.location.href = `/verification-status.html?${query}`;
         } else {
-          alert("Registration failed: " + (data.error || "Unknown error"));
+          notify(`Registration failed: ${data.error || "Unknown error"}`);
         }
       } catch (error) {
         console.error("Registration request failed:", error);
-        alert("Registration failed due to a network/server issue.");
+        notify("Registration failed due to a network/server issue.");
       }
     });
   }
@@ -2380,7 +2390,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     resendBtn?.addEventListener("click", async () => {
       if (!email) {
-        alert("No email found for this registration. Please sign up again.");
+        notify("No email found for this registration. Please sign up again.");
         return;
       }
 
@@ -2396,14 +2406,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const data = await parseApiResponse(response);
         if (response.ok) {
-          alert(data.message || "Verification email sent.");
+          notify(data.message || "Verification email sent.", "success", 2600);
           Toast.show({
             message: "Verification email resent",
             type: "success",
             duration: 2200,
           });
         } else {
-          alert(data.error || "Could not resend verification email.");
+          notify(data.error || "Could not resend verification email.");
           Toast.show({
             message: "Resend failed",
             type: "error",
@@ -2412,7 +2422,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       } catch (error) {
         console.error("Resend verification request failed:", error);
-        alert("Network error while resending verification email.");
+        notify("Network error while resending verification email.");
       } finally {
         resendBtn.disabled = false;
       }
@@ -2428,7 +2438,7 @@ document.addEventListener("DOMContentLoaded", () => {
         ?.value.trim();
 
       if (!email) {
-        alert("Please enter your email.");
+        notify("Please enter your email.");
         return;
       }
 
@@ -2442,9 +2452,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const data = await parseApiResponse(response);
         if (response.ok) {
-          alert(
+          notify(
             data.message ||
               "If that account exists, a password reset email has been sent.",
+            "success",
+            3000,
           );
           Toast.show({
             message: "Reset email request sent",
@@ -2452,11 +2464,11 @@ document.addEventListener("DOMContentLoaded", () => {
             duration: 2400,
           });
         } else {
-          alert(data.error || "Could not process reset request.");
+          notify(data.error || "Could not process reset request.");
         }
       } catch (error) {
         console.error("Forgot password request failed:", error);
-        alert("Network error while requesting password reset.");
+        notify("Network error while requesting password reset.");
       }
     });
   }
@@ -2489,12 +2501,12 @@ document.addEventListener("DOMContentLoaded", () => {
         document.getElementById("resetPasswordConfirm")?.value || "";
 
       if (!email || !tokenFromUrl || !newPassword) {
-        alert("Please complete all required fields.");
+        notify("Please complete all required fields.");
         return;
       }
 
       if (newPassword !== confirmPassword) {
-        alert("Passwords do not match.");
+        notify("Passwords do not match.");
         return;
       }
       if (!isStrongPassword(newPassword)) {
@@ -2516,7 +2528,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const data = await parseApiResponse(response);
         if (response.ok) {
-          alert(data.message || "Password reset successful.");
+          notify(data.message || "Password reset successful.", "success", 2600);
           Toast.show({
             message: "Password updated",
             type: "success",
@@ -2524,11 +2536,11 @@ document.addEventListener("DOMContentLoaded", () => {
           });
           window.location.href = "/login.html";
         } else {
-          alert(data.error || "Unable to reset password.");
+          notify(data.error || "Unable to reset password.");
         }
       } catch (error) {
         console.error("Reset password request failed:", error);
-        alert("Network error while resetting password.");
+        notify("Network error while resetting password.");
       }
     });
   }
@@ -2586,7 +2598,7 @@ document.addEventListener("DOMContentLoaded", () => {
           });
           window.location.href = preferredDefaultPath;
         } else {
-          alert("Login failed: " + (data.error || "Unknown error"));
+          notify(`Login failed: ${data.error || "Unknown error"}`);
           Toast.show({
             message: "Login failed: " + (data.error || "Unknown error"),
             type: "error",
@@ -2595,7 +2607,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       } catch (error) {
         console.error("Login request failed:", error);
-        alert("Login failed due to a network/server issue.");
+        notify("Login failed due to a network/server issue.");
         Toast.show({
           message: "Login failed due to a network/server issue.",
           type: "error",
@@ -2627,11 +2639,11 @@ document.addEventListener("DOMContentLoaded", () => {
           window.location.href = "/login.html";
         } else {
           const data = await parseApiResponse(response);
-          alert("Logout failed: " + (data.error || "Unknown error"));
+          notify(`Logout failed: ${data.error || "Unknown error"}`);
         }
       } catch (error) {
         console.error("Logout request failed:", error);
-        alert("Logout failed due to a network/server issue.");
+        notify("Logout failed due to a network/server issue.");
       }
     });
   }
@@ -3323,7 +3335,7 @@ async function fetchTasks() {
     updateTaskList(dashboardTaskState.allTasks);
   } else {
     console.error("Error fetching tasks:", tasks.error);
-    alert("Please log in to see your tasks.");
+    notify("Please log in to see your tasks.");
   }
 }
 

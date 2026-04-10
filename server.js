@@ -999,7 +999,18 @@ const passwordResetLimiter = rateLimit({
   max: 5, // limit each IP to 5 password reset attempts per window
 });
 
-app.post("/forgot-password", passwordResetLimiter, async (req, res) => {
+const forgotPasswordEmailLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 3, // tighter limiter to prevent forgot-password email abuse
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const normalizedEmail = String(req.body?.email || "").toLowerCase().trim();
+    return `${req.ip}:${normalizedEmail}`;
+  },
+});
+
+app.post("/forgot-password", forgotPasswordEmailLimiter, async (req, res) => {
   try {
     const normalizedEmail = (req.body.email || "").toLowerCase().trim();
     if (!normalizedEmail) {
