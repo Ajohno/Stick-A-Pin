@@ -379,6 +379,62 @@ p{
   box-shadow: 0 0 0 3px rgba(227,136,132,0.28);
 }
 
+.password-criteria-note{
+  position: relative;
+  margin: -2px 0 2px;
+  padding: 12px 12px 10px;
+  color: #6a4b3e;
+  text-align: left;
+  z-index: 1;
+  transform: rotate(-1deg);
+}
+
+.password-criteria-title{
+  margin: 0 0 4px;
+  font-size: 0.95rem;
+  color: #5d4136;
+  justify-self: start;
+}
+
+.password-criteria-list{
+  margin-top: 0.2rem;
+}
+
+.password-criteria-list .big-three-item{
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.password-criteria-check{
+  cursor: default;
+}
+
+.password-criteria-note ul{
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.password-criteria-note li{
+  margin-bottom: 2px;
+}
+
+@media (min-width: 980px){
+  .register-page .paper-form,
+  .reset-password-page .paper-form{
+    position: relative;
+  }
+
+  .register-page .password-criteria-note,
+  .reset-password-page .password-criteria-note{
+    position: absolute;
+    right: -235px;
+    top: 118px;
+    width: 210px;
+    transform: rotate(-2deg);
+  }
+}
+
 /* Under-form actions row (checkbox + links) */
 .paper-actions{
   margin-top: 6px;
@@ -2140,16 +2196,13 @@ body.task-panel-open {
 
 .profile-delete-account-btn {
   align-self: flex-start;
+  margin-right: auto;
+}
+
+.profile-delete-actions .paper-button {
   width: auto;
-  border: 2px dashed #b54f6a;
-  background: #ffe8f0;
-  color: #842843;
-  font-family: "Quantico", sans-serif;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  border-radius: 12px;
-  padding: 0.45rem 0.8rem;
-  cursor: pointer;
+  min-width: 9.5rem;
+  text-align: center;
 }
 
 .profile-delete-confirm-note {
@@ -2173,11 +2226,11 @@ body.task-panel-open {
 }
 
 .profile-cancel-delete-btn {
-  background: linear-gradient(180deg, #d6d6d6 0%, #bfbfbf 100%);
-}
-
-.profile-confirm-delete-btn {
-  background: linear-gradient(180deg, #e66d8b 0%, #c65376 100%);
+  background: linear-gradient(180deg, #f2a3a3 0%, #de7f7f 100%);
+  color: #fff9f9;
+  box-shadow:
+    0 4px 0 #b56363,
+    2px 2px 0 #1f1f1f;
 }
 
 .profile-confirm-delete-btn:disabled,

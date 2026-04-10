@@ -90,13 +90,13 @@ module.exports = function (passport) {
           const user = await User.findOne({ email: normalizedEmail });
 
           if (!user || !user.passwordHash) {
-            return done(null, false, { message: "User not found" });
+            return done(null, false, { message: "Invalid email or password" });
           }
 
           const isMatch = await bcrypt.compare(password, user.passwordHash);
 
           if (!isMatch) {
-            return done(null, false, { message: "Incorrect password" });
+            return done(null, false, { message: "Invalid email or password" });
           }
 
           if (user.emailVerified === false) {

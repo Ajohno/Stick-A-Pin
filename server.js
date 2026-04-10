@@ -3,6 +3,7 @@ const fs = require("fs");
 const mime = require("mime");
 const path = require("path");
 const crypto = require("crypto");
+const rateLimit = require("express-rate-limit");
 const connectDB = require("./config/database"); // Connects to MongoDB
 const session = require("express-session"); // Handles sessions for logged-in users
 const passport = require("passport"); // Middleware for authentication
@@ -10,7 +11,6 @@ const bcrypt = require("bcryptjs"); // Used to hash passwords
 const User = require("./config/models/user"); // User model for the database
 const Task = require("./config/models/task"); // Task model for the database
 const FocusSession = require("./config/models/focusSession"); // FocusSession model for tracking focus sessions
-const rateLimit = require("express-rate-limit");
 const FeedbackReport = require("./config/models/feedbackReport"); // Feedback report model for durable rate limiting
 const InboundEmail = require("./config/models/inboundEmail"); // Resend inbound email storage
 const csrf = require("lusca").csrf; // CSRF protection middleware
@@ -33,6 +33,7 @@ const FEEDBACK_HOURLY_LIMIT = Number(process.env.FEEDBACK_HOURLY_LIMIT || 5);
 const FEEDBACK_MIN_SECONDS_BETWEEN_REPORTS = Number(process.env.FEEDBACK_MIN_SECONDS_BETWEEN_REPORTS || 60);
 const FEEDBACK_REQUEST_BODY_LIMIT = process.env.FEEDBACK_REQUEST_BODY_LIMIT || "30mb";
 const RESEND_WEBHOOK_SECRET = (process.env.RESEND_WEBHOOK_SECRET || "").trim();
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
 const DAILY_EMAIL_SCHEDULER_INTERVAL_MS = Number(process.env.DAILY_EMAIL_SCHEDULER_INTERVAL_MS || 60 * 1000);
 let dailyEmailSchedulerStarted = false;
@@ -91,6 +92,14 @@ app.use(async (req, res, next) => {
 });
 
 // Middleware -----------------------------------------------------------------------------------
+const deleteAccountLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many account deletion attempts. Please try again later." },
+});
+
 
 // Ensure a user is logged in before accessing routes
 function ensureAuthenticated(req, res, next) {
@@ -268,6 +277,13 @@ async function sendBugFeedbackEmail({ user, subject, message, attachments = [], 
 function resolveBaseUrl(req) {
   if (APP_BASE_URL) {
     return APP_BASE_URL.replace(/\/$/, "");
+  }
+
+  const vercelUrl = String(
+    process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL || ""
+  ).trim();
+  if (vercelUrl) {
+    return `https://${vercelUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")}`;
   }
 
   const forwardedProto = req?.headers?.["x-forwarded-proto"];
@@ -761,6 +777,13 @@ const authRateLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const localAuthLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // tighten brute-force window for local auth endpoints
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 const feedbackSubmissionLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 5, // limit each user+IP to 5 feedback emails per hour
@@ -830,7 +853,17 @@ app.get("/auth/google/callback", authRateLimiter, (req, res) => {
 });
 
 // Register Route
-app.post("/register", async (req, res) => {
+function validatePasswordStrength(password) {
+  const value = String(password || "");
+  const minLength = value.length >= 12;
+  const hasUpper = /[A-Z]/.test(value);
+  const hasLower = /[a-z]/.test(value);
+  const hasNumber = /\d/.test(value);
+
+  return minLength && hasUpper && hasLower && hasNumber;
+}
+
+app.post("/register", localAuthLimiter, async (req, res) => {
   try {
     const { firstName, lastName, email, password } = req.body;
 
@@ -841,6 +874,12 @@ app.post("/register", async (req, res) => {
     const normalizedEmail = email.toLowerCase().trim();
     const existingUser = await User.findOne({ email: normalizedEmail });
     if (existingUser) return res.status(400).json({ error: "Email already exists" });
+
+    if (!validatePasswordStrength(password)) {
+      return res.status(400).json({
+        error: "Password must be at least 12 characters and include uppercase, lowercase, and a number.",
+      });
+    }
 
     const passwordHash = await bcrypt.hash(password, 10);
 
@@ -960,7 +999,18 @@ const passwordResetLimiter = rateLimit({
   max: 5, // limit each IP to 5 password reset attempts per window
 });
 
-app.post("/forgot-password", passwordResetLimiter, async (req, res) => {
+const forgotPasswordEmailLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 3, // tighter limiter to prevent forgot-password email abuse
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const normalizedEmail = String(req.body?.email || "").toLowerCase().trim();
+    return `${req.ip}:${normalizedEmail}`;
+  },
+});
+
+app.post("/forgot-password", forgotPasswordEmailLimiter, async (req, res) => {
   try {
     const normalizedEmail = (req.body.email || "").toLowerCase().trim();
     if (!normalizedEmail) {
@@ -998,6 +1048,12 @@ app.post("/reset-password", passwordResetLimiter, async (req, res) => {
       return res.status(400).json({ error: "Email, token, and new password are required" });
     }
 
+    if (!validatePasswordStrength(newPassword)) {
+      return res.status(400).json({
+        error: "Password must be at least 12 characters and include uppercase, lowercase, and a number.",
+      });
+    }
+
     const tokenHash = hashVerificationToken(token);
 
     const user = await User.findOne({
@@ -1025,7 +1081,7 @@ app.post("/reset-password", passwordResetLimiter, async (req, res) => {
 
 
 // Login Route
-app.post("/login", (req, res, next) => {
+app.post("/login", localAuthLimiter, (req, res, next) => {
   const { rememberMe } = req.body;
 
   passport.authenticate("local", (err, user, info) => {
@@ -1079,8 +1135,7 @@ app.post("/logout", (req, res) => {
         });
     });
 });
-
-app.delete("/account", ensureAuthenticated, async (req, res) => {
+app.delete("/account", deleteAccountLimiter, ensureAuthenticated, async (req, res) => {
   const userId = req.user?._id || req.user?.id;
   if (!userId) {
     return res.status(400).json({ error: "Invalid user session" });
