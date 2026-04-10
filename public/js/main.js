@@ -1895,6 +1895,14 @@ async function initBoardTaskPreferencesSettings() {
 }
 
 function getProfilePanelMarkup(panelKey, user = null) {
+  const escapeHtml = (value) =>
+    String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
   if (panelKey === "support") {
     return `
       <section class="profile-dynamic-content" aria-label="Help and support">
@@ -1969,6 +1977,10 @@ function getProfilePanelMarkup(panelKey, user = null) {
   const languageValue = String(
     user?.language || navigator.language || "Not available",
   ).trim();
+  const safeFullName = escapeHtml(fullName || "Not available");
+  const safeEmailAddress = escapeHtml(emailAddress || "Not available");
+  const safeTimezone = escapeHtml(timezoneValue || "Not available");
+  const safeLanguage = escapeHtml(languageValue || "Not available");
 
   return `
     <section class="profile-dynamic-content" aria-label="My profile">
@@ -1979,22 +1991,22 @@ function getProfilePanelMarkup(panelKey, user = null) {
       <div class="profile-account-details">
         <div class="profile-account-field">
           <p class="profile-account-label">Display Name</p>
-          <p class="profile-account-value">${fullName || "Not available"}</p>
+          <p class="profile-account-value">${safeFullName}</p>
         </div>
         <div class="profile-account-divider" aria-hidden="true"></div>
         <div class="profile-account-field">
           <p class="profile-account-label">Email Address</p>
-          <p class="profile-account-value">${emailAddress || "Not available"}</p>
+          <p class="profile-account-value">${safeEmailAddress}</p>
         </div>
         <div class="profile-account-divider" aria-hidden="true"></div>
         <div class="profile-account-field">
           <p class="profile-account-label">Timezone</p>
-          <p class="profile-account-value">${timezoneValue || "Not available"}</p>
+          <p class="profile-account-value">${safeTimezone}</p>
         </div>
         <div class="profile-account-divider" aria-hidden="true"></div>
         <div class="profile-account-field">
           <p class="profile-account-label">Language</p>
-          <p class="profile-account-value">${languageValue || "Not available"}</p>
+          <p class="profile-account-value">${safeLanguage}</p>
         </div>
         <div class="profile-account-divider" aria-hidden="true"></div>
       </div>
