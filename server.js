@@ -72,10 +72,6 @@ if (!process.env.SESSION_SECRET) {
   throw new Error("SESSION_SECRET environment variable is required");
 }
 
-if (IS_PRODUCTION && !APP_BASE_URL) {
-  throw new Error("APP_BASE_URL environment variable is required in production");
-}
-
 // Connect to MongoDB
 app.use(async (req, res, next) => {
   try {
@@ -283,8 +279,11 @@ function resolveBaseUrl(req) {
     return APP_BASE_URL.replace(/\/$/, "");
   }
 
-  if (IS_PRODUCTION) {
-    throw new Error("APP_BASE_URL must be configured in production");
+  const vercelUrl = String(
+    process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL || ""
+  ).trim();
+  if (vercelUrl) {
+    return `https://${vercelUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")}`;
   }
 
   const forwardedProto = req?.headers?.["x-forwarded-proto"];
