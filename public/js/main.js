@@ -2241,6 +2241,17 @@ function initProfileBoardNav() {
 
 document.addEventListener("DOMContentLoaded", () => {
   console.log("DOM Fully Loaded - JavaScript Running");
+  const PASSWORD_POLICY_MESSAGE =
+    "Password must be at least 12 characters and include an uppercase letter, lowercase letter, and a number.";
+  const isStrongPassword = (value) => {
+    const password = String(value || "");
+    return (
+      password.length >= 12 &&
+      /[A-Z]/.test(password) &&
+      /[a-z]/.test(password) &&
+      /\d/.test(password)
+    );
+  };
 
   // Page flags let us adjust behavior for standalone login/register views
   const isLoginPage = document.body.classList.contains("login-page");
@@ -2280,6 +2291,10 @@ document.addEventListener("DOMContentLoaded", () => {
       // Simple client-side guard to match the confirm password box
       if (password !== confirmPassword) {
         alert("Passwords do not match.");
+        return;
+      }
+      if (!isStrongPassword(password)) {
+        alert(PASSWORD_POLICY_MESSAGE);
         return;
       }
 
@@ -2418,24 +2433,21 @@ document.addEventListener("DOMContentLoaded", () => {
   if (resetPasswordForm) {
     const params = new URLSearchParams(window.location.search);
     const emailInput = document.getElementById("resetPasswordEmail");
-    const tokenInput = document.getElementById("resetPasswordToken");
+    const tokenFromUrl = String(params.get("token") || "").trim();
 
     if (emailInput && params.get("email"))
       emailInput.value = params.get("email");
-    if (tokenInput && params.get("token"))
-      tokenInput.value = params.get("token");
 
     resetPasswordForm.addEventListener("submit", async (event) => {
       event.preventDefault();
 
       const email = emailInput?.value.trim();
-      const token = tokenInput?.value.trim();
       const newPassword =
         document.getElementById("resetPasswordNew")?.value || "";
       const confirmPassword =
         document.getElementById("resetPasswordConfirm")?.value || "";
 
-      if (!email || !token || !newPassword) {
+      if (!email || !tokenFromUrl || !newPassword) {
         alert("Please complete all required fields.");
         return;
       }
@@ -2444,13 +2456,17 @@ document.addEventListener("DOMContentLoaded", () => {
         alert("Passwords do not match.");
         return;
       }
+      if (!isStrongPassword(newPassword)) {
+        alert(PASSWORD_POLICY_MESSAGE);
+        return;
+      }
 
       try {
         const response = await apiFetch("/reset-password", {
           credentials: "include",
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, token, newPassword }),
+          body: JSON.stringify({ email, token: tokenFromUrl, newPassword }),
         });
 
         const data = await parseApiResponse(response);

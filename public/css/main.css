@@ -379,6 +379,51 @@ p{
   box-shadow: 0 0 0 3px rgba(227,136,132,0.28);
 }
 
+.password-criteria-note{
+  margin: -2px 0 2px;
+  padding: 10px 12px;
+  background: #f9edc9;
+  border: 1px dashed #b08a77;
+  border-radius: 10px 8px 11px 9px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+  color: #6a4b3e;
+  text-align: left;
+}
+
+.password-criteria-title{
+  margin: 0 0 4px;
+  font-size: 0.95rem;
+  color: #5d4136;
+  justify-self: start;
+}
+
+.password-criteria-note ul{
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.password-criteria-note li{
+  margin-bottom: 2px;
+}
+
+@media (min-width: 980px){
+  .register-page .paper-form,
+  .reset-password-page .paper-form{
+    position: relative;
+  }
+
+  .register-page .password-criteria-note,
+  .reset-password-page .password-criteria-note{
+    position: absolute;
+    right: -235px;
+    top: 118px;
+    width: 210px;
+    transform: rotate(-2deg);
+  }
+}
+
 /* Under-form actions row (checkbox + links) */
 .paper-actions{
   margin-top: 6px;
