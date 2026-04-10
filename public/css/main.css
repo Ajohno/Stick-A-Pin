@@ -379,6 +379,62 @@ p{
   box-shadow: 0 0 0 3px rgba(227,136,132,0.28);
 }
 
+.password-criteria-note{
+  position: relative;
+  margin: -2px 0 2px;
+  padding: 12px 12px 10px;
+  color: #6a4b3e;
+  text-align: left;
+  z-index: 1;
+  transform: rotate(-1deg);
+}
+
+.password-criteria-title{
+  margin: 0 0 4px;
+  font-size: 0.95rem;
+  color: #5d4136;
+  justify-self: start;
+}
+
+.password-criteria-list{
+  margin-top: 0.2rem;
+}
+
+.password-criteria-list .big-three-item{
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.password-criteria-check{
+  cursor: default;
+}
+
+.password-criteria-note ul{
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.password-criteria-note li{
+  margin-bottom: 2px;
+}
+
+@media (min-width: 980px){
+  .register-page .paper-form,
+  .reset-password-page .paper-form{
+    position: relative;
+  }
+
+  .register-page .password-criteria-note,
+  .reset-password-page .password-criteria-note{
+    position: absolute;
+    right: -235px;
+    top: 118px;
+    width: 210px;
+    transform: rotate(-2deg);
+  }
+}
+
 /* Under-form actions row (checkbox + links) */
 .paper-actions{
   margin-top: 6px;
