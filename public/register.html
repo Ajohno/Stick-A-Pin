@@ -71,6 +71,31 @@
               required
             />
           </div>
+          <aside
+            id="registerPasswordCriteria"
+            class="sticky-note pink thumbtack password-criteria-note"
+            aria-label="Password requirements"
+          >
+            <p class="password-criteria-title">Password must include:</p>
+            <ul class="big-three-list password-criteria-list">
+              <li class="big-three-item">
+                <input class="task-check big-three-check password-criteria-check" type="checkbox" data-rule="length" disabled />
+                <span>At least 12 characters</span>
+              </li>
+              <li class="big-three-item">
+                <input class="task-check big-three-check password-criteria-check" type="checkbox" data-rule="uppercase" disabled />
+                <span>One uppercase letter</span>
+              </li>
+              <li class="big-three-item">
+                <input class="task-check big-three-check password-criteria-check" type="checkbox" data-rule="lowercase" disabled />
+                <span>One lowercase letter</span>
+              </li>
+              <li class="big-three-item">
+                <input class="task-check big-three-check password-criteria-check" type="checkbox" data-rule="number" disabled />
+                <span>One number</span>
+              </li>
+            </ul>
+          </aside>
           <div class="paper-field">
             <label for="registerConfirm">Confirm Password</label>
             <input

@@ -16,6 +16,16 @@ async function parseApiResponse(response) {
   return { error: text || "Unexpected server response" };
 }
 
+function notify(message, type = "error", duration = 3200) {
+  if (typeof Toast !== "undefined" && typeof Toast.show === "function") {
+    Toast.show({ message, type, duration });
+    return;
+  }
+
+  // Fallback only for pages that do not render the toast container.
+  window.alert(message);
+}
+
 
 let csrfTokenPromise = null;
 
@@ -1895,6 +1905,14 @@ async function initBoardTaskPreferencesSettings() {
 }
 
 function getProfilePanelMarkup(panelKey, user = null) {
+  const escapeHtml = (value) =>
+    String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
   if (panelKey === "support") {
     return `
       <section class="profile-dynamic-content" aria-label="Help and support">
@@ -1969,6 +1987,10 @@ function getProfilePanelMarkup(panelKey, user = null) {
   const languageValue = String(
     user?.language || navigator.language || "Not available",
   ).trim();
+  const safeFullName = escapeHtml(fullName || "Not available");
+  const safeEmailAddress = escapeHtml(emailAddress || "Not available");
+  const safeTimezone = escapeHtml(timezoneValue || "Not available");
+  const safeLanguage = escapeHtml(languageValue || "Not available");
 
   return `
     <section class="profile-dynamic-content" aria-label="My profile">
@@ -1979,22 +2001,22 @@ function getProfilePanelMarkup(panelKey, user = null) {
       <div class="profile-account-details">
         <div class="profile-account-field">
           <p class="profile-account-label">Display Name</p>
-          <p class="profile-account-value">${fullName || "Not available"}</p>
+          <p class="profile-account-value">${safeFullName}</p>
         </div>
         <div class="profile-account-divider" aria-hidden="true"></div>
         <div class="profile-account-field">
           <p class="profile-account-label">Email Address</p>
-          <p class="profile-account-value">${emailAddress || "Not available"}</p>
+          <p class="profile-account-value">${safeEmailAddress}</p>
         </div>
         <div class="profile-account-divider" aria-hidden="true"></div>
         <div class="profile-account-field">
           <p class="profile-account-label">Timezone</p>
-          <p class="profile-account-value">${timezoneValue || "Not available"}</p>
+          <p class="profile-account-value">${safeTimezone}</p>
         </div>
         <div class="profile-account-divider" aria-hidden="true"></div>
         <div class="profile-account-field">
           <p class="profile-account-label">Language</p>
-          <p class="profile-account-value">${languageValue || "Not available"}</p>
+          <p class="profile-account-value">${safeLanguage}</p>
         </div>
         <div class="profile-account-divider" aria-hidden="true"></div>
       </div>
@@ -2204,11 +2226,11 @@ function initProfileBoardNav() {
         window.location.href = "/login.html";
       } else {
         const data = await parseApiResponse(response);
-        alert("Logout failed: " + (data.error || "Unknown error"));
+        notify(`Logout failed: ${data.error || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Logout request failed:", error);
-      alert("Logout failed due to a network/server issue.");
+      notify("Logout failed due to a network/server issue.");
     }
   };
 
@@ -2229,6 +2251,42 @@ function initProfileBoardNav() {
 
 document.addEventListener("DOMContentLoaded", () => {
   console.log("DOM Fully Loaded - JavaScript Running");
+  const PASSWORD_POLICY_MESSAGE =
+    "Password must be at least 12 characters and include an uppercase letter, lowercase letter, and a number.";
+  const isStrongPassword = (value) => {
+    const password = String(value || "");
+    return (
+      password.length >= 12 &&
+      /[A-Z]/.test(password) &&
+      /[a-z]/.test(password) &&
+      /\d/.test(password)
+    );
+  };
+  const getPasswordCriteriaState = (value) => {
+    const password = String(value || "");
+    return {
+      length: password.length >= 12,
+      uppercase: /[A-Z]/.test(password),
+      lowercase: /[a-z]/.test(password),
+      number: /\d/.test(password),
+    };
+  };
+  const wirePasswordCriteriaChecklist = (inputEl, checklistEl) => {
+    if (!inputEl || !checklistEl) return;
+
+    const syncChecklist = () => {
+      const state = getPasswordCriteriaState(inputEl.value || "");
+      checklistEl
+        .querySelectorAll(".password-criteria-check[data-rule]")
+        .forEach((checkboxEl) => {
+          const rule = checkboxEl.dataset.rule;
+          checkboxEl.checked = Boolean(state[rule]);
+        });
+    };
+
+    inputEl.addEventListener("input", syncChecklist);
+    syncChecklist();
+  };
 
   // Page flags let us adjust behavior for standalone login/register views
   const isLoginPage = document.body.classList.contains("login-page");
@@ -2246,6 +2304,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Registration handler (used on register.html)
   const registerForm = document.getElementById("registerForm");
+  const registerPasswordInput = document.getElementById("registerPassword");
+  const registerPasswordCriteria = document.getElementById("registerPasswordCriteria");
+  wirePasswordCriteriaChecklist(registerPasswordInput, registerPasswordCriteria);
   if (registerForm) {
     registerForm.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -2261,13 +2322,21 @@ document.addEventListener("DOMContentLoaded", () => {
       const confirmPassword = document.getElementById("registerConfirm").value;
 
       if (!firstName || !lastName || !email) {
-        alert("Please fill in first name, last name, and email.");
+        notify("Please fill in first name, last name, and email.");
         return;
       }
 
       // Simple client-side guard to match the confirm password box
       if (password !== confirmPassword) {
-        alert("Passwords do not match.");
+        notify("Passwords do not match.");
+        return;
+      }
+      if (!isStrongPassword(password)) {
+        Toast.show({
+          message: PASSWORD_POLICY_MESSAGE,
+          type: "error",
+          duration: 4200,
+        });
         return;
       }
 
@@ -2290,11 +2359,11 @@ document.addEventListener("DOMContentLoaded", () => {
           }).toString();
           window.location.href = `/verification-status.html?${query}`;
         } else {
-          alert("Registration failed: " + (data.error || "Unknown error"));
+          notify(`Registration failed: ${data.error || "Unknown error"}`);
         }
       } catch (error) {
         console.error("Registration request failed:", error);
-        alert("Registration failed due to a network/server issue.");
+        notify("Registration failed due to a network/server issue.");
       }
     });
   }
@@ -2321,7 +2390,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     resendBtn?.addEventListener("click", async () => {
       if (!email) {
-        alert("No email found for this registration. Please sign up again.");
+        notify("No email found for this registration. Please sign up again.");
         return;
       }
 
@@ -2337,14 +2406,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const data = await parseApiResponse(response);
         if (response.ok) {
-          alert(data.message || "Verification email sent.");
+          notify(data.message || "Verification email sent.", "success", 2600);
           Toast.show({
             message: "Verification email resent",
             type: "success",
             duration: 2200,
           });
         } else {
-          alert(data.error || "Could not resend verification email.");
+          notify(data.error || "Could not resend verification email.");
           Toast.show({
             message: "Resend failed",
             type: "error",
@@ -2353,7 +2422,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       } catch (error) {
         console.error("Resend verification request failed:", error);
-        alert("Network error while resending verification email.");
+        notify("Network error while resending verification email.");
       } finally {
         resendBtn.disabled = false;
       }
@@ -2369,7 +2438,7 @@ document.addEventListener("DOMContentLoaded", () => {
         ?.value.trim();
 
       if (!email) {
-        alert("Please enter your email.");
+        notify("Please enter your email.");
         return;
       }
 
@@ -2383,21 +2452,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const data = await parseApiResponse(response);
         if (response.ok) {
-          alert(
-            data.message ||
-              "If that account exists, a password reset email has been sent.",
-          );
           Toast.show({
-            message: "Reset email request sent",
+            message:
+              data.message ||
+              "If that account exists, a password reset email has been sent.",
             type: "success",
-            duration: 2400,
+            duration: 3200,
           });
         } else {
-          alert(data.error || "Could not process reset request.");
+          notify(data.error || "Could not process reset request.");
         }
       } catch (error) {
         console.error("Forgot password request failed:", error);
-        alert("Network error while requesting password reset.");
+        notify("Network error while requesting password reset.");
       }
     });
   }
@@ -2406,30 +2473,44 @@ document.addEventListener("DOMContentLoaded", () => {
   if (resetPasswordForm) {
     const params = new URLSearchParams(window.location.search);
     const emailInput = document.getElementById("resetPasswordEmail");
-    const tokenInput = document.getElementById("resetPasswordToken");
+    const resetPasswordInput = document.getElementById("resetPasswordNew");
+    const resetPasswordCriteria = document.getElementById("resetPasswordCriteria");
+    const tokenFromUrl = String(params.get("token") || "").trim();
+    if (tokenFromUrl) {
+      params.delete("token");
+      const remainingQuery = params.toString();
+      const nextUrl = `${window.location.pathname}${remainingQuery ? `?${remainingQuery}` : ""}`;
+      window.history.replaceState(null, "", nextUrl);
+    }
 
     if (emailInput && params.get("email"))
       emailInput.value = params.get("email");
-    if (tokenInput && params.get("token"))
-      tokenInput.value = params.get("token");
+    wirePasswordCriteriaChecklist(resetPasswordInput, resetPasswordCriteria);
 
     resetPasswordForm.addEventListener("submit", async (event) => {
       event.preventDefault();
 
       const email = emailInput?.value.trim();
-      const token = tokenInput?.value.trim();
       const newPassword =
         document.getElementById("resetPasswordNew")?.value || "";
       const confirmPassword =
         document.getElementById("resetPasswordConfirm")?.value || "";
 
-      if (!email || !token || !newPassword) {
-        alert("Please complete all required fields.");
+      if (!email || !tokenFromUrl || !newPassword) {
+        notify("Please complete all required fields.");
         return;
       }
 
       if (newPassword !== confirmPassword) {
-        alert("Passwords do not match.");
+        notify("Passwords do not match.");
+        return;
+      }
+      if (!isStrongPassword(newPassword)) {
+        Toast.show({
+          message: PASSWORD_POLICY_MESSAGE,
+          type: "error",
+          duration: 4200,
+        });
         return;
       }
 
@@ -2438,12 +2519,12 @@ document.addEventListener("DOMContentLoaded", () => {
           credentials: "include",
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, token, newPassword }),
+          body: JSON.stringify({ email, token: tokenFromUrl, newPassword }),
         });
 
         const data = await parseApiResponse(response);
         if (response.ok) {
-          alert(data.message || "Password reset successful.");
+          notify(data.message || "Password reset successful.", "success", 2600);
           Toast.show({
             message: "Password updated",
             type: "success",
@@ -2451,11 +2532,11 @@ document.addEventListener("DOMContentLoaded", () => {
           });
           window.location.href = "/login.html";
         } else {
-          alert(data.error || "Unable to reset password.");
+          notify(data.error || "Unable to reset password.");
         }
       } catch (error) {
         console.error("Reset password request failed:", error);
-        alert("Network error while resetting password.");
+        notify("Network error while resetting password.");
       }
     });
   }
@@ -2513,7 +2594,7 @@ document.addEventListener("DOMContentLoaded", () => {
           });
           window.location.href = preferredDefaultPath;
         } else {
-          alert("Login failed: " + (data.error || "Unknown error"));
+          notify(`Login failed: ${data.error || "Unknown error"}`);
           Toast.show({
             message: "Login failed: " + (data.error || "Unknown error"),
             type: "error",
@@ -2522,7 +2603,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       } catch (error) {
         console.error("Login request failed:", error);
-        alert("Login failed due to a network/server issue.");
+        notify("Login failed due to a network/server issue.");
         Toast.show({
           message: "Login failed due to a network/server issue.",
           type: "error",
@@ -2554,11 +2635,11 @@ document.addEventListener("DOMContentLoaded", () => {
           window.location.href = "/login.html";
         } else {
           const data = await parseApiResponse(response);
-          alert("Logout failed: " + (data.error || "Unknown error"));
+          notify(`Logout failed: ${data.error || "Unknown error"}`);
         }
       } catch (error) {
         console.error("Logout request failed:", error);
-        alert("Logout failed due to a network/server issue.");
+        notify("Logout failed due to a network/server issue.");
       }
     });
   }
@@ -3250,7 +3331,7 @@ async function fetchTasks() {
     updateTaskList(dashboardTaskState.allTasks);
   } else {
     console.error("Error fetching tasks:", tasks.error);
-    alert("Please log in to see your tasks.");
+    notify("Please log in to see your tasks.");
   }
 }
 
