@@ -1,7 +1,7 @@
 # Stick A Pin — Release Notes
 
  
-## v0.1.0 (MVP Public Launch)
+## v1.0.0 (MVP Public Launch)
  
 ### 🎉 Highlights
 - Public MVP launch of Stick A Pin at **https://www.stickapin.app**.
