@@ -601,6 +601,11 @@
   display: none;
 }
 
+.weekday-full,
+.weekday-short {
+  font-weight: 700;
+}
+
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
