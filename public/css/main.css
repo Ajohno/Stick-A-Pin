@@ -1793,6 +1793,17 @@ input:focus{
     max-width: 100%;
     min-width: 0;
     box-sizing: border-box;
+    display: block;
+    -webkit-appearance: none;
+    appearance: none;
+    min-height: 48px;
+    line-height: 1.2;
+    padding-right: 0.75rem;
+  }
+
+  #create-task-widget #dueDate::-webkit-date-and-time-value,
+  #panelTaskDueDateInput::-webkit-date-and-time-value {
+    text-align: left;
   }
 }
 
