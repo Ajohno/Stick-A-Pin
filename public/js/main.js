@@ -2723,7 +2723,7 @@ document.addEventListener("DOMContentLoaded", () => {
     "clear-completed-tasks-btn",
   );
   if (clearCompletedButton) {
-    clearCompletedButton.addEventListener("click", clearCompletedTasks);
+    initClearCompletedTaskConfirmDialog();
   }
 
   bindDashboardTaskFilterTabs();
@@ -3480,6 +3480,106 @@ async function clearCompletedTasks() {
       clearCompletedButton.disabled = false;
     }
   }
+}
+
+function initClearCompletedTaskConfirmDialog() {
+  const clearCompletedButton = document.getElementById(
+    "clear-completed-tasks-btn",
+  );
+  const confirmOverlay = document.getElementById("clearCompletedConfirmOverlay");
+  const confirmNote = document.getElementById("clearCompletedConfirmNote");
+  const cancelBtn = document.getElementById("clearCompletedCancelBtn");
+  const confirmBtn = document.getElementById("clearCompletedConfirmBtn");
+
+  if (
+    !clearCompletedButton ||
+    !confirmOverlay ||
+    !confirmNote ||
+    !cancelBtn ||
+    !confirmBtn
+  ) return;
+
+  let isTransitioning = false;
+
+  const waitForAnimation = (element, timeoutMs = 360) =>
+    new Promise((resolve) => {
+      if (!element) {
+        resolve();
+        return;
+      }
+
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        element.removeEventListener("animationend", onAnimationEnd);
+        resolve();
+      };
+
+      const onAnimationEnd = () => finish();
+      element.addEventListener("animationend", onAnimationEnd, { once: true });
+      window.setTimeout(finish, timeoutMs);
+    });
+
+  const openDialog = () => {
+    if (isTransitioning || !confirmOverlay.hasAttribute("hidden")) return;
+    confirmOverlay.removeAttribute("hidden");
+    confirmOverlay.classList.add("is-open");
+    confirmNote.classList.remove("profile-note-leaving");
+    confirmNote.classList.remove("profile-note-entering");
+    window.requestAnimationFrame(() => {
+      confirmNote.classList.add("profile-note-entering");
+    });
+  };
+
+  const closeDialog = async () => {
+    if (isTransitioning || confirmOverlay.hasAttribute("hidden")) return;
+    isTransitioning = true;
+    confirmNote.classList.remove("profile-note-entering");
+    confirmNote.classList.add("profile-note-leaving");
+    await waitForAnimation(confirmNote, 320);
+    confirmNote.classList.remove("profile-note-leaving");
+    confirmOverlay.classList.remove("is-open");
+    confirmOverlay.setAttribute("hidden", "hidden");
+    isTransitioning = false;
+  };
+
+  clearCompletedButton.addEventListener("click", () => {
+    openDialog();
+  });
+
+  cancelBtn.addEventListener("click", async () => {
+    if (confirmBtn.disabled) return;
+    await closeDialog();
+  });
+
+  confirmOverlay.addEventListener("click", async (event) => {
+    if (event.target !== confirmOverlay || confirmBtn.disabled) return;
+    await closeDialog();
+  });
+
+  document.addEventListener("keydown", async (event) => {
+    if (event.key !== "Escape") return;
+    if (confirmOverlay.hasAttribute("hidden") || confirmBtn.disabled) return;
+    await closeDialog();
+  });
+
+  confirmBtn.addEventListener("click", async () => {
+    confirmBtn.disabled = true;
+    cancelBtn.disabled = true;
+    clearCompletedButton.disabled = true;
+    confirmBtn.textContent = "Clearing...";
+
+    try {
+      await clearCompletedTasks();
+      await closeDialog();
+    } finally {
+      confirmBtn.disabled = false;
+      cancelBtn.disabled = false;
+      confirmBtn.textContent = "Yes, Clear";
+      updateTaskList(dashboardTaskState.allTasks);
+    }
+  });
 }
 
 // Function to submit a task (User must be logged in)
