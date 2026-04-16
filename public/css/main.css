@@ -2050,6 +2050,7 @@ body.task-panel-open {
   display: inline-flex;
   align-items: center;
   gap: 0.65rem;
+  transition: transform 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
 }
 
 .profile-nav-link {
@@ -2061,6 +2062,21 @@ body.task-panel-open {
 .profile-nav-link.is-active {
   background: #f4eebf;
   color: #1f1f1f;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .profile-nav-link:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.24);
+  }
+
+  .profile-nav-link:not(.is-active):hover {
+    background: #fff8e8;
+  }
+
+  .profile-nav-link.is-active:hover {
+    background: #efe49c;
+  }
 }
 
 .profile-logout-btn {
