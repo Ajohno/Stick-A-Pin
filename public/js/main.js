@@ -2681,6 +2681,7 @@ function initCalendarPage() {
   const prevBtn = document.getElementById("calendarPrevBtn");
   const nextBtn = document.getElementById("calendarNextBtn");
   const todayBtn = document.getElementById("calendarTodayBtn");
+  const focusBtn = document.getElementById("calendarFocusBtn");
   const newTaskBtn = document.getElementById("calendarNewTaskBtn");
   const taskComposerOverlay = document.getElementById("calendarTaskComposerOverlay");
   const taskComposer = taskComposerOverlay?.querySelector(".calendar-task-composer");
@@ -3131,6 +3132,10 @@ function initCalendarPage() {
 
   todayBtn.addEventListener("click", () => {
     transitionToMonth(new Date(todayYear, todayMonth, 1), { focusToday: true });
+  });
+
+  focusBtn?.addEventListener("click", () => {
+    window.location.href = "/focus-page.html";
   });
 
   newTaskBtn?.addEventListener("click", () => {

@@ -553,6 +553,20 @@
   font-size: 18px;
 }
 
+.calendar-focus-btn {
+  width: auto;
+  min-width: 100px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-family: "Itim", serif;
+  font-size: 18px;
+  background: #ffd6e7;
+  color: #8b2f5d;
+}
+
 .calendar-new-task-btn {
   width: auto;
   min-width: 118px;
@@ -847,10 +861,12 @@
     font-size: 10px;
   }
 
+  .calendar-focus-btn span,
   .calendar-new-task-btn span {
     display: none;
   }
 
+  .calendar-focus-btn,
   .calendar-new-task-btn {
     min-width: 44px;
     padding: 0;
