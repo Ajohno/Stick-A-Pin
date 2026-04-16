@@ -2027,11 +2027,13 @@ function getProfilePanelMarkup(panelKey, user = null) {
 
 function initDeleteAccountFlow() {
   const deleteBtn = document.getElementById("profileDeleteAccountBtn");
+  const confirmOverlay = document.getElementById("profileDeleteConfirmOverlay");
   const confirmNote = document.getElementById("profileDeleteConfirmNote");
   const cancelBtn = document.getElementById("profileCancelDeleteBtn");
   const confirmBtn = document.getElementById("profileConfirmDeleteBtn");
 
-  if (!deleteBtn || !confirmNote || !cancelBtn || !confirmBtn) return;
+  if (!deleteBtn || !confirmOverlay || !confirmNote || !cancelBtn || !confirmBtn) return;
+  let isTransitioning = false;
 
   const setBusyState = (isBusy) => {
     confirmBtn.disabled = isBusy;
@@ -2040,14 +2042,69 @@ function initDeleteAccountFlow() {
     confirmBtn.textContent = isBusy ? "Deleting..." : "Yes, Delete";
   };
 
-  deleteBtn.addEventListener("click", () => {
-    confirmNote.hidden = false;
+  const waitForAnimation = (element, timeoutMs = 360) =>
+    new Promise((resolve) => {
+      if (!element) {
+        resolve();
+        return;
+      }
+
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        element.removeEventListener("animationend", onAnimationEnd);
+        resolve();
+      };
+
+      const onAnimationEnd = () => finish();
+      element.addEventListener("animationend", onAnimationEnd, { once: true });
+      window.setTimeout(finish, timeoutMs);
+    });
+
+  const openConfirmDialog = () => {
+    if (isTransitioning || !confirmOverlay.hasAttribute("hidden")) return;
+    confirmOverlay.removeAttribute("hidden");
+    confirmOverlay.classList.add("is-open");
+    confirmNote.classList.remove("profile-note-leaving");
+    confirmNote.classList.remove("profile-note-entering");
+    window.requestAnimationFrame(() => {
+      confirmNote.classList.add("profile-note-entering");
+    });
     deleteBtn.hidden = true;
+  };
+
+  const closeConfirmDialog = async () => {
+    if (confirmBtn.disabled || isTransitioning || confirmOverlay.hasAttribute("hidden")) return;
+    isTransitioning = true;
+    confirmNote.classList.remove("profile-note-entering");
+    confirmNote.classList.add("profile-note-leaving");
+    await waitForAnimation(confirmNote, 320);
+    confirmNote.classList.remove("profile-note-leaving");
+    confirmOverlay.classList.remove("is-open");
+    confirmOverlay.setAttribute("hidden", "hidden");
+    deleteBtn.hidden = false;
+    isTransitioning = false;
+  };
+
+  deleteBtn.addEventListener("click", () => {
+    openConfirmDialog();
   });
 
-  cancelBtn.addEventListener("click", () => {
-    confirmNote.hidden = true;
-    deleteBtn.hidden = false;
+  cancelBtn.addEventListener("click", async () => {
+    await closeConfirmDialog();
+  });
+
+  confirmOverlay.addEventListener("click", async (event) => {
+    if (event.target === confirmOverlay) {
+      await closeConfirmDialog();
+    }
+  });
+
+  document.addEventListener("keydown", async (event) => {
+    if (event.key === "Escape" && !confirmOverlay.hasAttribute("hidden")) {
+      await closeConfirmDialog();
+    }
   });
 
   confirmBtn.addEventListener("click", async () => {
@@ -2123,9 +2180,16 @@ function initProfileBoardNav() {
       } else {
         deleteAccountContainer.remove();
         const deleteBtn = document.getElementById("profileDeleteAccountBtn");
-        const confirmNote = document.getElementById("profileDeleteConfirmNote");
+        const confirmOverlay = document.getElementById("profileDeleteConfirmOverlay");
         if (deleteBtn) deleteBtn.hidden = false;
-        if (confirmNote) confirmNote.hidden = true;
+        if (confirmOverlay) {
+          confirmOverlay.setAttribute("hidden", "hidden");
+          confirmOverlay.classList.remove("is-open");
+        }
+        const confirmNote = document.getElementById("profileDeleteConfirmNote");
+        if (confirmNote) {
+          confirmNote.classList.remove("profile-note-entering", "profile-note-leaving");
+        }
       }
     }
   };
@@ -2659,7 +2723,7 @@ document.addEventListener("DOMContentLoaded", () => {
     "clear-completed-tasks-btn",
   );
   if (clearCompletedButton) {
-    clearCompletedButton.addEventListener("click", clearCompletedTasks);
+    initClearCompletedTaskConfirmDialog();
   }
 
   bindDashboardTaskFilterTabs();
@@ -3416,6 +3480,106 @@ async function clearCompletedTasks() {
       clearCompletedButton.disabled = false;
     }
   }
+}
+
+function initClearCompletedTaskConfirmDialog() {
+  const clearCompletedButton = document.getElementById(
+    "clear-completed-tasks-btn",
+  );
+  const confirmOverlay = document.getElementById("clearCompletedConfirmOverlay");
+  const confirmNote = document.getElementById("clearCompletedConfirmNote");
+  const cancelBtn = document.getElementById("clearCompletedCancelBtn");
+  const confirmBtn = document.getElementById("clearCompletedConfirmBtn");
+
+  if (
+    !clearCompletedButton ||
+    !confirmOverlay ||
+    !confirmNote ||
+    !cancelBtn ||
+    !confirmBtn
+  ) return;
+
+  let isTransitioning = false;
+
+  const waitForAnimation = (element, timeoutMs = 360) =>
+    new Promise((resolve) => {
+      if (!element) {
+        resolve();
+        return;
+      }
+
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        element.removeEventListener("animationend", onAnimationEnd);
+        resolve();
+      };
+
+      const onAnimationEnd = () => finish();
+      element.addEventListener("animationend", onAnimationEnd, { once: true });
+      window.setTimeout(finish, timeoutMs);
+    });
+
+  const openDialog = () => {
+    if (isTransitioning || !confirmOverlay.hasAttribute("hidden")) return;
+    confirmOverlay.removeAttribute("hidden");
+    confirmOverlay.classList.add("is-open");
+    confirmNote.classList.remove("profile-note-leaving");
+    confirmNote.classList.remove("profile-note-entering");
+    window.requestAnimationFrame(() => {
+      confirmNote.classList.add("profile-note-entering");
+    });
+  };
+
+  const closeDialog = async () => {
+    if (isTransitioning || confirmOverlay.hasAttribute("hidden")) return;
+    isTransitioning = true;
+    confirmNote.classList.remove("profile-note-entering");
+    confirmNote.classList.add("profile-note-leaving");
+    await waitForAnimation(confirmNote, 320);
+    confirmNote.classList.remove("profile-note-leaving");
+    confirmOverlay.classList.remove("is-open");
+    confirmOverlay.setAttribute("hidden", "hidden");
+    isTransitioning = false;
+  };
+
+  clearCompletedButton.addEventListener("click", () => {
+    openDialog();
+  });
+
+  cancelBtn.addEventListener("click", async () => {
+    if (confirmBtn.disabled) return;
+    await closeDialog();
+  });
+
+  confirmOverlay.addEventListener("click", async (event) => {
+    if (event.target !== confirmOverlay || confirmBtn.disabled) return;
+    await closeDialog();
+  });
+
+  document.addEventListener("keydown", async (event) => {
+    if (event.key !== "Escape") return;
+    if (confirmOverlay.hasAttribute("hidden") || confirmBtn.disabled) return;
+    await closeDialog();
+  });
+
+  confirmBtn.addEventListener("click", async () => {
+    confirmBtn.disabled = true;
+    cancelBtn.disabled = true;
+    clearCompletedButton.disabled = true;
+    confirmBtn.textContent = "Clearing...";
+
+    try {
+      await clearCompletedTasks();
+      await closeDialog();
+    } finally {
+      confirmBtn.disabled = false;
+      cancelBtn.disabled = false;
+      confirmBtn.textContent = "Yes, Clear";
+      updateTaskList(dashboardTaskState.allTasks);
+    }
+  });
 }
 
 // Function to submit a task (User must be logged in)

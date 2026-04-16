@@ -2206,23 +2206,101 @@ body.task-panel-open {
 }
 
 .profile-delete-confirm-note {
-  background: rgba(255, 255, 255, 0.45);
-  border: 2px dashed #b54f6a;
-  border-radius: 12px;
-  padding: 0.65rem 0.7rem;
+  position: relative;
+  width: min(520px, 92vw);
+  min-height: 260px;
+  background: #f7dfe8;
+  border-radius: 4px;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.24);
+  padding: 24px 24px 20px;
+  transform: rotate(-1deg);
+}
+
+.profile-delete-confirm-note::before {
+  content: "";
+  position: absolute;
+  top: -11px;
+  left: 50%;
+  transform: translateX(-50%) rotate(3deg);
+  width: 68px;
+  height: 18px;
+  background: rgba(245, 229, 197, 0.85);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+}
+
+.profile-delete-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  background: rgba(20, 12, 8, 0.36);
+  align-items: center;
+  justify-content: center;
+  z-index: 1305;
+  padding: 1rem;
+}
+
+.profile-delete-confirm-overlay.is-open {
+  display: flex;
+}
+
+.profile-delete-confirm-title {
+  margin: 0 28px 12px 0;
+  color: #4f3023;
+  font-family: "Itim", serif;
+  font-size: clamp(26px, 3vw, 34px);
 }
 
 .profile-delete-confirm-note p {
   margin: 0;
-  color: #5f2337;
-  font-size: 0.96rem;
+  color: #3c2318;
+  font-family: "Itim", serif;
+  font-size: clamp(18px, 2vw, 24px);
+  line-height: 1.2;
 }
 
 .profile-delete-confirm-actions {
-  margin-top: 0.6rem;
+  margin-top: 1.1rem;
   display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
+  justify-content: center;
+  gap: 0.8rem;
+}
+
+.profile-delete-confirm-note.profile-note-leaving {
+  animation: profile-delete-note-leave 300ms ease-in forwards;
+  pointer-events: none;
+}
+
+.profile-delete-confirm-note.profile-note-entering {
+  animation: profile-delete-note-enter 360ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes profile-delete-note-leave {
+  0% {
+    transform: translateX(0) translateY(0) rotate(-1deg);
+    opacity: 1;
+  }
+  35% {
+    transform: translateX(8px) translateY(-10px) rotate(1deg);
+  }
+  100% {
+    transform: translateX(110vw) translateY(-15px) rotate(3deg);
+    opacity: 0;
+  }
+}
+
+@keyframes profile-delete-note-enter {
+  0% {
+    transform: translateX(110vw) translateY(-15px) rotate(3deg);
+    opacity: 0;
+  }
+  70% {
+    transform: translateX(-6px) translateY(0) rotate(-0.8deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(0) translateY(0) rotate(-1deg);
+    opacity: 1;
+  }
 }
 
 .profile-cancel-delete-btn {
