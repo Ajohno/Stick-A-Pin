@@ -1940,7 +1940,7 @@ function getProfilePanelMarkup(panelKey, user = null) {
           <input id="feedbackPhotoInput" name="feedbackPhotos" type="file" accept="image/*" multiple hidden />
           <textarea id="feedbackMessage" name="feedbackMessage" maxlength="2000" rows="6" placeholder="Steps to reproduce, expected result, and what you saw." required></textarea>
           <ul id="feedbackAttachmentList" class="feedback-attachment-list" aria-live="polite"></ul>
-          <button id="feedbackSubmitBtn" type="submit">Send bug report</button>
+          <button id="feedbackSubmitBtn" type="submit">Send</button>
         </form>
       </section>
     `;

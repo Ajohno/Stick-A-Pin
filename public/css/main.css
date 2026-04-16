@@ -2486,6 +2486,7 @@ body.task-panel-open {
   background: #ffe6d9;
   color: #612a27;
   font-family: "Quantico", sans-serif;
+  font-size: 0.85rem;
   font-weight: 700;
   cursor: pointer;
 }
@@ -2523,13 +2524,15 @@ body.task-panel-open {
   }
 
   .feedback-photo-btn {
-    width: 100%;
+    width: min(100%, 240px);
     justify-content: center;
+    margin-inline: auto;
   }
 
   #feedbackSubmitBtn {
-    width: 100%;
+    width: min(100%, 240px);
     text-align: center;
+    align-self: center;
   }
 }
 
