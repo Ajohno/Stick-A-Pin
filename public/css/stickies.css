@@ -553,6 +553,20 @@
   font-size: 18px;
 }
 
+.calendar-focus-btn {
+  width: auto;
+  min-width: 100px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-family: "Itim", serif;
+  font-size: 18px;
+  background: #ffd6e7;
+  color: #8b2f5d;
+}
+
 .calendar-new-task-btn {
   width: auto;
   min-width: 118px;
@@ -608,6 +622,7 @@
   flex-direction: column;
   align-items: flex-start;
   aspect-ratio: 1 / 1;
+  transition: transform 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
 }
 
 .calendar-day.has-due-task {
@@ -618,6 +633,14 @@
 .calendar-day.has-due-task:focus-visible {
   outline: 3px solid #c83939;
   outline-offset: 2px;
+}
+
+@media (min-width: 761px) and (hover: hover) and (pointer: fine) {
+  .calendar-day.has-due-task:hover {
+    background: #f4cddd;
+    transform: translateY(-2px) rotate(-0.3deg);
+    box-shadow: 0 10px 18px rgba(0, 0, 0, 0.24);
+  }
 }
 
 .calendar-day::before {
@@ -847,10 +870,12 @@
     font-size: 10px;
   }
 
+  .calendar-focus-btn span,
   .calendar-new-task-btn span {
     display: none;
   }
 
+  .calendar-focus-btn,
   .calendar-new-task-btn {
     min-width: 44px;
     padding: 0;
