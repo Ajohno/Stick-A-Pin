@@ -3380,17 +3380,15 @@ async function clearCompletedTasks() {
       (result) => result.status === "fulfilled" && result.value.ok,
     ).length;
 
-    if (deletedCount === completedTasks.length) {
+    if (deletedCount > 0) {
+      const taskLabel = deletedCount === 1 ? "task" : "tasks";
+      const partialFailure = deletedCount < completedTasks.length;
       Toast.show({
-        message: "Cleared completed tasks",
+        message: partialFailure
+          ? `Cleared ${deletedCount} completed ${taskLabel}. Some could not be deleted.`
+          : `Successfully cleared ${deletedCount} completed ${taskLabel}.`,
         type: "success",
-        duration: 2500,
-      });
-    } else if (deletedCount > 0) {
-      Toast.show({
-        message: `Cleared ${deletedCount} completed tasks. Some could not be deleted.`,
-        type: "error",
-        duration: 3500,
+        duration: partialFailure ? 3500 : 2500,
       });
     } else {
       Toast.show({
