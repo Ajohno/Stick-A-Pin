@@ -2027,11 +2027,11 @@ function getProfilePanelMarkup(panelKey, user = null) {
 
 function initDeleteAccountFlow() {
   const deleteBtn = document.getElementById("profileDeleteAccountBtn");
-  const confirmNote = document.getElementById("profileDeleteConfirmNote");
+  const confirmOverlay = document.getElementById("profileDeleteConfirmOverlay");
   const cancelBtn = document.getElementById("profileCancelDeleteBtn");
   const confirmBtn = document.getElementById("profileConfirmDeleteBtn");
 
-  if (!deleteBtn || !confirmNote || !cancelBtn || !confirmBtn) return;
+  if (!deleteBtn || !confirmOverlay || !cancelBtn || !confirmBtn) return;
 
   const setBusyState = (isBusy) => {
     confirmBtn.disabled = isBusy;
@@ -2040,14 +2040,37 @@ function initDeleteAccountFlow() {
     confirmBtn.textContent = isBusy ? "Deleting..." : "Yes, Delete";
   };
 
-  deleteBtn.addEventListener("click", () => {
-    confirmNote.hidden = false;
+  const openConfirmDialog = () => {
+    confirmOverlay.removeAttribute("hidden");
+    confirmOverlay.classList.add("is-open");
     deleteBtn.hidden = true;
+  };
+
+  const closeConfirmDialog = () => {
+    if (confirmBtn.disabled) return;
+    confirmOverlay.setAttribute("hidden", "hidden");
+    confirmOverlay.classList.remove("is-open");
+    deleteBtn.hidden = false;
+  };
+
+  deleteBtn.addEventListener("click", () => {
+    openConfirmDialog();
   });
 
   cancelBtn.addEventListener("click", () => {
-    confirmNote.hidden = true;
-    deleteBtn.hidden = false;
+    closeConfirmDialog();
+  });
+
+  confirmOverlay.addEventListener("click", (event) => {
+    if (event.target === confirmOverlay) {
+      closeConfirmDialog();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !confirmOverlay.hasAttribute("hidden")) {
+      closeConfirmDialog();
+    }
   });
 
   confirmBtn.addEventListener("click", async () => {
@@ -2123,9 +2146,12 @@ function initProfileBoardNav() {
       } else {
         deleteAccountContainer.remove();
         const deleteBtn = document.getElementById("profileDeleteAccountBtn");
-        const confirmNote = document.getElementById("profileDeleteConfirmNote");
+        const confirmOverlay = document.getElementById("profileDeleteConfirmOverlay");
         if (deleteBtn) deleteBtn.hidden = false;
-        if (confirmNote) confirmNote.hidden = true;
+        if (confirmOverlay) {
+          confirmOverlay.setAttribute("hidden", "hidden");
+          confirmOverlay.classList.remove("is-open");
+        }
       }
     }
   };
@@ -2681,6 +2707,7 @@ function initCalendarPage() {
   const prevBtn = document.getElementById("calendarPrevBtn");
   const nextBtn = document.getElementById("calendarNextBtn");
   const todayBtn = document.getElementById("calendarTodayBtn");
+  const focusBtn = document.getElementById("calendarFocusBtn");
   const newTaskBtn = document.getElementById("calendarNewTaskBtn");
   const taskComposerOverlay = document.getElementById("calendarTaskComposerOverlay");
   const taskComposer = taskComposerOverlay?.querySelector(".calendar-task-composer");
@@ -3133,6 +3160,10 @@ function initCalendarPage() {
     transitionToMonth(new Date(todayYear, todayMonth, 1), { focusToday: true });
   });
 
+  focusBtn?.addEventListener("click", () => {
+    window.location.href = "/focus-page.html";
+  });
+
   newTaskBtn?.addEventListener("click", () => {
     openTaskComposer();
   });
@@ -3380,17 +3411,15 @@ async function clearCompletedTasks() {
       (result) => result.status === "fulfilled" && result.value.ok,
     ).length;
 
-    if (deletedCount === completedTasks.length) {
+    if (deletedCount > 0) {
+      const taskLabel = deletedCount === 1 ? "task" : "tasks";
+      const partialFailure = deletedCount < completedTasks.length;
       Toast.show({
-        message: "Cleared completed tasks",
+        message: partialFailure
+          ? `Cleared ${deletedCount} completed ${taskLabel}. Some could not be deleted.`
+          : `Successfully cleared ${deletedCount} completed ${taskLabel}.`,
         type: "success",
-        duration: 2500,
-      });
-    } else if (deletedCount > 0) {
-      Toast.show({
-        message: `Cleared ${deletedCount} completed tasks. Some could not be deleted.`,
-        type: "error",
-        duration: 3500,
+        duration: partialFailure ? 3500 : 2500,
       });
     } else {
       Toast.show({
