@@ -872,14 +872,18 @@
 
 @media (max-width: 760px) {
   .calendar-header {
-    flex-direction: column-reverse;
-    align-items: stretch;
+    flex-direction: column;
+    align-items: center;
     gap: 10px;
+  }
+
+  .calendar-month-title {
+    text-align: center;
   }
 
   .calendar-controls {
     width: 100%;
-    justify-content: flex-end;
+    justify-content: center;
   }
 
   .calendar-weekdays span {
