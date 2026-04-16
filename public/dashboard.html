@@ -303,6 +303,44 @@
     <script defer src="/_vercel/insights/script.js"></script>
 
     <div
+      id="clearCompletedConfirmOverlay"
+      class="profile-delete-confirm-overlay"
+      hidden
+    >
+      <section
+        id="clearCompletedConfirmNote"
+        class="profile-delete-confirm-note"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="clearCompletedConfirmTitle"
+      >
+        <h2 id="clearCompletedConfirmTitle" class="profile-delete-confirm-title">
+          Clear Completed Tasks
+        </h2>
+        <p>
+          This will remove all completed tasks from your list. This cannot be
+          undone.
+        </p>
+        <div class="profile-delete-confirm-actions">
+          <button
+            id="clearCompletedCancelBtn"
+            class="paper-button profile-cancel-delete-btn"
+            type="button"
+          >
+            Cancel
+          </button>
+          <button
+            id="clearCompletedConfirmBtn"
+            class="paper-button profile-confirm-delete-btn"
+            type="button"
+          >
+            Yes, Clear
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <div
       id="toast"
       class="toast toast--default"
       role="status"
