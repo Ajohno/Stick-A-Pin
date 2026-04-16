@@ -866,6 +866,17 @@
 }
 
 @media (max-width: 760px) {
+  .calendar-header {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .calendar-controls {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
   .calendar-weekdays span {
     font-size: 10px;
   }
