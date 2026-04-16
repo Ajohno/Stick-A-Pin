@@ -2681,6 +2681,7 @@ function initCalendarPage() {
   const prevBtn = document.getElementById("calendarPrevBtn");
   const nextBtn = document.getElementById("calendarNextBtn");
   const todayBtn = document.getElementById("calendarTodayBtn");
+  const focusBtn = document.getElementById("calendarFocusBtn");
   const newTaskBtn = document.getElementById("calendarNewTaskBtn");
   const taskComposerOverlay = document.getElementById("calendarTaskComposerOverlay");
   const taskComposer = taskComposerOverlay?.querySelector(".calendar-task-composer");
@@ -3133,6 +3134,10 @@ function initCalendarPage() {
     transitionToMonth(new Date(todayYear, todayMonth, 1), { focusToday: true });
   });
 
+  focusBtn?.addEventListener("click", () => {
+    window.location.href = "/focus-page.html";
+  });
+
   newTaskBtn?.addEventListener("click", () => {
     openTaskComposer();
   });
@@ -3380,17 +3385,15 @@ async function clearCompletedTasks() {
       (result) => result.status === "fulfilled" && result.value.ok,
     ).length;
 
-    if (deletedCount === completedTasks.length) {
+    if (deletedCount > 0) {
+      const taskLabel = deletedCount === 1 ? "task" : "tasks";
+      const partialFailure = deletedCount < completedTasks.length;
       Toast.show({
-        message: "Cleared completed tasks",
+        message: partialFailure
+          ? `Cleared ${deletedCount} completed ${taskLabel}. Some could not be deleted.`
+          : `Successfully cleared ${deletedCount} completed ${taskLabel}.`,
         type: "success",
-        duration: 2500,
-      });
-    } else if (deletedCount > 0) {
-      Toast.show({
-        message: `Cleared ${deletedCount} completed tasks. Some could not be deleted.`,
-        type: "error",
-        duration: 3500,
+        duration: partialFailure ? 3500 : 2500,
       });
     } else {
       Toast.show({
