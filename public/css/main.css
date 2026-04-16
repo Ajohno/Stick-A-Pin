@@ -1786,6 +1786,32 @@ input:focus{
     font-size: 0.95rem;
     padding: 10px 0;
   }
+
+  #create-task-widget #dueDate,
+  #panelTaskDueDateInput {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    -webkit-appearance: none;
+    appearance: none;
+    min-height: 48px;
+    line-height: 1.2;
+    padding-right: 0.75rem;
+  }
+
+  #create-task-widget #dueDate {
+    display: block;
+  }
+
+  #panelTaskDueDateInput[hidden] {
+    display: none !important;
+  }
+
+  #create-task-widget #dueDate::-webkit-date-and-time-value,
+  #panelTaskDueDateInput::-webkit-date-and-time-value {
+    text-align: left;
+  }
 }
 
 
@@ -1907,6 +1933,9 @@ body.task-panel-open {
 
 .task-detail-input {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   border: 2px solid #E0C097;
   border-radius: 8px;
   padding: 0.4rem 0.5rem;
