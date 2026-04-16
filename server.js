@@ -829,13 +829,19 @@ app.get("/auth/google", authRateLimiter, (req, res, next) => {
     return res.redirect("/login.html?error=google_unavailable");
   }
 
-  const canonicalOrigin = getCanonicalGoogleAuthOrigin();
   const requestOrigin = getRequestOrigin(req);
-  if (canonicalOrigin && requestOrigin && canonicalOrigin !== requestOrigin) {
-    return res.redirect(`${canonicalOrigin}/auth/google`);
+  const canonicalOrigin = getCanonicalGoogleAuthOrigin();
+  const callbackOrigin = requestOrigin || canonicalOrigin;
+  const callbackURL = callbackOrigin
+    ? `${callbackOrigin.replace(/\/$/, "")}/auth/google/callback`
+    : undefined;
+
+  const authOptions = { scope: ["profile", "email"] };
+  if (callbackURL) {
+    authOptions.callbackURL = callbackURL;
   }
 
-  passport.authenticate("google", { scope: ["profile", "email"] })(req, res, next);
+  passport.authenticate("google", authOptions)(req, res, next);
 });
 
 app.get("/auth/google/callback", authRateLimiter, (req, res) => {
