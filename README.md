@@ -32,3 +32,36 @@
 - Vercel-compatible deployment settings.
  
 
+
+## Expo Go setup (mobile client)
+
+A starter Expo app has been added in `mobile/`.
+
+### 1) Start the backend API
+
+From repo root:
+
+```bash
+npm install
+npm start
+```
+
+### 2) Start the Expo app
+
+From `mobile/`:
+
+```bash
+npm install
+cp .env.example .env
+# Set EXPO_PUBLIC_API_BASE_URL to your backend URL
+npm run start
+```
+
+Then scan the Expo QR code in the Expo Go app.
+
+### 3) Networking notes for real devices
+
+- Do **not** use `localhost` for `EXPO_PUBLIC_API_BASE_URL` when testing on your phone.
+- Use your machine's LAN IP (for example, `http://192.168.1.50:3000`) or a hosted backend URL.
+- Keep your phone and computer on the same network for LAN testing.
+
