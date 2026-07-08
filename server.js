@@ -142,6 +142,37 @@ const deleteAccountLimiter = rateLimit({
   message: { error: "Too many account deletion attempts. Please try again later." },
 });
 
+const logoutLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many logout attempts. Please try again later." },
+});
+
+const dailyEmailTestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many daily reflection test email requests. Please try again later." },
+});
+
+const preAuthLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests. Please try again later." },
+});
+
+const authenticatedLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many authenticated requests. Please try again later." },
+});
 
 // Ensure a user is logged in before accessing routes
 function ensureAuthenticated(req, res, next) {
@@ -150,6 +181,10 @@ function ensureAuthenticated(req, res, next) {
     }
     res.status(401).json({ error: "Unauthorized - Please log in" });
 }
+
+// Apply after ensureAuthenticated so unauthenticated probes return 401 without consuming
+// the logged-in API quota. Stricter auth-specific limiters remain on their own routes.
+const authenticatedApiMiddleware = [ensureAuthenticated, authenticatedLimiter];
 
 function hashVerificationToken(token) {
   return crypto.createHash("sha256").update(token).digest("hex");
