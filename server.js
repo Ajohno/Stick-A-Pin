@@ -1789,7 +1789,7 @@ app.post("/feedback/report-bug", ensureAuthenticated, authenticatedLimiter, feed
   }
 });
 
-app.get("/settings/board-preferences", authenticatedApiMiddleware, async (req, res) => {
+app.get("/settings/board-preferences", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("settings.board.defaultTaskSort settings.board.defaultView");
     if (!user) {
