@@ -1765,8 +1765,15 @@ app.get("/auth-status", (req, res) => {
 
 
 // Serve other static files dynamically
+const PUBLIC_ROOT = path.resolve(__dirname, "public");
+
 app.get("/:file", (req, res) => {
-    const filename = path.join(__dirname, "public", req.params.file);
+    const filename = path.resolve(PUBLIC_ROOT, req.params.file);
+
+    if (filename !== PUBLIC_ROOT && !filename.startsWith(PUBLIC_ROOT + path.sep)) {
+        return res.status(403).send("403 Error: Forbidden");
+    }
+
     if (fs.existsSync(filename)) {
         res.type(mime.getType(filename));
         res.sendFile(filename);
