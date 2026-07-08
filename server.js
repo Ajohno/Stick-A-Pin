@@ -24,11 +24,31 @@ require("./config/passport-config")(passport); // Configures Passport authentica
 const app = express();
 
 // Apply Helmet before sessions, CSRF, routes, and static file serving so every
-// response gets baseline security headers. CSP is intentionally disabled for now
-// because the current static frontend uses inline style attributes/handlers and
-// third-party scripts/fonts; TODO: replace those inline usages and enable a
-// strict CSP tailored to Google Fonts, Font Awesome, and Vercel Analytics.
-app.use(helmet({ contentSecurityPolicy: false }));
+// response gets baseline security headers. The CSP intentionally allows current
+// inline styles/handlers while restricting sources to this app, Google Fonts,
+// Font Awesome, jsDelivr assets, and Vercel Analytics; tighten unsafe-inline
+// after replacing inline attributes in the static frontend.
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+        frameAncestors: ["'self'"],
+        objectSrc: ["'none'"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "https://kit.fontawesome.com", "https://cdn.jsdelivr.net"],
+        scriptSrcAttr: ["'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdn.jsdelivr.net"],
+        styleSrcAttr: ["'unsafe-inline'"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdn.jsdelivr.net", "https://ka-f.fontawesome.com", "data:"],
+        imgSrc: ["'self'", "data:", "blob:"],
+        connectSrc: ["'self'", "https://vitals.vercel-insights.com", "https://*.vercel-insights.com"],
+        upgradeInsecureRequests: process.env.NODE_ENV === "production" ? [] : null,
+      },
+    },
+  })
+);
 
 const port = process.env.PORT || 3000;
 const REMEMBER_ME_MS = 14 * 24 * 60 * 60 * 1000;
