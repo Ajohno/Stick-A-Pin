@@ -85,6 +85,15 @@ const authenticatedLimiter = rateLimit({
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
 });
 
+// Lightweight pre-auth guard keeps CodeQL-visible rate limiting before
+// authorization middleware and slows unauthenticated probing of API routes.
+const preAuthLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 let appdata = [];
 
 if (!process.env.SESSION_SECRET) {
@@ -1227,7 +1236,7 @@ app.post("/login", localAuthLimiter, (req, res, next) => {
 
 // Logout Route
 // Logout is a logged-in account action protected by explicit auth and rate-limit middleware.
-app.post("/logout", ensureAuthenticated, authenticatedLimiter, (req, res) => {
+app.post("/logout", preAuthLimiter, ensureAuthenticated, authenticatedLimiter, (req, res) => {
     req.logout((err) => {
         if (err) {
             return res.status(500).json({ error: "Error logging out" });
@@ -1239,7 +1248,7 @@ app.post("/logout", ensureAuthenticated, authenticatedLimiter, (req, res) => {
     });
 });
 // Account deletion has its own stricter limiter because it is destructive.
-app.delete("/account", ensureAuthenticated, deleteAccountLimiter, async (req, res) => {
+app.delete("/account", deleteAccountLimiter, ensureAuthenticated, async (req, res) => {
   const userId = req.user?._id || req.user?.id;
   if (!userId) {
     return res.status(400).json({ error: "Invalid user session" });
@@ -1327,7 +1336,7 @@ function toFocusSessionResponse(session) {
 }
 
 // Task CRUD APIs are logged-in user-data routes protected by explicit auth and rate-limit middleware.
-app.post("/tasks", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
+app.post("/tasks", preAuthLimiter, ensureAuthenticated, authenticatedLimiter, async (req, res) => {
   const { description, dueDate, effortLevel } = req.body;
   let parsedDueDate = null;
   if (typeof dueDate === "string" && dueDate.trim() !== "") {
@@ -1351,7 +1360,7 @@ app.post("/tasks", ensureAuthenticated, authenticatedLimiter, async (req, res) =
 
 
 // Gets tasks for the logged-in user
-app.get("/tasks", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
+app.get("/tasks", preAuthLimiter, ensureAuthenticated, authenticatedLimiter, async (req, res) => {
     try {
         const userTasks = await Task.find({ userId: req.user.id });
         res.status(200).json(userTasks);
@@ -1362,7 +1371,7 @@ app.get("/tasks", ensureAuthenticated, authenticatedLimiter, async (req, res) =>
 });
 
 // Route to update tasks in the MongoDB database
-app.put("/tasks/:taskId", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
+app.put("/tasks/:taskId", preAuthLimiter, ensureAuthenticated, authenticatedLimiter, async (req, res) => {
   try {
     const task = await Task.findOne({ _id: req.params.taskId, userId: req.user.id });
     if (!task) return res.status(404).json({ error: "Task not found" });
@@ -1448,7 +1457,7 @@ app.put("/tasks/:taskId", ensureAuthenticated, authenticatedLimiter, async (req,
 });
 
 // Route to delete a task
-app.delete("/tasks/:taskId", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
+app.delete("/tasks/:taskId", preAuthLimiter, ensureAuthenticated, authenticatedLimiter, async (req, res) => {
   try {
     const deleted = await Task.findOneAndDelete({
       _id: req.params.taskId,
@@ -1468,7 +1477,7 @@ app.delete("/tasks/:taskId", ensureAuthenticated, authenticatedLimiter, async (r
 });
 
 // Focus-session APIs are logged-in user-data routes protected by explicit auth and rate-limit middleware.
-app.post("/focus-sessions/start", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
+app.post("/focus-sessions/start", preAuthLimiter, ensureAuthenticated, authenticatedLimiter, async (req, res) => {
   try {
     const taskId = String(req.body.taskId || "").trim();
     if (!taskId) {
@@ -1520,7 +1529,7 @@ app.post("/focus-sessions/start", ensureAuthenticated, authenticatedLimiter, asy
 });
 
 // Stop the active focus session
-app.post("/focus-sessions/stop", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
+app.post("/focus-sessions/stop", preAuthLimiter, ensureAuthenticated, authenticatedLimiter, async (req, res) => {
   try {
     const validReasons = new Set(["completed_task", "manual_stop", "timeout", "app_closed"]);
     const requestedReason = String(req.body.reason || "manual_stop");
@@ -1554,7 +1563,7 @@ app.post("/focus-sessions/stop", ensureAuthenticated, authenticatedLimiter, asyn
 });
 
 // Query focus sessions by date range (used by reflections)
-app.get("/focus-sessions", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
+app.get("/focus-sessions", preAuthLimiter, ensureAuthenticated, authenticatedLimiter, async (req, res) => {
   try {
     const from = parseIsoDateTimeInput(req.query.from);
     const to = parseIsoDateTimeInput(req.query.to);
@@ -1593,7 +1602,7 @@ app.get("/focus-sessions", ensureAuthenticated, authenticatedLimiter, async (req
 
 
 // Settings APIs are logged-in user-data routes protected by explicit auth and rate-limit middleware.
-app.get("/settings/daily-email", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
+app.get("/settings/daily-email", preAuthLimiter, ensureAuthenticated, authenticatedLimiter, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("settings.dailyEmail settings.dailyEmailTime");
     if (!user) {
@@ -1612,7 +1621,7 @@ app.get("/settings/daily-email", ensureAuthenticated, authenticatedLimiter, asyn
   }
 });
 
-app.put("/settings/daily-email", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
+app.put("/settings/daily-email", preAuthLimiter, ensureAuthenticated, authenticatedLimiter, async (req, res) => {
   try {
     const dailyEmail = Boolean(req.body.dailyEmail);
     const requestedTime = String(req.body.dailyEmailTime || "").trim();
@@ -1644,7 +1653,7 @@ app.put("/settings/daily-email", ensureAuthenticated, authenticatedLimiter, asyn
   }
 });
 
-app.post("/settings/daily-email/test", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
+app.post("/settings/daily-email/test", preAuthLimiter, ensureAuthenticated, authenticatedLimiter, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("email firstName settings.dailyEmail");
     if (!user) {
@@ -1668,7 +1677,7 @@ app.post("/settings/daily-email/test", ensureAuthenticated, authenticatedLimiter
 });
 
 // Bug reports require login, then use the shared authenticated limiter plus the stricter feedback limiter.
-app.post("/feedback/report-bug", ensureAuthenticated, authenticatedLimiter, feedbackSubmissionLimiter, express.json({ limit: FEEDBACK_REQUEST_BODY_LIMIT }), async (req, res) => {
+app.post("/feedback/report-bug", preAuthLimiter, ensureAuthenticated, authenticatedLimiter, feedbackSubmissionLimiter, express.json({ limit: FEEDBACK_REQUEST_BODY_LIMIT }), async (req, res) => {
   try {
     const subject = String(req.body?.subject || "").trim();
     const message = String(req.body?.message || "").trim();
@@ -1789,7 +1798,7 @@ app.post("/feedback/report-bug", ensureAuthenticated, authenticatedLimiter, feed
   }
 });
 
-app.get("/settings/board-preferences", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
+app.get("/settings/board-preferences", preAuthLimiter, ensureAuthenticated, authenticatedLimiter, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("settings.board.defaultTaskSort settings.board.defaultView");
     if (!user) {
@@ -1808,7 +1817,7 @@ app.get("/settings/board-preferences", ensureAuthenticated, authenticatedLimiter
   }
 });
 
-app.put("/settings/board-preferences", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
+app.put("/settings/board-preferences", preAuthLimiter, ensureAuthenticated, authenticatedLimiter, async (req, res) => {
   try {
     const defaultTaskSort = normalizeBoardTaskSort(req.body?.board?.default_task_sort);
     const defaultView = normalizeBoardDefaultView(req.body?.board?.default_view);
