@@ -1464,7 +1464,7 @@ app.put("/tasks/:taskId", authenticatedApiMiddleware, async (req, res) => {
 });
 
 // Route to delete a task
-app.delete("/tasks/:taskId", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
+app.delete("/tasks/:taskId", authenticatedLimiter, ensureAuthenticated, async (req, res) => {
   try {
     const deleted = await Task.findOneAndDelete({
       _id: req.params.taskId,
