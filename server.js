@@ -40,7 +40,8 @@ const FEEDBACK_INBOX_EMAIL = (process.env.FEEDBACK_INBOX_EMAIL || "support@stick
 const FEEDBACK_FROM_EMAIL = process.env.FEEDBACK_FROM_EMAIL || EMAIL_FROM;
 const FEEDBACK_HOURLY_LIMIT = Number(process.env.FEEDBACK_HOURLY_LIMIT || 5);
 const FEEDBACK_MIN_SECONDS_BETWEEN_REPORTS = Number(process.env.FEEDBACK_MIN_SECONDS_BETWEEN_REPORTS || 60);
-const FEEDBACK_REQUEST_BODY_LIMIT = process.env.FEEDBACK_REQUEST_BODY_LIMIT || "30mb";
+const DEFAULT_REQUEST_BODY_LIMIT = "1mb";
+const FEEDBACK_REQUEST_BODY_LIMIT = process.env.FEEDBACK_REQUEST_BODY_LIMIT || "10mb";
 const RESEND_WEBHOOK_SECRET = (process.env.RESEND_WEBHOOK_SECRET || "").trim();
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
@@ -757,20 +758,42 @@ app.get("/csrf-token", (req, res) => {
   res.json({ csrfToken: req.csrfToken() });
 });
 
-app.use(express.json({ limit: FEEDBACK_REQUEST_BODY_LIMIT })); // Middleware to parse JSON request body
-app.use(express.urlencoded({ extended: false, limit: FEEDBACK_REQUEST_BODY_LIMIT })); // Parses form data
+function skipFeedbackReportBodyParser(parser) {
+  return (req, res, next) => {
+    if (req.path === "/feedback/report-bug") {
+      return next();
+    }
+
+    return parser(req, res, next);
+  };
+}
+
+function handleUnhandledRouteError(error, req, res, next) {
+  console.error("Unhandled request error:", error);
+  if (res.headersSent) {
+    return next(error);
+  }
+
+  return res.status(500).json({ error: "Internal server error" });
+}
+
+function handleRequestBodyError(error, req, res, next) {
+  if (error?.type === "entity.too.large") {
+    return res.status(413).json({
+      error: "Request payload is too large. Please upload smaller images or fewer attachments.",
+    });
+  }
+
+  return next(error);
+}
+
+// Keep normal app submissions small; the feedback route gets its own larger parser below.
+app.use(skipFeedbackReportBodyParser(express.json({ limit: DEFAULT_REQUEST_BODY_LIMIT })));
+app.use(skipFeedbackReportBodyParser(express.urlencoded({ extended: false, limit: DEFAULT_REQUEST_BODY_LIMIT })));
+app.use(handleRequestBodyError);
 
 // Serve static files from the "public" directory
 app.use(express.static("public"));
-
-app.use((error, req, res, next) => {
-  if (error?.type === "entity.too.large") {
-    return res.status(413).json({
-      error: "Attachment payload is too large. Please upload smaller images or fewer attachments.",
-    });
-  }
-  return next(error);
-});
 
 // ROUTES -----------------------------------------------------------------------------------
 
@@ -1585,7 +1608,7 @@ app.post("/settings/daily-email/test", authenticatedApiMiddleware, async (req, r
 });
 
 // Bug reports require login, then use the shared authenticated limiter plus the stricter feedback limiter.
-app.post("/feedback/report-bug", ensureAuthenticated, authenticatedLimiter, feedbackSubmissionLimiter, async (req, res) => {
+app.post("/feedback/report-bug", ensureAuthenticated, authenticatedLimiter, feedbackSubmissionLimiter, express.json({ limit: FEEDBACK_REQUEST_BODY_LIMIT }), async (req, res) => {
   try {
     const subject = String(req.body?.subject || "").trim();
     const message = String(req.body?.message || "").trim();
@@ -1791,6 +1814,9 @@ app.get("/:file", (req, res) => {
         res.status(404).send("404 Error: File Not Found");
     }
 });
+
+app.use(handleRequestBodyError);
+app.use(handleUnhandledRouteError);
 
 if (SHOULD_RUN_DAILY_REFLECTION_SCHEDULER || (!IS_VERCEL_RUNTIME && require.main === module)) {
   startDailyReflectionScheduler();
