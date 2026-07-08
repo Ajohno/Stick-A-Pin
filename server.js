@@ -1,4 +1,5 @@
 const express = require("express");
+const helmet = require("helmet");
 const fs = require("fs");
 const mime = require("mime");
 const path = require("path");
@@ -21,6 +22,14 @@ require("dotenv").config(); // Loads environment variables
 require("./config/passport-config")(passport); // Configures Passport authentication
 
 const app = express();
+
+// Apply Helmet before sessions, CSRF, routes, and static file serving so every
+// response gets baseline security headers. CSP is intentionally disabled for now
+// because the current static frontend uses inline style attributes/handlers and
+// third-party scripts/fonts; TODO: replace those inline usages and enable a
+// strict CSP tailored to Google Fonts, Font Awesome, and Vercel Analytics.
+app.use(helmet({ contentSecurityPolicy: false }));
+
 const port = process.env.PORT || 3000;
 const REMEMBER_ME_MS = 14 * 24 * 60 * 60 * 1000;
 const EMAIL_VERIFICATION_TTL_MINUTES = Number(process.env.EMAIL_VERIFICATION_TTL_MINUTES || 60);
@@ -1693,7 +1702,7 @@ app.post("/feedback/report-bug", ensureAuthenticated, authenticatedLimiter, feed
     });
   } catch (error) {
     console.error("Error sending bug feedback email:", error);
-    return res.status(500).json({ error: error?.message || "Unable to send bug report right now." });
+    return res.status(500).json({ error: "Unable to send bug report right now." });
   }
 });
 
