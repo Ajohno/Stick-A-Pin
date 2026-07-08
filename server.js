@@ -1335,7 +1335,7 @@ function toFocusSessionResponse(session) {
 }
 
 // Task CRUD APIs are logged-in user-data routes protected by authenticatedApiMiddleware.
-app.post("/tasks", [ensureAuthenticated, authenticatedLimiter], async (req, res) => {
+app.post("/tasks", authenticatedApiMiddleware, async (req, res) => {
   const { description, dueDate, effortLevel } = req.body;
   let parsedDueDate = null;
   if (typeof dueDate === "string" && dueDate.trim() !== "") {
