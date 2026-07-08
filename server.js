@@ -157,6 +157,14 @@ const logoutLimiter = rateLimit({
   message: { error: "Too many logout attempts. Please try again later." },
 });
 
+const dailyEmailTestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many daily reflection test email requests. Please try again later." },
+});
+
 // Ensure a user is logged in before accessing routes
 function ensureAuthenticated(req, res, next) {
     if (req.isAuthenticated()) {
@@ -1636,7 +1644,7 @@ app.put("/settings/daily-email", [authenticatedLimiter, ensureAuthenticated], as
   }
 });
 
-app.post("/settings/daily-email/test", authenticatedApiMiddleware, async (req, res) => {
+app.post("/settings/daily-email/test", authenticatedApiMiddleware, dailyEmailTestLimiter, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("email firstName settings.dailyEmail");
     if (!user) {
