@@ -165,6 +165,14 @@ const dailyEmailTestLimiter = rateLimit({
   message: { error: "Too many daily reflection test email requests. Please try again later." },
 });
 
+const preAuthLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests. Please try again later." },
+});
+
 // Ensure a user is logged in before accessing routes
 function ensureAuthenticated(req, res, next) {
     if (req.isAuthenticated()) {
@@ -1667,8 +1675,8 @@ app.post("/settings/daily-email/test", authenticatedApiMiddleware, dailyEmailTes
   }
 });
 
-// Bug reports require login, then use the shared authenticated limiter plus the stricter feedback limiter.
-app.post("/feedback/report-bug", ensureAuthenticated, authenticatedLimiter, feedbackSubmissionLimiter, express.json({ limit: FEEDBACK_REQUEST_BODY_LIMIT }), async (req, res) => {
+// Bug reports require login, then use a pre-auth limiter plus the shared authenticated limiter and stricter feedback limiter.
+app.post("/feedback/report-bug", preAuthLimiter, ensureAuthenticated, authenticatedLimiter, feedbackSubmissionLimiter, express.json({ limit: FEEDBACK_REQUEST_BODY_LIMIT }), async (req, res) => {
   try {
     const subject = String(req.body?.subject || "").trim();
     const message = String(req.body?.message || "").trim();
