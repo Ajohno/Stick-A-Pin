@@ -1231,7 +1231,7 @@ app.post("/logout", logoutLimiter, authenticatedApiMiddleware, (req, res) => {
     });
 });
 // Account deletion has its own stricter limiter because it is destructive.
-app.delete("/account", ensureAuthenticated, deleteAccountLimiter, async (req, res) => {
+app.delete("/account", deleteAccountLimiter, ensureAuthenticated, async (req, res) => {
   const userId = req.user?._id || req.user?.id;
   if (!userId) {
     return res.status(400).json({ error: "Invalid user session" });
