@@ -1,4 +1,5 @@
 const express = require("express");
+const helmet = require("helmet");
 const fs = require("fs");
 const mime = require("mime");
 const path = require("path");
@@ -21,6 +22,14 @@ require("dotenv").config(); // Loads environment variables
 require("./config/passport-config")(passport); // Configures Passport authentication
 
 const app = express();
+
+// Apply Helmet before sessions, CSRF, routes, and static file serving so every
+// response gets baseline security headers. CSP is intentionally disabled for now
+// because the current static frontend uses inline style attributes/handlers and
+// third-party scripts/fonts; TODO: replace those inline usages and enable a
+// strict CSP tailored to Google Fonts, Font Awesome, and Vercel Analytics.
+app.use(helmet({ contentSecurityPolicy: false }));
+
 const port = process.env.PORT || 3000;
 const REMEMBER_ME_MS = 14 * 24 * 60 * 60 * 1000;
 const EMAIL_VERIFICATION_TTL_MINUTES = Number(process.env.EMAIL_VERIFICATION_TTL_MINUTES || 60);
@@ -31,7 +40,8 @@ const FEEDBACK_INBOX_EMAIL = (process.env.FEEDBACK_INBOX_EMAIL || "support@stick
 const FEEDBACK_FROM_EMAIL = process.env.FEEDBACK_FROM_EMAIL || EMAIL_FROM;
 const FEEDBACK_HOURLY_LIMIT = Number(process.env.FEEDBACK_HOURLY_LIMIT || 5);
 const FEEDBACK_MIN_SECONDS_BETWEEN_REPORTS = Number(process.env.FEEDBACK_MIN_SECONDS_BETWEEN_REPORTS || 60);
-const FEEDBACK_REQUEST_BODY_LIMIT = process.env.FEEDBACK_REQUEST_BODY_LIMIT || "30mb";
+const DEFAULT_REQUEST_BODY_LIMIT = "1mb";
+const FEEDBACK_REQUEST_BODY_LIMIT = process.env.FEEDBACK_REQUEST_BODY_LIMIT || "10mb";
 const RESEND_WEBHOOK_SECRET = (process.env.RESEND_WEBHOOK_SECRET || "").trim();
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
@@ -58,7 +68,7 @@ function getDefaultViewPathForUser(user) {
   return defaultView === "calendar" ? "/calendar-page.html" : "/dashboard.html";
 }
 
-// Rate limiter for authenticated routes to protect expensive operations
+// Rate limiter for normal logged-in API routes. Public pages/static assets stay outside this chain.
 const authenticatedLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // limit each IP to 100 requests per windowMs
@@ -108,6 +118,10 @@ function ensureAuthenticated(req, res, next) {
     }
     res.status(401).json({ error: "Unauthorized - Please log in" });
 }
+
+// Apply after ensureAuthenticated so unauthenticated probes return 401 without consuming
+// the logged-in API quota. Stricter auth-specific limiters remain on their own routes.
+const authenticatedApiMiddleware = [ensureAuthenticated, authenticatedLimiter];
 
 function hashVerificationToken(token) {
   return crypto.createHash("sha256").update(token).digest("hex");
@@ -744,20 +758,42 @@ app.get("/csrf-token", (req, res) => {
   res.json({ csrfToken: req.csrfToken() });
 });
 
-app.use(express.json({ limit: FEEDBACK_REQUEST_BODY_LIMIT })); // Middleware to parse JSON request body
-app.use(express.urlencoded({ extended: false, limit: FEEDBACK_REQUEST_BODY_LIMIT })); // Parses form data
+function skipFeedbackReportBodyParser(parser) {
+  return (req, res, next) => {
+    if (req.path === "/feedback/report-bug") {
+      return next();
+    }
+
+    return parser(req, res, next);
+  };
+}
+
+function handleUnhandledRouteError(error, req, res, next) {
+  console.error("Unhandled request error:", error);
+  if (res.headersSent) {
+    return next(error);
+  }
+
+  return res.status(500).json({ error: "Internal server error" });
+}
+
+function handleRequestBodyError(error, req, res, next) {
+  if (error?.type === "entity.too.large") {
+    return res.status(413).json({
+      error: "Request payload is too large. Please upload smaller images or fewer attachments.",
+    });
+  }
+
+  return next(error);
+}
+
+// Keep normal app submissions small; the feedback route gets its own larger parser below.
+app.use(skipFeedbackReportBodyParser(express.json({ limit: DEFAULT_REQUEST_BODY_LIMIT })));
+app.use(skipFeedbackReportBodyParser(express.urlencoded({ extended: false, limit: DEFAULT_REQUEST_BODY_LIMIT })));
+app.use(handleRequestBodyError);
 
 // Serve static files from the "public" directory
 app.use(express.static("public"));
-
-app.use((error, req, res, next) => {
-  if (error?.type === "entity.too.large") {
-    return res.status(413).json({
-      error: "Attachment payload is too large. Please upload smaller images or fewer attachments.",
-    });
-  }
-  return next(error);
-});
 
 // ROUTES -----------------------------------------------------------------------------------
 
@@ -1130,7 +1166,8 @@ app.post("/login", localAuthLimiter, (req, res, next) => {
 
 
 // Logout Route
-app.post("/logout", (req, res) => {
+// Logout is a logged-in account action protected by authenticatedApiMiddleware.
+app.post("/logout", authenticatedApiMiddleware, (req, res) => {
     req.logout((err) => {
         if (err) {
             return res.status(500).json({ error: "Error logging out" });
@@ -1141,7 +1178,8 @@ app.post("/logout", (req, res) => {
         });
     });
 });
-app.delete("/account", deleteAccountLimiter, ensureAuthenticated, async (req, res) => {
+// Account deletion has its own stricter limiter because it is destructive.
+app.delete("/account", ensureAuthenticated, deleteAccountLimiter, async (req, res) => {
   const userId = req.user?._id || req.user?.id;
   if (!userId) {
     return res.status(400).json({ error: "Invalid user session" });
@@ -1228,8 +1266,8 @@ function toFocusSessionResponse(session) {
   };
 }
 
-// Handles the submit button
-app.post("/tasks", ensureAuthenticated, async (req, res) => {
+// Task CRUD APIs are logged-in user-data routes protected by authenticatedApiMiddleware.
+app.post("/tasks", authenticatedApiMiddleware, async (req, res) => {
   const { description, dueDate, effortLevel } = req.body;
   let parsedDueDate = null;
   if (typeof dueDate === "string" && dueDate.trim() !== "") {
@@ -1253,7 +1291,7 @@ app.post("/tasks", ensureAuthenticated, async (req, res) => {
 
 
 // Gets tasks for the logged-in user
-app.get("/tasks", ensureAuthenticated, async (req, res) => {
+app.get("/tasks", authenticatedApiMiddleware, async (req, res) => {
     try {
         const userTasks = await Task.find({ userId: req.user.id });
         res.status(200).json(userTasks);
@@ -1264,7 +1302,7 @@ app.get("/tasks", ensureAuthenticated, async (req, res) => {
 });
 
 // Route to update tasks in the MongoDB database
-app.put("/tasks/:taskId", ensureAuthenticated, async (req, res) => {
+app.put("/tasks/:taskId", authenticatedApiMiddleware, async (req, res) => {
   try {
     const task = await Task.findOne({ _id: req.params.taskId, userId: req.user.id });
     if (!task) return res.status(404).json({ error: "Task not found" });
@@ -1350,7 +1388,7 @@ app.put("/tasks/:taskId", ensureAuthenticated, async (req, res) => {
 });
 
 // Route to delete a task
-app.delete("/tasks/:taskId", ensureAuthenticated, async (req, res) => {
+app.delete("/tasks/:taskId", authenticatedApiMiddleware, async (req, res) => {
   try {
     const deleted = await Task.findOneAndDelete({
       _id: req.params.taskId,
@@ -1369,8 +1407,8 @@ app.delete("/tasks/:taskId", ensureAuthenticated, async (req, res) => {
   }
 });
 
-// Start a focus session for a task
-app.post("/focus-sessions/start", ensureAuthenticated, async (req, res) => {
+// Focus-session APIs are logged-in user-data routes protected by authenticatedApiMiddleware.
+app.post("/focus-sessions/start", authenticatedApiMiddleware, async (req, res) => {
   try {
     const taskId = String(req.body.taskId || "").trim();
     if (!taskId) {
@@ -1422,7 +1460,7 @@ app.post("/focus-sessions/start", ensureAuthenticated, async (req, res) => {
 });
 
 // Stop the active focus session
-app.post("/focus-sessions/stop", ensureAuthenticated, async (req, res) => {
+app.post("/focus-sessions/stop", authenticatedApiMiddleware, async (req, res) => {
   try {
     const validReasons = new Set(["completed_task", "manual_stop", "timeout", "app_closed"]);
     const requestedReason = String(req.body.reason || "manual_stop");
@@ -1456,7 +1494,7 @@ app.post("/focus-sessions/stop", ensureAuthenticated, async (req, res) => {
 });
 
 // Query focus sessions by date range (used by reflections)
-app.get("/focus-sessions", ensureAuthenticated, async (req, res) => {
+app.get("/focus-sessions", authenticatedApiMiddleware, async (req, res) => {
   try {
     const from = parseIsoDateTimeInput(req.query.from);
     const to = parseIsoDateTimeInput(req.query.to);
@@ -1494,7 +1532,8 @@ app.get("/focus-sessions", ensureAuthenticated, async (req, res) => {
 
 
 
-app.get("/settings/daily-email", authenticatedLimiter, ensureAuthenticated, async (req, res) => {
+// Settings APIs are logged-in user-data routes protected by authenticatedApiMiddleware.
+app.get("/settings/daily-email", authenticatedApiMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("settings.dailyEmail settings.dailyEmailTime");
     if (!user) {
@@ -1513,7 +1552,7 @@ app.get("/settings/daily-email", authenticatedLimiter, ensureAuthenticated, asyn
   }
 });
 
-app.put("/settings/daily-email", authenticatedLimiter, ensureAuthenticated, async (req, res) => {
+app.put("/settings/daily-email", authenticatedApiMiddleware, async (req, res) => {
   try {
     const dailyEmail = Boolean(req.body.dailyEmail);
     const requestedTime = String(req.body.dailyEmailTime || "").trim();
@@ -1545,7 +1584,7 @@ app.put("/settings/daily-email", authenticatedLimiter, ensureAuthenticated, asyn
   }
 });
 
-app.post("/settings/daily-email/test", authenticatedLimiter, ensureAuthenticated, async (req, res) => {
+app.post("/settings/daily-email/test", authenticatedApiMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("email firstName settings.dailyEmail");
     if (!user) {
@@ -1568,7 +1607,8 @@ app.post("/settings/daily-email/test", authenticatedLimiter, ensureAuthenticated
   }
 });
 
-app.post("/feedback/report-bug", authenticatedLimiter, ensureAuthenticated, feedbackSubmissionLimiter, async (req, res) => {
+// Bug reports require login, then use the shared authenticated limiter plus the stricter feedback limiter.
+app.post("/feedback/report-bug", ensureAuthenticated, authenticatedLimiter, feedbackSubmissionLimiter, express.json({ limit: FEEDBACK_REQUEST_BODY_LIMIT }), async (req, res) => {
   try {
     const subject = String(req.body?.subject || "").trim();
     const message = String(req.body?.message || "").trim();
@@ -1685,11 +1725,11 @@ app.post("/feedback/report-bug", authenticatedLimiter, ensureAuthenticated, feed
     });
   } catch (error) {
     console.error("Error sending bug feedback email:", error);
-    return res.status(500).json({ error: error?.message || "Unable to send bug report right now." });
+    return res.status(500).json({ error: "Unable to send bug report right now." });
   }
 });
 
-app.get("/settings/board-preferences", authenticatedLimiter, ensureAuthenticated, async (req, res) => {
+app.get("/settings/board-preferences", authenticatedApiMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("settings.board.defaultTaskSort settings.board.defaultView");
     if (!user) {
@@ -1708,7 +1748,7 @@ app.get("/settings/board-preferences", authenticatedLimiter, ensureAuthenticated
   }
 });
 
-app.put("/settings/board-preferences", authenticatedLimiter, ensureAuthenticated, async (req, res) => {
+app.put("/settings/board-preferences", authenticatedApiMiddleware, async (req, res) => {
   try {
     const defaultTaskSort = normalizeBoardTaskSort(req.body?.board?.default_task_sort);
     const defaultView = normalizeBoardDefaultView(req.body?.board?.default_view);
@@ -1774,6 +1814,9 @@ app.get("/:file", (req, res) => {
         res.status(404).send("404 Error: File Not Found");
     }
 });
+
+app.use(handleRequestBodyError);
+app.use(handleUnhandledRouteError);
 
 if (SHOULD_RUN_DAILY_REFLECTION_SCHEDULER || (!IS_VERCEL_RUNTIME && require.main === module)) {
   startDailyReflectionScheduler();
