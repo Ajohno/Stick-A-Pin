@@ -1378,7 +1378,7 @@ app.get("/tasks", authenticatedApiMiddleware, async (req, res) => {
 });
 
 // Route to update tasks in the MongoDB database
-app.put("/tasks/:taskId", authenticatedApiMiddleware, async (req, res) => {
+app.put("/tasks/:taskId", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
   try {
     const task = await Task.findOne({ _id: req.params.taskId, userId: req.user.id });
     if (!task) return res.status(404).json({ error: "Task not found" });
@@ -1464,7 +1464,7 @@ app.put("/tasks/:taskId", authenticatedApiMiddleware, async (req, res) => {
 });
 
 // Route to delete a task
-app.delete("/tasks/:taskId", authenticatedApiMiddleware, async (req, res) => {
+app.delete("/tasks/:taskId", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
   try {
     const deleted = await Task.findOneAndDelete({
       _id: req.params.taskId,
@@ -1484,7 +1484,7 @@ app.delete("/tasks/:taskId", authenticatedApiMiddleware, async (req, res) => {
 });
 
 // Focus-session APIs are logged-in user-data routes protected by authenticatedApiMiddleware.
-app.post("/focus-sessions/start", authenticatedApiMiddleware, async (req, res) => {
+app.post("/focus-sessions/start", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
   try {
     const taskId = String(req.body.taskId || "").trim();
     if (!taskId) {
@@ -1536,7 +1536,7 @@ app.post("/focus-sessions/start", authenticatedApiMiddleware, async (req, res) =
 });
 
 // Stop the active focus session
-app.post("/focus-sessions/stop", authenticatedApiMiddleware, async (req, res) => {
+app.post("/focus-sessions/stop", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
   try {
     const validReasons = new Set(["completed_task", "manual_stop", "timeout", "app_closed"]);
     const requestedReason = String(req.body.reason || "manual_stop");
@@ -1570,7 +1570,7 @@ app.post("/focus-sessions/stop", authenticatedApiMiddleware, async (req, res) =>
 });
 
 // Query focus sessions by date range (used by reflections)
-app.get("/focus-sessions", authenticatedApiMiddleware, async (req, res) => {
+app.get("/focus-sessions", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
   try {
     const from = parseIsoDateTimeInput(req.query.from);
     const to = parseIsoDateTimeInput(req.query.to);
