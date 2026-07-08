@@ -1536,7 +1536,7 @@ app.post("/focus-sessions/start", authenticatedApiMiddleware, async (req, res) =
 });
 
 // Stop the active focus session
-app.post("/focus-sessions/stop", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
+app.post("/focus-sessions/stop", ...authenticatedApiMiddleware, async (req, res) => {
   try {
     const validReasons = new Set(["completed_task", "manual_stop", "timeout", "app_closed"]);
     const requestedReason = String(req.body.reason || "manual_stop");
