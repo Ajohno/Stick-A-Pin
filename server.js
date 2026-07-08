@@ -1601,7 +1601,7 @@ app.get("/focus-sessions", authenticatedApiMiddleware, async (req, res) => {
 
 
 // Settings APIs are logged-in user-data routes protected by authenticatedApiMiddleware.
-app.get("/settings/daily-email", [authenticatedLimiter, ensureAuthenticated], async (req, res) => {
+app.get("/settings/daily-email", authenticatedApiMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("settings.dailyEmail settings.dailyEmailTime");
     if (!user) {
