@@ -1589,12 +1589,21 @@ async function initFeedbackForm() {
   const emailEl = document.getElementById("feedbackEmail");
   const subjectEl = document.getElementById("feedbackSubject");
   const messageEl = document.getElementById("feedbackMessage");
+  const messageCounterEl = document.getElementById("feedbackMessageCounter");
   const submitBtn = document.getElementById("feedbackSubmitBtn");
   const photoBtn = document.getElementById("feedbackPhotoBtn");
   const photoInput = document.getElementById("feedbackPhotoInput");
   const attachmentListEl = document.getElementById("feedbackAttachmentList");
   let feedbackAttachments = [];
   let attachmentIdCounter = 0;
+
+  function updateFeedbackMessageCounter() {
+    if (!messageEl || !messageCounterEl) return;
+    const maxLength = Number(messageEl.getAttribute("maxlength")) || 2000;
+    messageCounterEl.textContent = `${messageEl.value.length}/${maxLength}`;
+  }
+
+  updateFeedbackMessageCounter();
 
   function formatAttachmentSize(sizeInBytes) {
     if (!Number.isFinite(sizeInBytes)) return "0 KB";
@@ -1735,6 +1744,8 @@ async function initFeedbackForm() {
   }
 
   if (messageEl) {
+    messageEl.addEventListener("input", updateFeedbackMessageCounter);
+
     messageEl.addEventListener("paste", (event) => {
       const clipboardItems = Array.from(event.clipboardData?.items || []);
       const imageFiles = clipboardItems
@@ -1812,6 +1823,7 @@ async function initFeedbackForm() {
         emailEl.value = data?.fromEmail || emailEl.value;
       }
       resetAttachments();
+      updateFeedbackMessageCounter();
 
       Toast.show({
         message: "Thanks! Your bug report was emailed to support.",
@@ -1939,6 +1951,7 @@ function getProfilePanelMarkup(panelKey, user = null) {
           </div>
           <input id="feedbackPhotoInput" name="feedbackPhotos" type="file" accept="image/*" multiple hidden />
           <textarea id="feedbackMessage" name="feedbackMessage" maxlength="2000" rows="6" placeholder="Steps to reproduce, expected result, and what you saw." required></textarea>
+          <div id="feedbackMessageCounter" class="feedback-message-counter" aria-live="polite">0/2000</div>
           <ul id="feedbackAttachmentList" class="feedback-attachment-list" aria-live="polite"></ul>
           <button id="feedbackSubmitBtn" type="submit">Send</button>
         </form>
