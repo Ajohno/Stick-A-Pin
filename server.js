@@ -149,6 +149,13 @@ const deleteAccountLimiter = rateLimit({
   message: { error: "Too many account deletion attempts. Please try again later." },
 });
 
+const logoutLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many logout attempts. Please try again later." },
+});
 
 // Ensure a user is logged in before accessing routes
 function ensureAuthenticated(req, res, next) {
@@ -1212,7 +1219,7 @@ app.post("/login", localAuthLimiter, (req, res, next) => {
 
 // Logout Route
 // Logout is a logged-in account action protected by authenticatedApiMiddleware.
-app.post("/logout", authenticatedApiMiddleware, (req, res) => {
+app.post("/logout", logoutLimiter, authenticatedApiMiddleware, (req, res) => {
     req.logout((err) => {
         if (err) {
             return res.status(500).json({ error: "Error logging out" });
