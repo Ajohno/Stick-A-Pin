@@ -1367,7 +1367,7 @@ app.post("/tasks", authenticatedApiMiddleware, async (req, res) => {
 
 
 // Gets tasks for the logged-in user
-app.get("/tasks", [ensureAuthenticated, authenticatedLimiter], async (req, res) => {
+app.get("/tasks", authenticatedApiMiddleware, async (req, res) => {
     try {
         const userTasks = await Task.find({ userId: req.user.id });
         res.status(200).json(userTasks);
