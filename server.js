@@ -44,6 +44,7 @@ const DEFAULT_REQUEST_BODY_LIMIT = "1mb";
 const FEEDBACK_REQUEST_BODY_LIMIT = process.env.FEEDBACK_REQUEST_BODY_LIMIT || "10mb";
 const RESEND_WEBHOOK_SECRET = (process.env.RESEND_WEBHOOK_SECRET || "").trim();
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
+const SESSION_COOKIE_NAME = IS_PRODUCTION ? "__Host-stickapin.sid" : "stickapin.sid";
 
 const DAILY_EMAIL_SCHEDULER_INTERVAL_MS = Number(process.env.DAILY_EMAIL_SCHEDULER_INTERVAL_MS || 60 * 1000);
 let dailyEmailSchedulerStarted = false;
@@ -52,6 +53,14 @@ const SHOULD_RUN_DAILY_REFLECTION_SCHEDULER =
   String(process.env.ENABLE_DAILY_REFLECTION_SCHEDULER || "").trim().toLowerCase() === "true";
 const VALID_BOARD_TASK_SORT_OPTIONS = new Set(["created_date", "effort_level", "due_date"]);
 const VALID_BOARD_DEFAULT_VIEW_OPTIONS = new Set(["board", "calendar"]);
+
+function clearSessionCookie(res) {
+  res.clearCookie(SESSION_COOKIE_NAME, {
+    path: "/",
+    sameSite: "lax",
+    secure: IS_PRODUCTION,
+  });
+}
 
 function normalizeBoardTaskSort(rawValue) {
   const candidate = String(rawValue || "").trim();
@@ -654,6 +663,7 @@ async function sendDailyReflectionEmail(user, emailData) {
 app.set("trust proxy", 1); // important on Vercel / proxies
 
 app.use(session({
+  name: SESSION_COOKIE_NAME,
   secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
@@ -665,7 +675,7 @@ app.use(session({
   }),
   cookie: {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production", // https only in prod
+    secure: IS_PRODUCTION, // HTTPS only in production; required by the __Host- cookie prefix.
     sameSite: "lax",
     maxAge: REMEMBER_ME_MS
   }
@@ -778,6 +788,10 @@ function handleUnhandledRouteError(error, req, res, next) {
 }
 
 function handleRequestBodyError(error, req, res, next) {
+  if (error?.code === "EBADCSRFTOKEN" || String(error?.message || "").toLowerCase().includes("csrf")) {
+    return res.status(403).json({ error: "Invalid CSRF token" });
+  }
+
   if (error?.type === "entity.too.large") {
     return res.status(413).json({
       error: "Request payload is too large. Please upload smaller images or fewer attachments.",
@@ -840,7 +854,9 @@ function redirectAuthFailure(req, res) {
 }
 
 function getCanonicalGoogleAuthOrigin() {
-  const callbackUrl = String(process.env.GOOGLE_CALLBACK_URL || "").trim();
+  const explicitUrl = String(process.env.GOOGLE_CALLBACK_URL || process.env.APP_BASE_URL || "").trim();
+  const vercelUrl = String(process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL || "").trim();
+  const callbackUrl = explicitUrl || (vercelUrl ? `https://${vercelUrl.replace(/^https?:\/\//, "")}` : "");
   if (!callbackUrl) return "";
 
   try {
@@ -867,7 +883,9 @@ app.get("/auth/google", authRateLimiter, (req, res, next) => {
 
   const requestOrigin = getRequestOrigin(req);
   const canonicalOrigin = getCanonicalGoogleAuthOrigin();
-  const callbackOrigin = requestOrigin || canonicalOrigin;
+  // In production, never derive OAuth callback URLs from request Host headers;
+  // use configured deployment origins to avoid Host-header callback confusion.
+  const callbackOrigin = canonicalOrigin || (!IS_PRODUCTION ? requestOrigin : "");
   const callbackURL = callbackOrigin
     ? `${callbackOrigin.replace(/\/$/, "")}/auth/google/callback`
     : undefined;
@@ -1173,7 +1191,7 @@ app.post("/logout", authenticatedApiMiddleware, (req, res) => {
             return res.status(500).json({ error: "Error logging out" });
         }
         req.session.destroy(() => {
-          res.clearCookie("connect.sid");
+          clearSessionCookie(res);
           res.json({ message: "Logged out successfully" });
         });
     });
@@ -1205,7 +1223,7 @@ app.delete("/account", ensureAuthenticated, deleteAccountLimiter, async (req, re
       }
 
       req.session.destroy(() => {
-        res.clearCookie("connect.sid");
+        clearSessionCookie(res);
         return res.json({ message: "Account deleted successfully" });
       });
     });
