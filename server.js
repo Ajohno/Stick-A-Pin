@@ -91,8 +91,10 @@ if (!process.env.SESSION_SECRET) {
   throw new Error("SESSION_SECRET environment variable is required");
 }
 
-// Connect to MongoDB
-app.use(async (req, res, next) => {
+// Connect to MongoDB only for routes that need sessions, auth, or models.
+// Public HTML, CSS, JS, and image requests are served before this middleware so
+// anonymous launch traffic does not wake the database unnecessarily.
+async function requireDatabase(req, res, next) {
   try {
     await connectDB();
     return next();
@@ -108,7 +110,19 @@ app.use(async (req, res, next) => {
       return res.status(503).json({ error: "Service temporarily unavailable" });
     }
   }
+}
+
+const publicDir = path.join(__dirname, "public");
+
+// Serve public beta pages and assets before database/session middleware. Existing
+// files are handled by express.static; missing file-like requests get a generic
+// 404 here instead of falling through to middleware that would open MongoDB.
+app.use(express.static(publicDir));
+app.get(/^\/.*\.[^/]+$/, (req, res) => {
+  return res.status(404).send("404 Error: File Not Found");
 });
+
+app.use(requireDatabase);
 
 // Middleware -----------------------------------------------------------------------------------
 const deleteAccountLimiter = rateLimit({
@@ -805,9 +819,6 @@ function handleRequestBodyError(error, req, res, next) {
 app.use(skipFeedbackReportBodyParser(express.json({ limit: DEFAULT_REQUEST_BODY_LIMIT })));
 app.use(skipFeedbackReportBodyParser(express.urlencoded({ extended: false, limit: DEFAULT_REQUEST_BODY_LIMIT })));
 app.use(handleRequestBodyError);
-
-// Serve static files from the "public" directory
-app.use(express.static("public"));
 
 // ROUTES -----------------------------------------------------------------------------------
 
