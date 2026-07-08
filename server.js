@@ -1628,7 +1628,7 @@ app.get("/settings/daily-email", authenticatedApiMiddleware, async (req, res) =>
   }
 });
 
-app.put("/settings/daily-email", [authenticatedLimiter, ensureAuthenticated], async (req, res) => {
+app.put("/settings/daily-email", authenticatedApiMiddleware, async (req, res) => {
   try {
     const dailyEmail = Boolean(req.body.dailyEmail);
     const requestedTime = String(req.body.dailyEmailTime || "").trim();
