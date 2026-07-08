@@ -24,11 +24,27 @@ require("./config/passport-config")(passport); // Configures Passport authentica
 const app = express();
 
 // Apply Helmet before sessions, CSRF, routes, and static file serving so every
-// response gets baseline security headers. CSP is intentionally disabled for now
-// because the current static frontend uses inline style attributes/handlers and
-// third-party scripts/fonts; TODO: replace those inline usages and enable a
-// strict CSP tailored to Google Fonts, Font Awesome, and Vercel Analytics.
-app.use(helmet({ contentSecurityPolicy: false }));
+// response gets baseline security headers. Keep CSP enabled with a transitional
+// policy compatible with current inline style/script usage and third-party assets;
+// TODO: remove unsafe-inline/unsafe-eval and tighten directives as frontend is hardened.
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https:"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https:"],
+        imgSrc: ["'self'", "data:", "https:"],
+        fontSrc: ["'self'", "https:", "data:"],
+        connectSrc: ["'self'", "https:"],
+        objectSrc: ["'none'"],
+        frameAncestors: ["'self'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+      },
+    },
+  })
+);
 
 const port = process.env.PORT || 3000;
 const REMEMBER_ME_MS = 14 * 24 * 60 * 60 * 1000;
