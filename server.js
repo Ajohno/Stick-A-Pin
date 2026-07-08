@@ -1378,7 +1378,7 @@ app.get("/tasks", authenticatedApiMiddleware, async (req, res) => {
 });
 
 // Route to update tasks in the MongoDB database
-app.put("/tasks/:taskId", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
+app.put("/tasks/:taskId", authenticatedApiMiddleware, async (req, res) => {
   try {
     const task = await Task.findOne({ _id: req.params.taskId, userId: req.user.id });
     if (!task) return res.status(404).json({ error: "Task not found" });
