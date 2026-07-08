@@ -173,6 +173,14 @@ const preAuthLimiter = rateLimit({
   message: { error: "Too many requests. Please try again later." },
 });
 
+const authenticatedLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many authenticated requests. Please try again later." },
+});
+
 // Ensure a user is logged in before accessing routes
 function ensureAuthenticated(req, res, next) {
     if (req.isAuthenticated()) {
