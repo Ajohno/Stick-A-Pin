@@ -1570,7 +1570,7 @@ app.post("/focus-sessions/stop", ensureAuthenticated, authenticatedLimiter, asyn
 });
 
 // Query focus sessions by date range (used by reflections)
-app.get("/focus-sessions", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
+app.get("/focus-sessions", preAuthLimiter, ensureAuthenticated, authenticatedLimiter, async (req, res) => {
   try {
     const from = parseIsoDateTimeInput(req.query.from);
     const to = parseIsoDateTimeInput(req.query.to);
