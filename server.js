@@ -1660,7 +1660,7 @@ app.put("/settings/daily-email", [authenticatedLimiter, ensureAuthenticated], as
   }
 });
 
-app.post("/settings/daily-email/test", authenticatedApiMiddleware, dailyEmailTestLimiter, async (req, res) => {
+app.post("/settings/daily-email/test", [...authenticatedApiMiddleware, dailyEmailTestLimiter], async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("email firstName settings.dailyEmail");
     if (!user) {
