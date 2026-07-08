@@ -1768,7 +1768,14 @@ app.get("/auth-status", (req, res) => {
 const PUBLIC_ROOT = path.resolve(__dirname, "public");
 
 app.get("/:file", (req, res) => {
-    const filename = path.resolve(PUBLIC_ROOT, req.params.file);
+    const requestedFile = req.params.file;
+
+    // Allow only simple safe filenames (no path separators or special traversal characters)
+    if (!/^[A-Za-z0-9._-]+$/.test(requestedFile)) {
+        return res.status(400).send("400 Error: Invalid file name");
+    }
+
+    const filename = path.resolve(PUBLIC_ROOT, requestedFile);
 
     if (filename !== PUBLIC_ROOT && !filename.startsWith(PUBLIC_ROOT + path.sep)) {
         return res.status(403).send("403 Error: Forbidden");
