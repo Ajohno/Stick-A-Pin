@@ -1484,7 +1484,7 @@ app.delete("/tasks/:taskId", authenticatedLimiter, ensureAuthenticated, async (r
 });
 
 // Focus-session APIs are logged-in user-data routes protected by authenticatedApiMiddleware.
-app.post("/focus-sessions/start", ensureAuthenticated, authenticatedLimiter, async (req, res) => {
+app.post("/focus-sessions/start", authenticatedApiMiddleware, async (req, res) => {
   try {
     const taskId = String(req.body.taskId || "").trim();
     if (!taskId) {
