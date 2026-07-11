@@ -1,3 +1,11 @@
+/**
+ * StickAPin Express application entry point.
+ *
+ * Configures security middleware, MongoDB-backed sessions, Passport auth,
+ * email/webhook integrations, and authenticated APIs for tasks, focus sessions,
+ * settings, reflections, profiles, and feedback. Public assets are served before
+ * database middleware so anonymous page loads do not wake MongoDB unnecessarily.
+ */
 const express = require("express");
 const helmet = require("helmet");
 const fs = require("fs");
@@ -194,7 +202,7 @@ const authenticatedLimiter = rateLimit({
   message: { error: "Too many authenticated requests. Please try again later." },
 });
 
-// Ensure a user is logged in before accessing routes
+/** Reject requests that do not have a Passport-authenticated session. */
 function ensureAuthenticated(req, res, next) {
     if (req.isAuthenticated()) {
         return next(); // If the user is authenticated, continue to the route
@@ -206,10 +214,14 @@ function ensureAuthenticated(req, res, next) {
 // the logged-in API quota. Stricter auth-specific limiters remain on their own routes.
 const authenticatedApiMiddleware = [ensureAuthenticated, authenticatedLimiter];
 
+// EMAIL VERIFICATION AND DELIVERY HELPERS -----------------------------------
+
+/** Hash one-time tokens before storage so a database leak cannot reuse them. */
 function hashVerificationToken(token) {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
 
+/** Generate a cryptographically secure token for emailed account actions. */
 function generateVerificationToken() {
   return crypto.randomBytes(32).toString("hex");
 }
@@ -733,7 +745,7 @@ async function sendDailyReflectionEmail(user, emailData) {
   }
 }
 
-// Session Handling
+// SESSION, CSRF, AND REQUEST-PARSING MIDDLEWARE ------------------------------
 app.set("trust proxy", 1); // important on Vercel / proxies
 
 app.use(session({
@@ -758,6 +770,8 @@ app.use(session({
 // CSRF protection for routes using cookie-based sessions
 const csrfProtection = csrf();
 app.use((req, res, next) => {
+  // Resend signs the exact raw bytes. Parsing or applying session CSRF checks
+  // before signature verification would make the webhook unverifiable.
   if (req.path === "/webhooks/resend/receiving") {
     return next();
   }
@@ -807,6 +821,7 @@ app.post("/webhooks/resend/receiving", resendWebhookLimiter, express.raw({ type:
       to: Array.isArray(eventData.to) ? eventData.to : [],
     });
 
+    // Upsert by provider event ID so webhook retries remain idempotent.
     await InboundEmail.updateOne(
       { eventId: String(eventData.id || event.id || emailId) },
       {
@@ -1311,6 +1326,9 @@ app.get("/", (req, res) => {
 
 
 
+// TASK AND FOCUS-SESSION DATA HELPERS ---------------------------------------
+
+/** Parse an HTML date input without allowing UTC conversion to shift the day. */
 function parseDateOnlyInput(value) {
   if (typeof value !== "string" || value.trim() === "") return null;
 
@@ -1335,6 +1353,7 @@ function parseIsoDateTimeInput(value) {
   return date;
 }
 
+/** Flatten a populated or unpopulated session into the same client response shape. */
 function toFocusSessionResponse(session) {
   const rawTask = session?.taskId;
   const taskId = rawTask && typeof rawTask === "object" && rawTask._id

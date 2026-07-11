@@ -1,7 +1,9 @@
 const mongoose = require('mongoose');
 
-// Records a single uninterrupted focus block on a task.
-// This event log will help to power daily an dweekly reflections.
+/**
+ * Records one uninterrupted focus block for a task.
+ * Sessions form an event log used by daily and weekly reflection analytics.
+ */
 const FocusSessionSchema = new mongoose.Schema({
 
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
@@ -10,11 +12,12 @@ const FocusSessionSchema = new mongoose.Schema({
     startedAt: { type: Date, required: true },
     endedAt: { type: Date, default: null },
 
-    // This is stored at stop time so the analytics are cheap and stable
+    // Persist the calculated duration at stop time so historical analytics stay
+    // stable and do not need to recompute each session on every request.
     durationMs: { type: Number, default: 0 },
 
 
-    // The reason for stopping the focus session. This is used to power reflections and analytics.
+    // The stop reason distinguishes completed work from manual or lifecycle stops.
     endedReason: {
         type: String,
         enum: ["completed_task", "manual_stop", "timeout", "app_closed"],

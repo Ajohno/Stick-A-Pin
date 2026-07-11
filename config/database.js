@@ -1,9 +1,15 @@
+/**
+ * MongoDB connection lifecycle and one-time legacy index cleanup.
+ * A shared in-flight promise prevents concurrent serverless requests from
+ * starting duplicate connections while still allowing a failed attempt to retry.
+ */
 const mongoose = require("mongoose");
 require("dotenv").config(); // Load environment variables
 
 let connectionPromise = null;
 let indexesChecked = false;
 
+/** Remove obsolete authentication indexes and provider data from older schemas. */
 async function cleanupLegacyUserIndexes(db) {
     try {
         const usersCollection = db.collection("users");
@@ -36,7 +42,10 @@ async function cleanupLegacyUserIndexes(db) {
     }
 }
 
-// Connect to the database
+/**
+ * Return the active Mongoose connection, creating it only when needed.
+ * @returns {Promise<import("mongoose").Mongoose|import("mongoose").Connection>}
+ */
 const connectDB = async () => {
     if (!process.env.MONGO_URI) {
         throw new Error("MONGO_URI environment variable is required");
@@ -48,6 +57,7 @@ const connectDB = async () => {
     }
 
     if (connectionPromise) {
+        // Reuse an in-progress connection across simultaneous requests.
         return connectionPromise;
     }
 

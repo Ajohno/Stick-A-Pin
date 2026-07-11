@@ -1,3 +1,8 @@
+/**
+ * Stores verified Resend inbound-email events for feedback follow-up.
+ * eventId provides webhook idempotency, while rawEvent preserves provider data
+ * needed for later auditing or debugging.
+ */
 const mongoose = require("mongoose");
 
 const InboundEmailSchema = new mongoose.Schema(
@@ -20,6 +25,7 @@ const InboundEmailSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Supports operational review of the newest inbound messages first.
 InboundEmailSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model("InboundEmail", InboundEmailSchema);
