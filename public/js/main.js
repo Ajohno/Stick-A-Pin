@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 36277)
-Total output lines: 4604
-
 /**
  * StickAPin browser application controller.
  *
@@ -1968,7 +1965,731 @@ function getProfilePanelMarkup(panelKey, user = null) {
           <label for="feedbackMessage">What happened?</label>
           <div class="feedback-attachment-toolbar">
             <button id="feedbackPhotoBtn" class="feedback-photo-btn" type="button" aria-controls="feedbackPhotoInput feedbackAttachmentList">
-              <i class="fa…6277 tokens truncated…        });
+              <i class="fa-regular fa-image" aria-hidden="true"></i>
+              Add photo
+            </button>
+            <span class="feedback-photo-hint">Paste images into the details box or upload from your device.</span>
+          </div>
+          <input id="feedbackPhotoInput" name="feedbackPhotos" type="file" accept="image/*" multiple hidden />
+          <textarea id="feedbackMessage" name="feedbackMessage" maxlength="2000" rows="6" placeholder="Steps to reproduce, expected result, and what you saw." required></textarea>
+          <div id="feedbackMessageCounter" class="feedback-message-counter" aria-live="polite">0/2000</div>
+          <ul id="feedbackAttachmentList" class="feedback-attachment-list" aria-live="polite"></ul>
+          <button id="feedbackSubmitBtn" type="submit">Send</button>
+        </form>
+      </section>
+    `;
+  }
+
+  if (panelKey === "settings") {
+    return `
+      <section class="profile-dynamic-content" aria-label="Settings">
+        <h2 class="widget-title">
+          <i class="fa-solid fa-gear" style="color: #c6534e"></i>
+          Settings
+        </h2>
+        <div class="daily-reflection-card">
+          <h3 class="daily-reflection-title">Board &amp; Task Preferences</h3>
+          <div class="daily-email-settings" style="margin-top: 0.6rem;">
+            <label class="daily-email-label" for="boardDefaultTaskSort">Default Task Sort</label>
+            <select id="boardDefaultTaskSort" class="profile-settings-select">
+              <option value="created_date">Date Created</option>
+              <option value="effort_level">Effort Level</option>
+              <option value="due_date">Due Date</option>
+            </select>
+            <label class="daily-email-label" for="boardDefaultView">Default View</label>
+            <select id="boardDefaultView" class="profile-settings-select">
+              <option value="board">Board</option>
+              <option value="calendar">Calendar</option>
+            </select>
+          </div>
+        </div>
+      </section>
+    `;
+  }
+
+  const fullName = [
+    String(user?.firstName || "").trim(),
+    String(user?.lastName || "").trim(),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    || String(user?.name || "Not available").trim();
+  const emailAddress = String(user?.email || "Not available").trim();
+  const timezoneValue = String(
+    user?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "Not available",
+  ).trim();
+  const languageValue = String(
+    user?.language || navigator.language || "Not available",
+  ).trim();
+  const safeFullName = escapeHtml(fullName || "Not available");
+  const safeEmailAddress = escapeHtml(emailAddress || "Not available");
+  const safeTimezone = escapeHtml(timezoneValue || "Not available");
+  const safeLanguage = escapeHtml(languageValue || "Not available");
+
+  return `
+    <section class="profile-dynamic-content" aria-label="My profile">
+      <h2 class="widget-title">
+        <i class="fa-solid fa-user" style="color: #c6534e"></i>
+        My Profile
+      </h2>
+      <div class="profile-account-details">
+        <div class="profile-account-field">
+          <p class="profile-account-label">Display Name</p>
+          <p class="profile-account-value">${safeFullName}</p>
+        </div>
+        <div class="profile-account-divider" aria-hidden="true"></div>
+        <div class="profile-account-field">
+          <p class="profile-account-label">Email Address</p>
+          <p class="profile-account-value">${safeEmailAddress}</p>
+        </div>
+        <div class="profile-account-divider" aria-hidden="true"></div>
+        <div class="profile-account-field">
+          <p class="profile-account-label">Timezone</p>
+          <p class="profile-account-value">${safeTimezone}</p>
+        </div>
+        <div class="profile-account-divider" aria-hidden="true"></div>
+        <div class="profile-account-field">
+          <p class="profile-account-label">Language</p>
+          <p class="profile-account-value">${safeLanguage}</p>
+        </div>
+        <div class="profile-account-divider" aria-hidden="true"></div>
+      </div>
+      <div id="profileDeleteActionsMount"></div>
+    </section>
+  `;
+}
+
+function initDeleteAccountFlow() {
+  const deleteBtn = document.getElementById("profileDeleteAccountBtn");
+  const confirmOverlay = document.getElementById("profileDeleteConfirmOverlay");
+  const confirmNote = document.getElementById("profileDeleteConfirmNote");
+  const cancelBtn = document.getElementById("profileCancelDeleteBtn");
+  const confirmBtn = document.getElementById("profileConfirmDeleteBtn");
+
+  if (!deleteBtn || !confirmOverlay || !confirmNote || !cancelBtn || !confirmBtn) return;
+  let isTransitioning = false;
+
+  const setBusyState = (isBusy) => {
+    confirmBtn.disabled = isBusy;
+    cancelBtn.disabled = isBusy;
+    deleteBtn.disabled = isBusy;
+    confirmBtn.textContent = isBusy ? "Deleting..." : "Yes, Delete";
+  };
+
+  const waitForAnimation = (element, timeoutMs = 360) =>
+    new Promise((resolve) => {
+      if (!element) {
+        resolve();
+        return;
+      }
+
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        element.removeEventListener("animationend", onAnimationEnd);
+        resolve();
+      };
+
+      const onAnimationEnd = () => finish();
+      element.addEventListener("animationend", onAnimationEnd, { once: true });
+      window.setTimeout(finish, timeoutMs);
+    });
+
+  const openConfirmDialog = () => {
+    if (isTransitioning || !confirmOverlay.hasAttribute("hidden")) return;
+    confirmOverlay.removeAttribute("hidden");
+    confirmOverlay.classList.add("is-open");
+    confirmNote.classList.remove("profile-note-leaving");
+    confirmNote.classList.remove("profile-note-entering");
+    window.requestAnimationFrame(() => {
+      confirmNote.classList.add("profile-note-entering");
+    });
+    deleteBtn.hidden = true;
+  };
+
+  const closeConfirmDialog = async () => {
+    if (confirmBtn.disabled || isTransitioning || confirmOverlay.hasAttribute("hidden")) return;
+    isTransitioning = true;
+    confirmNote.classList.remove("profile-note-entering");
+    confirmNote.classList.add("profile-note-leaving");
+    await waitForAnimation(confirmNote, 320);
+    confirmNote.classList.remove("profile-note-leaving");
+    confirmOverlay.classList.remove("is-open");
+    confirmOverlay.setAttribute("hidden", "hidden");
+    deleteBtn.hidden = false;
+    isTransitioning = false;
+  };
+
+  deleteBtn.addEventListener("click", () => {
+    openConfirmDialog();
+  });
+
+  cancelBtn.addEventListener("click", async () => {
+    await closeConfirmDialog();
+  });
+
+  confirmOverlay.addEventListener("click", async (event) => {
+    if (event.target === confirmOverlay) {
+      await closeConfirmDialog();
+    }
+  });
+
+  document.addEventListener("keydown", async (event) => {
+    if (event.key === "Escape" && !confirmOverlay.hasAttribute("hidden")) {
+      await closeConfirmDialog();
+    }
+  });
+
+  confirmBtn.addEventListener("click", async () => {
+    setBusyState(true);
+    try {
+      const response = await apiFetch("/account", {
+        credentials: "include",
+        method: "DELETE",
+      });
+      const data = await parseApiResponse(response);
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Unable to delete account.");
+      }
+
+      Toast.show({
+        message: "Account deleted successfully.",
+        type: "success",
+        duration: 2200,
+      });
+      window.location.href = "/login.html";
+    } catch (error) {
+      console.error("Delete account failed:", error);
+      Toast.show({
+        message: error?.message || "Unable to delete account right now.",
+        type: "error",
+        duration: 3500,
+      });
+      setBusyState(false);
+    }
+  });
+}
+
+function initProfileBoardNav() {
+  const panelContainer = document.getElementById("profilePanelContent");
+  const navButtons = Array.from(document.querySelectorAll(".profile-panel-trigger"));
+  const panelStickyNote = document.getElementById("profileContentPanel");
+  const deleteAccountContainer = document.getElementById("profileDeleteAccountContainer");
+  if (!panelContainer || !navButtons.length) return;
+
+  const userNameEl = document.getElementById("profileSidebarUserName");
+  let currentUser = null;
+  const applyUserName = (user) => {
+    if (!userNameEl) return;
+    const firstName = String(user?.firstName || "").trim();
+    const lastName = String(user?.lastName || "").trim();
+    const combinedName = [firstName, lastName].filter(Boolean).join(" ");
+    const rawName = combinedName || String(user?.name || "User").trim();
+    userNameEl.textContent = rawName || "User";
+  };
+
+  const renderPanel = (panelKey) => {
+    panelContainer.innerHTML = getProfilePanelMarkup(panelKey, currentUser);
+    navButtons.forEach((button) => {
+      button.classList.toggle("is-active", button.dataset.panel === panelKey);
+    });
+
+    if (panelKey === "support") {
+      initFeedbackForm();
+    }
+    if (panelKey === "settings") {
+      initBoardTaskPreferencesSettings();
+    }
+    if (deleteAccountContainer) {
+      if (panelKey === "profile") {
+        const deleteMount = document.getElementById("profileDeleteActionsMount");
+        if (deleteMount) {
+          deleteMount.appendChild(deleteAccountContainer);
+        } else {
+          panelContainer.appendChild(deleteAccountContainer);
+        }
+        deleteAccountContainer.hidden = false;
+      } else {
+        deleteAccountContainer.remove();
+        const deleteBtn = document.getElementById("profileDeleteAccountBtn");
+        const confirmOverlay = document.getElementById("profileDeleteConfirmOverlay");
+        if (deleteBtn) deleteBtn.hidden = false;
+        if (confirmOverlay) {
+          confirmOverlay.setAttribute("hidden", "hidden");
+          confirmOverlay.classList.remove("is-open");
+        }
+        const confirmNote = document.getElementById("profileDeleteConfirmNote");
+        if (confirmNote) {
+          confirmNote.classList.remove("profile-note-entering", "profile-note-leaving");
+        }
+      }
+    }
+  };
+
+  const waitForAnimation = (element, timeoutMs = 420) =>
+    new Promise((resolve) => {
+      if (!element) {
+        resolve();
+        return;
+      }
+
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        element.removeEventListener("animationend", finish);
+        resolve();
+      };
+
+      element.addEventListener("animationend", finish, { once: true });
+      window.setTimeout(finish, timeoutMs);
+    });
+
+  let activePanelKey = "profile";
+  let transitionInFlight = false;
+  let queuedPanelKey = null;
+
+  const transitionToPanel = async (panelKey) => {
+    if (!panelStickyNote) {
+      renderPanel(panelKey);
+      activePanelKey = panelKey;
+      return;
+    }
+
+    transitionInFlight = true;
+    panelStickyNote.classList.add("in-view-hover", "profile-note-leaving");
+    await waitForAnimation(panelStickyNote, 380);
+
+    panelStickyNote.classList.remove("profile-note-leaving");
+    renderPanel(panelKey);
+    activePanelKey = panelKey;
+
+    panelStickyNote.classList.add("profile-note-entering", "in-view-hover");
+    await waitForAnimation(panelStickyNote, 420);
+    panelStickyNote.classList.remove("profile-note-entering", "in-view-hover");
+    transitionInFlight = false;
+
+    if (queuedPanelKey && queuedPanelKey !== activePanelKey) {
+      const nextPanel = queuedPanelKey;
+      queuedPanelKey = null;
+      transitionToPanel(nextPanel);
+    }
+  };
+
+  navButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const requestedPanel = button.dataset.panel || "profile";
+      if (requestedPanel === activePanelKey && !transitionInFlight) return;
+
+      if (transitionInFlight) {
+        queuedPanelKey = requestedPanel;
+        return;
+      }
+
+      transitionToPanel(requestedPanel);
+    });
+  });
+
+  document.addEventListener("auth-status-resolved", (event) => {
+    if (event?.detail?.loggedIn) {
+      currentUser = event.detail.user || null;
+      applyUserName(currentUser);
+      if (activePanelKey === "profile") {
+        renderPanel("profile");
+      }
+    }
+  });
+
+  const triggerLogout = async () => {
+    const navLogoutBtn = document.getElementById("logoutBtn");
+    if (navLogoutBtn) {
+      navLogoutBtn.click();
+      return;
+    }
+
+    try {
+      const response = await apiFetch("/logout", {
+        credentials: "include",
+        method: "POST",
+      });
+
+      if (response.ok) {
+        Toast.show({
+          message: "Logged out successfully",
+          type: "success",
+          duration: 2000,
+        });
+        window.location.href = "/login.html";
+      } else {
+        const data = await parseApiResponse(response);
+        notify(`Logout failed: ${data.error || "Unknown error"}`);
+      }
+    } catch (error) {
+      console.error("Logout request failed:", error);
+      notify("Logout failed due to a network/server issue.");
+    }
+  };
+
+  const sidebarLogoutBtn = document.getElementById("profileSidebarLogoutBtn");
+  if (sidebarLogoutBtn) {
+    sidebarLogoutBtn.addEventListener("click", triggerLogout);
+  }
+
+  const mobileLogoutBtn = document.getElementById("profileMobileLogoutBtn");
+  if (mobileLogoutBtn) {
+    mobileLogoutBtn.addEventListener("click", triggerLogout);
+  }
+
+  initDeleteAccountFlow();
+  renderPanel("profile");
+}
+
+
+document.addEventListener("DOMContentLoaded", () => {
+  console.log("DOM Fully Loaded - JavaScript Running");
+  const PASSWORD_POLICY_MESSAGE =
+    "Password must be at least 12 characters and include an uppercase letter, lowercase letter, and a number.";
+  const isStrongPassword = (value) => {
+    const password = String(value || "");
+    return (
+      password.length >= 12 &&
+      /[A-Z]/.test(password) &&
+      /[a-z]/.test(password) &&
+      /\d/.test(password)
+    );
+  };
+  const getPasswordCriteriaState = (value) => {
+    const password = String(value || "");
+    return {
+      length: password.length >= 12,
+      uppercase: /[A-Z]/.test(password),
+      lowercase: /[a-z]/.test(password),
+      number: /\d/.test(password),
+    };
+  };
+  const wirePasswordCriteriaChecklist = (inputEl, checklistEl) => {
+    if (!inputEl || !checklistEl) return;
+
+    const syncChecklist = () => {
+      const state = getPasswordCriteriaState(inputEl.value || "");
+      checklistEl
+        .querySelectorAll(".password-criteria-check[data-rule]")
+        .forEach((checkboxEl) => {
+          const rule = checkboxEl.dataset.rule;
+          checkboxEl.checked = Boolean(state[rule]);
+        });
+    };
+
+    inputEl.addEventListener("input", syncChecklist);
+    syncChecklist();
+  };
+
+  // Page flags let us adjust behavior for standalone login/register views
+  const isLoginPage = document.body.classList.contains("login-page");
+  const isRegisterPage = document.body.classList.contains("register-page");
+  const currentPath = window.location.pathname;
+  const protectedPaths = new Set([
+    "/dashboard.html",
+    "/calendar-page.html",
+    "/profile-page.html",
+    "/settings-page.html",
+    "/feedback-page.html",
+  ]);
+  const isProtectedPage = protectedPaths.has(currentPath);
+  const isHomePage = currentPath === "/" || currentPath === "/index.html";
+
+  // Registration handler (used on register.html)
+  const registerForm = document.getElementById("registerForm");
+  const registerPasswordInput = document.getElementById("registerPassword");
+  const registerPasswordCriteria = document.getElementById("registerPasswordCriteria");
+  wirePasswordCriteriaChecklist(registerPasswordInput, registerPasswordCriteria);
+  if (registerForm) {
+    registerForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const firstName = document
+        .getElementById("registerFirstName")
+        ?.value.trim();
+      const lastName = document
+        .getElementById("registerLastName")
+        ?.value.trim();
+      const email = document.getElementById("registerEmail")?.value.trim();
+      const password = document.getElementById("registerPassword").value;
+      const confirmPassword = document.getElementById("registerConfirm").value;
+
+      if (!firstName || !lastName || !email) {
+        notify("Please fill in first name, last name, and email.");
+        return;
+      }
+
+      // Simple client-side guard to match the confirm password box
+      if (password !== confirmPassword) {
+        notify("Passwords do not match.");
+        return;
+      }
+      if (!isStrongPassword(password)) {
+        Toast.show({
+          message: PASSWORD_POLICY_MESSAGE,
+          type: "error",
+          duration: 4200,
+        });
+        return;
+      }
+
+      try {
+        const response = await apiFetch("/register", {
+          credentials: "include",
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ firstName, lastName, email, password }),
+        });
+
+        const data = await parseApiResponse(response);
+
+        // Check if registration went alright
+        if (response.ok) {
+          const sentFlag = data?.emailDeliveryFailed ? "0" : "1";
+          const query = new URLSearchParams({
+            sent: sentFlag,
+            email,
+          }).toString();
+          window.location.href = `/verification-status.html?${query}`;
+        } else {
+          notify(`Registration failed: ${data.error || "Unknown error"}`);
+        }
+      } catch (error) {
+        console.error("Registration request failed:", error);
+        notify("Registration failed due to a network/server issue.");
+      }
+    });
+  }
+
+  const verificationPage = document.getElementById("verification-status-page");
+  if (verificationPage) {
+    const params = new URLSearchParams(window.location.search);
+    const sent = params.get("sent") === "1";
+    const email = (params.get("email") || "").trim();
+
+    const messageEl = document.getElementById("verificationStatusMessage");
+    const emailEl = document.getElementById("verificationStatusEmail");
+    const resendBtn = document.getElementById("resendVerificationBtn");
+
+    if (messageEl) {
+      messageEl.textContent = sent
+        ? "Verification email was sent."
+        : "Verification email was not sent.";
+    }
+
+    if (emailEl) {
+      emailEl.textContent = email ? `Email: ${email}` : "Email unavailable";
+    }
+
+    resendBtn?.addEventListener("click", async () => {
+      if (!email) {
+        notify("No email found for this registration. Please sign up again.");
+        return;
+      }
+
+      resendBtn.disabled = true;
+
+      try {
+        const response = await apiFetch("/resend-verification", {
+          credentials: "include",
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        });
+
+        const data = await parseApiResponse(response);
+        if (response.ok) {
+          notify(data.message || "Verification email sent.", "success", 2600);
+          Toast.show({
+            message: "Verification email resent",
+            type: "success",
+            duration: 2200,
+          });
+        } else {
+          notify(data.error || "Could not resend verification email.");
+          Toast.show({
+            message: "Resend failed",
+            type: "error",
+            duration: 2200,
+          });
+        }
+      } catch (error) {
+        console.error("Resend verification request failed:", error);
+        notify("Network error while resending verification email.");
+      } finally {
+        resendBtn.disabled = false;
+      }
+    });
+  }
+
+  const forgotPasswordForm = document.getElementById("forgotPasswordForm");
+  if (forgotPasswordForm) {
+    forgotPasswordForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const email = document
+        .getElementById("forgotPasswordEmail")
+        ?.value.trim();
+
+      if (!email) {
+        notify("Please enter your email.");
+        return;
+      }
+
+      try {
+        const response = await apiFetch("/forgot-password", {
+          credentials: "include",
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        });
+
+        const data = await parseApiResponse(response);
+        if (response.ok) {
+          Toast.show({
+            message:
+              data.message ||
+              "If that account exists, a password reset email has been sent.",
+            type: "success",
+            duration: 3200,
+          });
+        } else {
+          notify(data.error || "Could not process reset request.");
+        }
+      } catch (error) {
+        console.error("Forgot password request failed:", error);
+        notify("Network error while requesting password reset.");
+      }
+    });
+  }
+
+  const resetPasswordForm = document.getElementById("resetPasswordForm");
+  if (resetPasswordForm) {
+    const params = new URLSearchParams(window.location.search);
+    const emailInput = document.getElementById("resetPasswordEmail");
+    const resetPasswordInput = document.getElementById("resetPasswordNew");
+    const resetPasswordCriteria = document.getElementById("resetPasswordCriteria");
+    const tokenFromUrl = String(params.get("token") || "").trim();
+    if (tokenFromUrl) {
+      params.delete("token");
+      const remainingQuery = params.toString();
+      const nextUrl = `${window.location.pathname}${remainingQuery ? `?${remainingQuery}` : ""}`;
+      window.history.replaceState(null, "", nextUrl);
+    }
+
+    if (emailInput && params.get("email"))
+      emailInput.value = params.get("email");
+    wirePasswordCriteriaChecklist(resetPasswordInput, resetPasswordCriteria);
+
+    resetPasswordForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const email = emailInput?.value.trim();
+      const newPassword =
+        document.getElementById("resetPasswordNew")?.value || "";
+      const confirmPassword =
+        document.getElementById("resetPasswordConfirm")?.value || "";
+
+      if (!email || !tokenFromUrl || !newPassword) {
+        notify("Please complete all required fields.");
+        return;
+      }
+
+      if (newPassword !== confirmPassword) {
+        notify("Passwords do not match.");
+        return;
+      }
+      if (!isStrongPassword(newPassword)) {
+        Toast.show({
+          message: PASSWORD_POLICY_MESSAGE,
+          type: "error",
+          duration: 4200,
+        });
+        return;
+      }
+
+      try {
+        const response = await apiFetch("/reset-password", {
+          credentials: "include",
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, token: tokenFromUrl, newPassword }),
+        });
+
+        const data = await parseApiResponse(response);
+        if (response.ok) {
+          notify(data.message || "Password reset successful.", "success", 2600);
+          Toast.show({
+            message: "Password updated",
+            type: "success",
+            duration: 2200,
+          });
+          window.location.href = "/login.html";
+        } else {
+          notify(data.error || "Unable to reset password.");
+        }
+      } catch (error) {
+        console.error("Reset password request failed:", error);
+        notify("Network error while resetting password.");
+      }
+    });
+  }
+
+  // Login handler (used on login.html)
+  const loginForm = document.getElementById("loginForm");
+  if (loginForm) {
+    const authError = new URLSearchParams(window.location.search).get("error");
+    if (authError === "sso_failed") {
+      Toast.show({
+        message: "Social sign-in failed. Please try again.",
+        type: "error",
+        duration: 3500,
+      });
+    } else if (authError === "google_unavailable") {
+      Toast.show({
+        message: "Google sign-in is not configured yet. Please use email and password.",
+        type: "error",
+        duration: 4000,
+      });
+    }
+
+    loginForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const email = document.getElementById("loginEmail").value.trim();
+      const password = document.getElementById("loginPassword").value;
+      const rememberMe =
+        document.getElementById("rememberMe")?.checked || false;
+
+      try {
+        const response = await apiFetch("/login", {
+          credentials: "include",
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password, rememberMe }),
+        });
+
+        const data = await parseApiResponse(response);
+
+        if (response.ok) {
+          hydrateBoardPreferences(data?.user);
+          const preferredDefaultPath =
+            typeof data?.preferredDefaultPath === "string"
+              ? data.preferredDefaultPath
+              : (normalizeDefaultView(data?.user?.settings?.board?.default_view) === "calendar"
+                ? "/calendar-page.html"
+                : "/dashboard.html");
+
+          // alert("Login successful!");
+          Toast.show({
+            message: "Login Sucessful",
+            type: "success",
+            duration: 2000,
+          });
           window.location.href = preferredDefaultPath;
         } else {
           notify(`Login failed: ${data.error || "Unknown error"}`);
