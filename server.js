@@ -1353,25 +1353,46 @@ function parseIsoDateTimeInput(value) {
   return date;
 }
 
-/** Flatten a populated or unpopulated session into the same client response shape. */
-function toFocusSessionResponse(session) {
+function visibleTaskFilter(userId, additionalFilters = {}) {
+  return { userId, deletedAt: null, ...additionalFilters };
+}
+
+function getFocusSessionTaskId(session) {
   const rawTask = session?.taskId;
-  const taskId = rawTask && typeof rawTask === "object" && rawTask._id
+  return rawTask && typeof rawTask === "object" && rawTask._id
     ? rawTask._id
     : rawTask;
-  const taskDescription = rawTask && typeof rawTask === "object" && rawTask.description
-    ? rawTask.description
-    : null;
+}
+
+/** Flatten a populated or unpopulated session into the same client response shape. */
+function toFocusSessionResponse(session, { resolvedTaskDescription = null } = {}) {
+  const taskId = getFocusSessionTaskId(session);
+  const snapshot = String(session?.taskDescriptionSnapshot || "").trim();
+  const populatedDescription = session?.taskId && typeof session.taskId === "object"
+    ? String(session.taskId.description || "").trim()
+    : "";
 
   return {
     _id: session._id,
     taskId,
-    taskDescription,
+    taskDescription: snapshot || String(resolvedTaskDescription || "").trim() || populatedDescription || null,
     startedAt: session.startedAt,
     endedAt: session.endedAt,
     durationMs: session.durationMs || 0,
     endedReason: session.endedReason
   };
+}
+
+function computeFocusSessionDurationMs(session, now = new Date()) {
+  const storedDuration = Number(session?.durationMs);
+  if (Number.isFinite(storedDuration) && storedDuration > 0) return storedDuration;
+
+  const startedAt = new Date(session?.startedAt).getTime();
+  const endedAt = session?.endedAt
+    ? new Date(session.endedAt).getTime()
+    : new Date(now).getTime();
+  const calculated = endedAt - startedAt;
+  return Number.isFinite(calculated) && calculated > 0 ? calculated : 0;
 }
 
 // Task CRUD APIs are logged-in user-data routes protected by explicit auth and rate-limit middleware.
@@ -1393,7 +1414,7 @@ app.post("/tasks", apiProbeLimiter, ensureAuthenticated, userApiLimiter, async (
     status: "active",
   });
 
-  const userTasks = await Task.find({ userId: req.user.id });
+  const userTasks = await Task.find(visibleTaskFilter(req.user.id));
   return res.json(userTasks);
 });
 
@@ -1401,7 +1422,7 @@ app.post("/tasks", apiProbeLimiter, ensureAuthenticated, userApiLimiter, async (
 // Gets tasks for the logged-in user
 app.get("/tasks", apiProbeLimiter, ensureAuthenticated, userApiLimiter, async (req, res) => {
     try {
-        const userTasks = await Task.find({ userId: req.user.id });
+        const userTasks = await Task.find(visibleTaskFilter(req.user.id));
         res.status(200).json(userTasks);
     } catch (err) {
         console.error("Error Fetching Tasks:", err);
@@ -1412,7 +1433,7 @@ app.get("/tasks", apiProbeLimiter, ensureAuthenticated, userApiLimiter, async (r
 // Route to update tasks in the MongoDB database
 app.put("/tasks/:taskId", apiProbeLimiter, ensureAuthenticated, userApiLimiter, async (req, res) => {
   try {
-    const task = await Task.findOne({ _id: req.params.taskId, userId: req.user.id });
+    const task = await Task.findOne(visibleTaskFilter(req.user.id, { _id: req.params.taskId }));
     if (!task) return res.status(404).json({ error: "Task not found" });
 
     // allow updates
@@ -1473,11 +1494,10 @@ app.put("/tasks/:taskId", apiProbeLimiter, ensureAuthenticated, userApiLimiter, 
 
       const nextIsBigThree = req.body.isBigThree;
       if (nextIsBigThree && !task.isBigThree) {
-        const existingBigThreeCount = await Task.countDocuments({
-          userId: req.user.id,
+        const existingBigThreeCount = await Task.countDocuments(visibleTaskFilter(req.user.id, {
           isBigThree: true,
           _id: { $ne: task._id }
-        });
+        }));
 
         if (existingBigThreeCount >= 3) {
           return res.status(400).json({ error: "You can only have 3 Big 3 tasks at once." });
@@ -1498,17 +1518,17 @@ app.put("/tasks/:taskId", apiProbeLimiter, ensureAuthenticated, userApiLimiter, 
 // Route to delete a task
 app.delete("/tasks/:taskId", apiProbeLimiter, ensureAuthenticated, userApiLimiter, async (req, res) => {
   try {
-    const deleted = await Task.findOneAndDelete({
-      _id: req.params.taskId,
-      userId: req.user.id, // important: only delete your own tasks
-    });
+    const deleted = await Task.findOneAndUpdate(
+      visibleTaskFilter(req.user.id, { _id: req.params.taskId }),
+      { $set: { deletedAt: new Date(), isBigThree: false } },
+      { new: true },
+    );
 
     if (!deleted) {
       return res.status(404).json({ error: "Task not found" });
     }
 
     return res.json({ message: "Task deleted successfully" });
-    fetchTasks(); // Refresh the task list on the client side
   } catch (err) {
     console.error("Error deleting task:", err);
     return res.status(500).json({ error: "Server error while deleting task" });
@@ -1526,7 +1546,7 @@ app.post("/focus-sessions/start", apiProbeLimiter, ensureAuthenticated, userApiL
       return res.status(400).json({ error: "Invalid taskId format" });
     }
 
-    const task = await Task.findOne({ _id: taskId, userId: req.user.id });
+    const task = await Task.findOne(visibleTaskFilter(req.user.id, { _id: taskId }));
     if (!task) {
       return res.status(404).json({ error: "Task not found" });
     }
@@ -1552,15 +1572,13 @@ app.post("/focus-sessions/start", apiProbeLimiter, ensureAuthenticated, userApiL
     const created = await FocusSession.create({
       userId: req.user.id,
       taskId: task._id,
+      taskDescriptionSnapshot: task.description,
       startedAt: now
     });
 
-    const session = await FocusSession.findById(created._id).populate({
-      path: "taskId",
-      select: "description"
-    });
-
-    return res.status(201).json(toFocusSessionResponse(session));
+    return res.status(201).json(toFocusSessionResponse(created, {
+      resolvedTaskDescription: task.description,
+    }));
   } catch (err) {
     console.error("Error starting focus session:", err);
     return res.status(500).json({ error: "Server error while starting focus session" });
@@ -1589,12 +1607,14 @@ app.post("/focus-sessions/stop", apiProbeLimiter, ensureAuthenticated, userApiLi
     openSession.endedReason = endedReason;
     await openSession.save();
 
-    const session = await FocusSession.findById(openSession._id).populate({
-      path: "taskId",
-      select: "description"
-    });
+    const task = await Task.findOne({
+      _id: getFocusSessionTaskId(openSession),
+      userId: req.user.id,
+    }).select("description");
 
-    return res.json(toFocusSessionResponse(session));
+    return res.json(toFocusSessionResponse(openSession, {
+      resolvedTaskDescription: task?.description,
+    }));
   } catch (err) {
     console.error("Error stopping focus session:", err);
     return res.status(500).json({ error: "Server error while stopping focus session" });
@@ -1624,14 +1644,58 @@ app.get("/focus-sessions", apiProbeLimiter, ensureAuthenticated, userApiLimiter,
       if (to) query.startedAt.$lt = to;
     }
 
-    const sessions = await FocusSession.find(query)
-      .sort({ startedAt: -1 })
-      .populate({ path: "taskId", select: "description" });
+    const sessions = await FocusSession.find(query).sort({ startedAt: -1 });
+    const taskIds = sessions.map(getFocusSessionTaskId).filter(Boolean);
+    const tasks = await Task.find({
+      _id: { $in: taskIds },
+      userId: req.user.id,
+    }).select("_id description").lean();
+    const descriptionsByTaskId = new Map(tasks.map((task) => [
+      String(task._id),
+      String(task.description || "").trim(),
+    ]));
 
-    return res.json(sessions.map((session) => toFocusSessionResponse(session)));
+    return res.json(sessions.map((session) => toFocusSessionResponse(session, {
+      resolvedTaskDescription: descriptionsByTaskId.get(String(getFocusSessionTaskId(session))),
+    })));
   } catch (err) {
     console.error("Error retrieving focus sessions:", err);
     return res.status(500).json({ error: "Server error while retrieving focus sessions" });
+  }
+});
+
+app.get("/reflection-stats", apiProbeLimiter, ensureAuthenticated, userApiLimiter, async (req, res) => {
+  try {
+    const from = parseIsoDateTimeInput(req.query.from);
+    const to = parseIsoDateTimeInput(req.query.to);
+    if (!from || !to || from >= to) {
+      return res.status(400).json({ error: "A valid from date earlier than to is required" });
+    }
+
+    const [tasksCompleted, sessions] = await Promise.all([
+      Task.countDocuments({
+        userId: req.user.id,
+        status: "completed",
+        completedAt: { $gte: from, $lt: to },
+      }),
+      FocusSession.find({
+        userId: req.user.id,
+        startedAt: { $gte: from, $lt: to },
+      }).select("taskId startedAt endedAt durationMs"),
+    ]);
+    const tasksFocused = new Set(
+      sessions.map(getFocusSessionTaskId).filter(Boolean).map(String),
+    ).size;
+    const now = new Date();
+    const totalFocusMs = sessions.reduce(
+      (total, session) => total + computeFocusSessionDurationMs(session, now),
+      0,
+    );
+
+    return res.json({ tasksCompleted, tasksFocused, totalFocusMs });
+  } catch (err) {
+    console.error("Error retrieving reflection statistics:", err);
+    return res.status(500).json({ error: "Server error while retrieving reflection statistics" });
   }
 });
 

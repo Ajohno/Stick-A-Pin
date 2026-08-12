@@ -1196,46 +1196,17 @@ function formatDailyFocusDuration(durationMs) {
   return `${hours} hr ${minutes} min`;
 }
 
-function getCompletedTaskCountToday(tasks = []) {
-  const now = new Date();
-  const dayStart = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-  ).getTime();
-  const nextDay = dayStart + 24 * 60 * 60 * 1000;
-
-  if (!Array.isArray(tasks)) return 0;
-
-  return tasks.reduce((count, task) => {
-    if (task?.status !== "completed") return count;
-    const completedAt = new Date(task?.completedAt || 0).getTime();
-    if (
-      Number.isFinite(completedAt) &&
-      completedAt >= dayStart &&
-      completedAt < nextDay
-    ) {
-      return count + 1;
-    }
-    return count;
-  }, 0);
-}
-
-function getCompletedTaskCountInRange(tasks = [], startMs = 0, endMs = 0) {
-  if (!Array.isArray(tasks)) return 0;
-
-  return tasks.reduce((count, task) => {
-    if (task?.status !== "completed") return count;
-    const completedAt = new Date(task?.completedAt || 0).getTime();
-    if (
-      Number.isFinite(completedAt) &&
-      completedAt >= startMs &&
-      completedAt < endMs
-    ) {
-      return count + 1;
-    }
-    return count;
-  }, 0);
+async function fetchReflectionStats(from, to) {
+  const query = new URLSearchParams({ from, to }).toString();
+  const response = await apiFetch(`/reflection-stats?${query}`, {
+    credentials: "include",
+    cache: "no-store",
+  });
+  const data = await parseApiResponse(response);
+  if (!response.ok) {
+    throw new Error(data?.error || "Could not load reflection statistics");
+  }
+  return data;
 }
 
 function renderDailyReflectionStats({
@@ -1305,51 +1276,13 @@ async function refreshDailyReflectionStats() {
 
   try {
     const { startIso, endIso } = getTodayDateRangeIso();
-    const focusQuery = new URLSearchParams({ from: startIso, to: endIso }).toString();
-
-    const [sessionsResponse, tasksResponse] = await Promise.all([
-      apiFetch(`/focus-sessions?${focusQuery}`, {
-        credentials: "include",
-        cache: "no-store",
-      }),
-      apiFetch("/tasks", {
-        credentials: "include",
-        cache: "no-store",
-      }),
-    ]);
-
-    const [sessionsData, tasksData] = await Promise.all([
-      parseApiResponse(sessionsResponse),
-      parseApiResponse(tasksResponse),
-    ]);
-
-    if (!sessionsResponse.ok) {
-      throw new Error(sessionsData?.error || "Could not load focus sessions");
-    }
-    if (!tasksResponse.ok) {
-      throw new Error(tasksData?.error || "Could not load tasks");
-    }
-
-    const sessions = Array.isArray(sessionsData) ? sessionsData : [];
-    const tasks = Array.isArray(tasksData) ? tasksData : [];
-
-    const focusedTaskIds = new Set(
-      sessions
-        .map((session) => session?.taskId)
-        .filter((taskId) => taskId !== null && taskId !== undefined)
-        .map((taskId) => String(taskId)),
-    );
-
-    const totalFocusMs = sessions.reduce(
-      (sum, session) => sum + computeSessionDurationMs(session),
-      0,
-    );
+    const stats = await fetchReflectionStats(startIso, endIso);
 
     renderDailyReflectionStats({
       dateLabel: todayLabel,
-      tasksFocused: focusedTaskIds.size,
-      focusTimeLabel: formatDailyFocusDuration(totalFocusMs),
-      tasksCompleted: getCompletedTaskCountToday(tasks),
+      tasksFocused: stats.tasksFocused,
+      focusTimeLabel: formatDailyFocusDuration(stats.totalFocusMs),
+      tasksCompleted: stats.tasksCompleted,
     });
   } catch (error) {
     console.error("Could not refresh daily reflection stats:", error);
@@ -1394,55 +1327,13 @@ async function refreshWeeklyReflectionStats() {
   });
 
   try {
-    const focusQuery = new URLSearchParams({ from: startIso, to: endIso }).toString();
-
-    const [sessionsResponse, tasksResponse] = await Promise.all([
-      apiFetch(`/focus-sessions?${focusQuery}`, {
-        credentials: "include",
-        cache: "no-store",
-      }),
-      apiFetch("/tasks", {
-        credentials: "include",
-        cache: "no-store",
-      }),
-    ]);
-
-    const [sessionsData, tasksData] = await Promise.all([
-      parseApiResponse(sessionsResponse),
-      parseApiResponse(tasksResponse),
-    ]);
-
-    if (!sessionsResponse.ok) {
-      throw new Error(sessionsData?.error || "Could not load focus sessions");
-    }
-    if (!tasksResponse.ok) {
-      throw new Error(tasksData?.error || "Could not load tasks");
-    }
-
-    const sessions = Array.isArray(sessionsData) ? sessionsData : [];
-    const tasks = Array.isArray(tasksData) ? tasksData : [];
-
-    const focusedTaskIds = new Set(
-      sessions
-        .map((session) => session?.taskId)
-        .filter((taskId) => taskId !== null && taskId !== undefined)
-        .map((taskId) => String(taskId)),
-    );
-
-    const totalFocusMs = sessions.reduce(
-      (sum, session) => sum + computeSessionDurationMs(session),
-      0,
-    );
+    const stats = await fetchReflectionStats(startIso, endIso);
 
     renderWeeklyReflectionStats({
       dateLabel: weekLabel,
-      tasksFocused: focusedTaskIds.size,
-      focusTimeLabel: formatDailyFocusDuration(totalFocusMs),
-      tasksCompleted: getCompletedTaskCountInRange(
-        tasks,
-        new Date(startIso).getTime(),
-        new Date(endIso).getTime(),
-      ),
+      tasksFocused: stats.tasksFocused,
+      focusTimeLabel: formatDailyFocusDuration(stats.totalFocusMs),
+      tasksCompleted: stats.tasksCompleted,
     });
   } catch (error) {
     console.error("Could not refresh weekly reflection stats:", error);
