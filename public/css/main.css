@@ -2434,6 +2434,14 @@ body.task-panel-open {
   min-height: 140px;
 }
 
+.feedback-message-counter {
+  align-self: flex-end;
+  margin-top: -0.35rem;
+  color: #5b4436;
+  font-family: "Gochi Hand", cursive;
+  font-size: 1.05rem;
+}
+
 .feedback-attachment-toolbar {
   display: flex;
   flex-wrap: wrap;

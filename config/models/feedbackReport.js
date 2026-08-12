@@ -1,3 +1,7 @@
+/**
+ * Durable record of an authenticated bug report submitted through StickAPin.
+ * Attachment metadata is stored here; file content is delivered through email.
+ */
 const mongoose = require("mongoose");
 
 const FeedbackReportSchema = new mongoose.Schema(
@@ -13,6 +17,7 @@ const FeedbackReportSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Supports per-user history and durable submission-rate checks in newest-first order.
 FeedbackReportSchema.index({ userId: 1, createdAt: -1 });
 
 module.exports = mongoose.model("FeedbackReport", FeedbackReportSchema);

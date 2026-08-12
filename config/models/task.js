@@ -1,6 +1,10 @@
 const mongoose = require("mongoose");
 
-// Define Task Schema
+/**
+ * User-owned task displayed on the board, calendar, and focus views.
+ * completedAt records the transition time separately from the current status so
+ * reflection statistics can answer when work was finished.
+ */
 const TaskSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
@@ -14,10 +18,15 @@ const TaskSchema = new mongoose.Schema(
 
     status: { type: String, enum: ["active", "completed"], default: "active" },
     completedAt: { type: Date, default: null },
+    deletedAt: { type: Date, default: null },
 
+    // Route logic enforces the per-user limit of three selected priority tasks.
     isBigThree: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
+
+TaskSchema.index({ userId: 1, deletedAt: 1, isBigThree: 1 });
+TaskSchema.index({ userId: 1, status: 1, completedAt: 1 });
 
 module.exports = mongoose.model("Task", TaskSchema);

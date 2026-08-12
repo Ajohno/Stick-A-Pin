@@ -1,11 +1,23 @@
+/**
+ * Configures StickAPin's local and Google authentication strategies.
+ *
+ * Local accounts authenticate with an email and password hash. Google accounts
+ * are matched by provider ID first and normalized email second so an existing
+ * local account can be linked instead of duplicated.
+ */
 const LocalStrategy = require("passport-local").Strategy;
 const bcrypt = require("bcryptjs");
 const User = require("./models/user");
 
+/** Normalize user-supplied email addresses before lookup or persistence. */
 function normalizeEmail(value) {
   return String(value || "").toLowerCase().trim();
 }
 
+/**
+ * Derive required first and last names from an OAuth profile.
+ * Provider data varies, so the email local-part is the final safe fallback.
+ */
 function splitName(profile = {}, fallbackEmail = "") {
   const given = profile?.name?.givenName || "";
   const family = profile?.name?.familyName || "";
@@ -34,12 +46,14 @@ function splitName(profile = {}, fallbackEmail = "") {
 }
 
 
+/** Read an environment variable without leaking surrounding whitespace. */
 function readEnv(name) {
   const value = process.env[name];
   if (typeof value !== "string") return "";
   return value.trim();
 }
 
+/** Return the first configured value from a prioritized list of environment names. */
 function firstEnv(names = []) {
   for (const name of names) {
     const value = readEnv(name);
@@ -49,6 +63,10 @@ function firstEnv(names = []) {
   return "";
 }
 
+/**
+ * Build an OAuth callback from trusted deployment configuration.
+ * Request Host headers are intentionally not used because they are client-controlled.
+ */
 function buildCallbackUrl(pathname) {
   const explicitBaseUrl = readEnv("APP_BASE_URL");
   const vercelUrl = readEnv("VERCEL_PROJECT_PRODUCTION_URL") || readEnv("VERCEL_URL");
@@ -59,6 +77,10 @@ function buildCallbackUrl(pathname) {
   return `${baseUrl.replace(/\/$/, "")}${pathname}`;
 }
 
+/**
+ * Recover from a concurrent OAuth-link/create race that violates a unique index.
+ * A duplicate-key error can mean another request already created the correct user.
+ */
 async function recoverUserFromDuplicateProviderError({
   error,
   providerKey,
@@ -81,6 +103,8 @@ async function recoverUserFromDuplicateProviderError({
 }
 
 module.exports = function (passport) {
+  // Local authentication returns the same generic failure for unknown accounts
+  // and bad passwords so the endpoint does not reveal registered addresses.
   passport.use(
     new LocalStrategy(
       { usernameField: "email", passwordField: "password" },
@@ -138,6 +162,8 @@ module.exports = function (passport) {
             );
             const avatarUrl = profile?.photos?.[0]?.value || null;
 
+            // Provider IDs are the strongest identity key. Email lookup supports
+            // linking Google to an account that was originally created locally.
             let user = providerId
               ? await User.findOne({ "authProviders.google.id": providerId })
               : null;
@@ -168,6 +194,8 @@ module.exports = function (passport) {
             }
 
             const { firstName, lastName } = splitName(profile, providerEmail);
+            // New OAuth users are already verified by the identity provider and
+            // do not need StickAPin's separate email-verification flow.
             const createdUser = await User.create({
               firstName,
               lastName,
@@ -203,6 +231,8 @@ module.exports = function (passport) {
     );
   }
 
+  // Store only the database ID in the session cookie-backed record; reload the
+  // current user on each authenticated request so profile changes take effect.
   passport.serializeUser((user, done) => {
     done(null, user.id);
   });
