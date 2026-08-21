@@ -266,6 +266,16 @@ function getFocusSessionCardEl() {
   return null;
 }
 
+function getFocusWidgetElementById(id) {
+  const sessionCard = getFocusSessionCardEl();
+  const fromSessionCard = sessionCard?.querySelector(`#${id}`);
+  if (fromSessionCard) return fromSessionCard;
+
+  return document.getElementById(id)
+    || focusState.pipWindow?.document?.getElementById(id)
+    || null;
+}
+
 function renderFocusTimer() {
   const timerEl = getFocusTimerEl();
   if (!timerEl) return;
@@ -304,8 +314,8 @@ function isDocumentPictureInPictureSupported() {
 }
 
 function updateFocusPiPToggleButton() {
-  const toggleBtn = document.getElementById("focusPiPToggleBtn");
-  const iconEl = document.getElementById("focusPiPIcon");
+  const toggleBtn = getFocusWidgetElementById("focusPiPToggleBtn");
+  const iconEl = getFocusWidgetElementById("focusPiPIcon");
   if (!toggleBtn || !iconEl) return;
 
   const isRunning = Boolean(focusState.taskId && focusState.startedAt);
@@ -396,7 +406,7 @@ async function openFocusWidgetInPiP() {
 
     focusState.pipWindow = pipWindow;
     focusState.isInPiP = true;
-    const startBtn = document.getElementById("focusStartBtn");
+    const startBtn = getFocusWidgetElementById("focusStartBtn");
     if (startBtn) startBtn.hidden = true;
     updateFocusPiPToggleButton();
     updateFocusModeControls({
@@ -630,11 +640,10 @@ function bindFocusFilterTabs() {
 function updateFocusModeControls({ running, hasTask } = {}) {
   const selectEl = document.getElementById("focusTaskSelect");
   const taskListEl = document.getElementById("focusTaskList");
-  const startBtn = document.getElementById("focusStartBtn");
-  const pipToggleBtn = document.getElementById("focusPiPToggleBtn");
-  const stopBtn = document.getElementById("focusStopBtn");
-  const completeBtn = document.getElementById("focusCompleteBtn");
-  const pauseBtn = document.getElementById("focusPauseBtn");
+  const startBtn = getFocusWidgetElementById("focusStartBtn");
+  const stopBtn = getFocusWidgetElementById("focusStopBtn");
+  const completeBtn = getFocusWidgetElementById("focusCompleteBtn");
+  const pauseBtn = getFocusWidgetElementById("focusPauseBtn");
   if (selectEl) selectEl.disabled = running;
   if (taskListEl) {
     taskListEl.setAttribute(
