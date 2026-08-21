@@ -10,4 +10,20 @@ function parseSessionIdentity(value) {
   return { id: String(value.id), authVersion };
 }
 
-module.exports = { toSessionIdentity, parseSessionIdentity };
+/**
+ * Match version-zero sessions to either an explicit zero or a legacy missing
+ * field during rollout. Every higher version remains an exact comparison.
+ */
+function buildSessionUserFilter(identity) {
+  const parsed = parseSessionIdentity(identity);
+  if (!parsed) return null;
+  if (parsed.authVersion === 0) {
+    return {
+      _id: parsed.id,
+      $or: [{ authVersion: 0 }, { authVersion: { $exists: false } }],
+    };
+  }
+  return { _id: parsed.id, authVersion: parsed.authVersion };
+}
+
+module.exports = { toSessionIdentity, parseSessionIdentity, buildSessionUserFilter };

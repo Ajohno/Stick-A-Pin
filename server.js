@@ -29,7 +29,13 @@ const {
 } = require("./config/focus-session-atomic");
 const FeedbackReport = require("./config/models/feedbackReport"); // Feedback report model for durable rate limiting
 const InboundEmail = require("./config/models/inboundEmail"); // Resend inbound email storage
-const { genericAccountActionResponse } = require("./config/account-action-response");
+const {
+  createAccountActionJobService,
+  hashAccountActionToken,
+} = require("./config/account-action-jobs");
+const { createAccountActionHandlers, validatePasswordStrength } = require("./config/account-action-routes");
+const { scheduleBackgroundTask } = require("./config/background-tasks");
+const { isAuthorizedCronRequest } = require("./config/cron-auth");
 const csrf = require("lusca").csrf; // CSRF protection middleware
 const MongoStore = require("connect-mongo").default; // Store sessions in MongoDB
 
@@ -70,6 +76,10 @@ const port = process.env.PORT || 3000;
 const REMEMBER_ME_MS = 14 * 24 * 60 * 60 * 1000;
 const EMAIL_VERIFICATION_TTL_MINUTES = Number(process.env.EMAIL_VERIFICATION_TTL_MINUTES || 60);
 const PASSWORD_RESET_TTL_MINUTES = Number(process.env.PASSWORD_RESET_TTL_MINUTES || 30);
+const ACCOUNT_EMAIL_TIMEOUT_MS = Math.max(
+  1_000,
+  Number(process.env.ACCOUNT_EMAIL_TIMEOUT_MS) || 15_000
+);
 const APP_BASE_URL = process.env.APP_BASE_URL;
 const EMAIL_FROM = process.env.EMAIL_FROM || "Stick A Pin <no-reply@mail.stickapin.app>";
 const FEEDBACK_INBOX_EMAIL = (process.env.FEEDBACK_INBOX_EMAIL || "support@stickapin.app").trim();
@@ -231,12 +241,7 @@ const authenticatedApiMiddleware = [ensureAuthenticated, authenticatedLimiter];
 
 /** Hash one-time tokens before storage so a database leak cannot reuse them. */
 function hashVerificationToken(token) {
-  return crypto.createHash("sha256").update(token).digest("hex");
-}
-
-/** Generate a cryptographically secure token for emailed account actions. */
-function generateVerificationToken() {
-  return crypto.randomBytes(32).toString("hex");
+  return hashAccountActionToken(token);
 }
 
 async function sendVerificationEmail(email, firstName, token, baseUrl) {
@@ -248,6 +253,7 @@ async function sendVerificationEmail(email, firstName, token, baseUrl) {
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
+    signal: AbortSignal.timeout(ACCOUNT_EMAIL_TIMEOUT_MS),
     headers: {
       Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
       "Content-Type": "application/json",
@@ -257,7 +263,7 @@ async function sendVerificationEmail(email, firstName, token, baseUrl) {
       to: [email],
       subject: "Verify your Stick A Pin account",
       html: `
-        <p>Hi ${firstName},</p>
+        <p>Hi ${escapeHtml(firstName || "there")},</p>
         <p>Thanks for registering. Click the link below to verify your email address:</p>
         <p><a href="${verificationUrl}">Verify my email</a></p>
         <p>If you did not sign up, you can ignore this message.</p>
@@ -280,6 +286,7 @@ async function sendPasswordResetEmail(email, firstName, token, baseUrl) {
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
+    signal: AbortSignal.timeout(ACCOUNT_EMAIL_TIMEOUT_MS),
     headers: {
       Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
       "Content-Type": "application/json",
@@ -289,7 +296,7 @@ async function sendPasswordResetEmail(email, firstName, token, baseUrl) {
       to: [email],
       subject: "Reset your Stick A Pin password",
       html: `
-        <p>Hi ${firstName || "there"},</p>
+        <p>Hi ${escapeHtml(firstName || "there")},</p>
         <p>We received a request to reset your password.</p>
         <p><a href="${resetUrl}">Reset password</a></p>
         <p>If you did not request this, you can ignore this email.</p>
@@ -408,6 +415,11 @@ function resolveBaseUrl(req) {
     return `https://${vercelUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")}`;
   }
 
+  // Never place a client-controlled Host header into an account-action link in
+  // production. A missing canonical URL causes the durable job to retry until
+  // deployment configuration is corrected.
+  if (IS_PRODUCTION) return "";
+
   const forwardedProto = req?.headers?.["x-forwarded-proto"];
   const protocol = (forwardedProto ? forwardedProto.split(",")[0] : req?.protocol || "http").trim();
   const host = req?.get?.("host") || req?.headers?.host;
@@ -418,6 +430,21 @@ function resolveBaseUrl(req) {
 
   return `http://localhost:${port}`;
 }
+
+const accountActionJobs = createAccountActionJobService({
+  secret: process.env.SESSION_SECRET,
+  sendVerificationEmail,
+  sendPasswordResetEmail,
+  verificationTtlMs: EMAIL_VERIFICATION_TTL_MINUTES * 60 * 1000,
+  passwordResetTtlMs: PASSWORD_RESET_TTL_MINUTES * 60 * 1000,
+});
+
+const accountActionHandlers = createAccountActionHandlers({
+  enqueueAccountActionJob: accountActionJobs.enqueue,
+  processAccountActionJob: accountActionJobs.processById,
+  scheduleBackgroundTask,
+  resolveBaseUrl,
+});
 
 function extractEmailAddress(value) {
   const text = String(value || "").trim();
@@ -1000,87 +1027,24 @@ app.get("/auth/google/callback", authRateLimiter, (req, res) => {
   });
 });
 
-// Register Route
-function validatePasswordStrength(password) {
-  const value = String(password || "");
-  const minLength = value.length >= 12;
-  const hasUpper = /[A-Z]/.test(value);
-  const hasLower = /[a-z]/.test(value);
-  const hasNumber = /\d/.test(value);
+app.get("/api/cron/account-action-jobs", async (req, res) => {
+  if (!isAuthorizedCronRequest(req.get("authorization"), process.env.CRON_SECRET)) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
 
-  return minLength && hasUpper && hasLower && hasNumber;
-}
-
-const isValidEmailAddress = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-const sendGenericAccountActionResponse = (res) => {
-  const response = genericAccountActionResponse();
-  return res.status(response.status).json(response.body);
-};
-
-app.post("/register", localAuthLimiter, async (req, res) => {
   try {
-    const { firstName, lastName, email, password } = req.body;
-    if (!firstName || !lastName || !email || !password) {
-      return res.status(400).json({ error: "Missing required fields" });
-    }
-    const normalizedEmail = String(email).toLowerCase().trim();
-    if (!isValidEmailAddress(normalizedEmail)) {
-      return res.status(400).json({ error: "A valid email address is required" });
-    }
-    if (!validatePasswordStrength(password)) {
-      return res.status(400).json({
-        error: "Password must be at least 12 characters and include uppercase, lowercase, and a number.",
-      });
-    }
-
-    // Hash before the account lookup so valid registration requests perform the
-    // same expensive password work regardless of whether the address exists.
-    const passwordHash = await bcrypt.hash(password, 10);
-    let user = await User.findOne({ email: normalizedEmail });
-    let verificationToken = null;
-
-    if (!user) {
-      verificationToken = generateVerificationToken();
-      try {
-        user = await User.create({
-          firstName: String(firstName).trim(),
-          lastName: String(lastName).trim(),
-          email: normalizedEmail,
-          passwordHash,
-          emailVerified: false,
-          emailVerificationTokenHash: hashVerificationToken(verificationToken),
-          emailVerificationExpiresAt: new Date(Date.now() + EMAIL_VERIFICATION_TTL_MINUTES * 60 * 1000),
-        });
-      } catch (error) {
-        if (error?.code !== 11000) throw error;
-        user = await User.findOne({ email: normalizedEmail });
-        verificationToken = null;
-      }
-    } else if (user.emailVerified === false) {
-      verificationToken = generateVerificationToken();
-      user = await User.findOneAndUpdate(
-        { _id: user._id, emailVerified: false },
-        { $set: {
-          emailVerificationTokenHash: hashVerificationToken(verificationToken),
-          emailVerificationExpiresAt: new Date(Date.now() + EMAIL_VERIFICATION_TTL_MINUTES * 60 * 1000),
-        } },
-        { new: true },
-      );
-    }
-
-    if (user?.emailVerified === false && verificationToken) {
-      try {
-        await sendVerificationEmail(user.email, user.firstName, verificationToken, resolveBaseUrl(req));
-      } catch (error) {
-        console.error("Verification email delivery failed");
-      }
-    }
-    return sendGenericAccountActionResponse(res);
+    const summary = await accountActionJobs.drain({ limit: 10 });
+    return res.json({ ok: true, ...summary });
   } catch (error) {
-    console.error("Error processing registration");
-    return res.status(500).json({ error: "Server error while registering user" });
+    console.error("Account action retry sweep failed");
+    return res.status(500).json({ error: "Unable to process queued account actions" });
   }
 });
+
+// Registration does only uniform validation, password hashing, and one durable
+// queue insert before acknowledging the request. Account lookup and email I/O
+// happen in the background worker.
+app.post("/register", localAuthLimiter, accountActionHandlers.register);
 
 app.get("/verify-email", emailVerificationLimiter, async (req, res) => {
   try {
@@ -1116,34 +1080,11 @@ app.get("/verify-email", emailVerificationLimiter, async (req, res) => {
   }
 });
 
-app.post("/resend-verification", emailVerificationLimiter, async (req, res) => {
-  try {
-    const normalizedEmail = String(req.body.email || "").toLowerCase().trim();
-    if (!isValidEmailAddress(normalizedEmail)) {
-      return res.status(400).json({ error: "A valid email address is required" });
-    }
-    const verificationToken = generateVerificationToken();
-    const user = await User.findOneAndUpdate(
-      { email: normalizedEmail, emailVerified: false },
-      { $set: {
-        emailVerificationTokenHash: hashVerificationToken(verificationToken),
-        emailVerificationExpiresAt: new Date(Date.now() + EMAIL_VERIFICATION_TTL_MINUTES * 60 * 1000),
-      } },
-      { new: true },
-    );
-    if (user) {
-      try {
-        await sendVerificationEmail(user.email, user.firstName, verificationToken, resolveBaseUrl(req));
-      } catch (error) {
-        console.error("Verification email delivery failed");
-      }
-    }
-    return sendGenericAccountActionResponse(res);
-  } catch (error) {
-    console.error("Error processing verification request");
-    return res.status(500).json({ error: "Unable to process verification request" });
-  }
-});
+app.post(
+  "/resend-verification",
+  emailVerificationLimiter,
+  accountActionHandlers.resendVerification
+);
 
 const passwordResetLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -1157,41 +1098,15 @@ const forgotPasswordEmailLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => {
     const normalizedEmail = String(req.body?.email || "").toLowerCase().trim();
-    return `${req.ip}:${normalizedEmail}`;
+    return `${rateLimit.ipKeyGenerator(req.ip)}:${normalizedEmail}`;
   },
 });
 
-app.post("/forgot-password", forgotPasswordEmailLimiter, async (req, res) => {
-  try {
-    const normalizedEmail = String(req.body.email || "").toLowerCase().trim();
-    if (!isValidEmailAddress(normalizedEmail)) {
-      return res.status(400).json({ error: "A valid email address is required" });
-    }
-
-    const user = await User.findOne({ email: normalizedEmail });
-
-    if (!user) {
-      return sendGenericAccountActionResponse(res);
-    }
-
-    const resetToken = generateVerificationToken();
-    user.passwordResetTokenHash = hashVerificationToken(resetToken);
-    user.passwordResetExpiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MINUTES * 60 * 1000);
-    user.passwordResetRequestedAt = new Date();
-    await user.save();
-
-    try {
-      await sendPasswordResetEmail(user.email, user.firstName, resetToken, resolveBaseUrl(req));
-    } catch (error) {
-      console.error("Password reset email delivery failed");
-    }
-
-    return sendGenericAccountActionResponse(res);
-  } catch (error) {
-    console.error("Error processing password reset request");
-    return res.status(500).json({ error: "Unable to process password reset request" });
-  }
-});
+app.post(
+  "/forgot-password",
+  forgotPasswordEmailLimiter,
+  accountActionHandlers.forgotPassword
+);
 
 app.post("/reset-password", passwordResetLimiter, async (req, res) => {
   try {

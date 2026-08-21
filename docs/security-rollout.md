@@ -27,11 +27,21 @@ it removes the database invariant.
 
 ## Authentication-version rollout
 
-Existing sessions serialize only a user ID and therefore fail the new versioned
-session check. Deployment intentionally forces a one-time login for every user.
-Password reset atomically consumes its token and increments `authVersion`, which
-revokes all sessions issued at an earlier version. Rollback must account for the
-new serialized Passport identity shape; do not roll back only the deserializer.
+Backfill legacy users before relying exclusively on the versioned session lookup:
+
+1. Run `npm run backfill-auth-version` against the intended database. The default
+   dry run reports how many users have no stored `authVersion`.
+2. Review the database target and backup, then run
+   `npm run backfill-auth-version -- --apply`.
+3. Re-run the dry run and require `remaining: 0` before completing rollout.
+
+In production, apply additionally requires
+`ALLOW_PRODUCTION_AUTH_VERSION_BACKFILL=1`. During the rolling deployment, a
+version-zero session may match a legacy missing field and atomically persists it
+as zero. Legacy ID-only sessions still fail closed. Password reset atomically
+consumes its token and increments `authVersion`, so every earlier version is
+revoked. Rollback must account for the serialized Passport identity shape; do
+not roll back only the deserializer.
 
 ## API and browser security changes
 
@@ -40,9 +50,18 @@ race is lost. Pause, Resume, and Stop return the same generic `409` when their
 required state no longer matches. No database error detail is returned.
 
 Registration, verification resend, and forgot-password requests with a validly
-formatted email all return `202` and the same one-field response. Email-delivery
-failures are recorded only as generic operational errors, and verified accounts
-are never sent redundant verification mail.
+formatted email all write the same encrypted MongoDB outbox record and return
+`202` with the same one-field response. Account lookup, token persistence, and
+email-provider I/O happen only after that response. Vercel `waitUntil` handles
+the immediate attempt, while the protected daily cron retries durable jobs. Set
+`CRON_SECRET` in every deployed environment; Vercel sends it as a Bearer token.
+Email-delivery failures are recorded only as generic operational codes, expired
+jobs are removed, and verified accounts are never sent redundant verification
+mail. Because production disables Mongoose auto-indexing, run
+`npm run setup-account-action-jobs` as a dry run, then use
+`npm run setup-account-action-jobs -- --apply`. Production apply additionally
+requires `ALLOW_PRODUCTION_ACCOUNT_ACTION_INDEX_SETUP=1`. Verify that neither
+`account_action_jobs_ready` nor `account_action_jobs_expiry` remains missing.
 
 The script policy now allows scripts only from the application origin and blocks
 all script attributes. Application startup must be smoke-tested after rollout by
