@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 /**
- * Records one uninterrupted focus block for a task.
+ * Records one focus block for a task, excluding any paused periods.
  * Sessions form an event log used by daily and weekly reflection analytics.
  */
 const FocusSessionSchema = new mongoose.Schema({
@@ -12,10 +12,12 @@ const FocusSessionSchema = new mongoose.Schema({
 
     startedAt: { type: Date, required: true },
     endedAt: { type: Date, default: null },
+    pausedAt: { type: Date, default: null },
+    totalPausedMs: { type: Number, default: 0, min: 0 },
 
     // Persist the calculated duration at stop time so historical analytics stay
     // stable and do not need to recompute each session on every request.
-    durationMs: { type: Number, default: 0 },
+    durationMs: { type: Number, default: 0, min: 0 },
 
 
     // The stop reason distinguishes completed work from manual or lifecycle stops.
@@ -32,5 +34,13 @@ const FocusSessionSchema = new mongoose.Schema({
 FocusSessionSchema.index({ userId: 1, startedAt: -1 });
 FocusSessionSchema.index({ userId: 1, taskId: 1, startedAt: -1 });
 FocusSessionSchema.index({ userId: 1, endedAt: 1 });
+FocusSessionSchema.index(
+    { userId: 1 },
+    {
+        name: "uniq_open_focus_session_per_user",
+        unique: true,
+        partialFilterExpression: { endedAt: null },
+    }
+);
 
 module.exports = mongoose.model("FocusSession", FocusSessionSchema);

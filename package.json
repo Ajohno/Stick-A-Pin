@@ -4,7 +4,9 @@
   "description": "WPI CS4241-C25 Assignment A2",
   "author": "",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test",
+    "repair-focus-sessions": "node scripts/repair-open-focus-sessions.js"
   },
   "dependencies": {
     "@material-tailwind/html": "^2.3.2",

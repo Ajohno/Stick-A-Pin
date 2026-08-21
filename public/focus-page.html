@@ -5,6 +5,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <script src="js/notification.js" defer></script>
+    <script src="js/duration-utils.js" defer></script>
     <script src="js/main.js" defer></script>
     <link rel="icon" type="image/png" href="/assets/image/donezo-logo.png" />
     <link
@@ -123,6 +124,16 @@
             <div class="focus-controls">
               <button id="focusStartBtn" class="paper-button" type="button">
                 Start
+              </button>
+              <button
+                id="focusPauseBtn"
+                class="paper-button"
+                type="button"
+                aria-label="Pause focus session"
+                hidden
+                disabled
+              >
+                Pause
               </button>
               <button
                 id="focusStopBtn"

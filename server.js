@@ -20,8 +20,16 @@ const bcrypt = require("bcryptjs"); // Used to hash passwords
 const User = require("./config/models/user"); // User model for the database
 const Task = require("./config/models/task"); // Task model for the database
 const FocusSession = require("./config/models/focusSession"); // FocusSession model for tracking focus sessions
+const DurationUtils = require("./public/js/duration-utils");
+const {
+  FOCUS_STATE_CONFLICT,
+  openFocusSessionFilter,
+  buildStopPipeline,
+  buildResumePipeline,
+} = require("./config/focus-session-atomic");
 const FeedbackReport = require("./config/models/feedbackReport"); // Feedback report model for durable rate limiting
 const InboundEmail = require("./config/models/inboundEmail"); // Resend inbound email storage
+const { genericAccountActionResponse } = require("./config/account-action-response");
 const csrf = require("lusca").csrf; // CSRF protection middleware
 const MongoStore = require("connect-mongo").default; // Store sessions in MongoDB
 
@@ -33,9 +41,9 @@ const app = express();
 
 // Apply Helmet before sessions, CSRF, routes, and static file serving so every
 // response gets baseline security headers. The CSP intentionally allows current
-// inline styles/handlers while restricting sources to this app, Google Fonts,
-// Font Awesome, jsDelivr assets, and Vercel Analytics; tighten unsafe-inline
-// after replacing inline attributes in the static frontend.
+// inline styles while scripts are restricted to external same-origin files.
+// Google Fonts, Font Awesome CSS, jsDelivr assets, and Vercel Analytics are
+// listed only in the directives that require them.
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -45,8 +53,8 @@ app.use(
         formAction: ["'self'"],
         frameAncestors: ["'self'"],
         objectSrc: ["'none'"],
-        scriptSrc: ["'self'", "'unsafe-inline'", "https://kit.fontawesome.com", "https://cdn.jsdelivr.net"],
-        scriptSrcAttr: ["'unsafe-inline'"],
+        scriptSrc: ["'self'"],
+        scriptSrcAttr: ["'none'"],
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdn.jsdelivr.net"],
         styleSrcAttr: ["'unsafe-inline'"],
         fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdn.jsdelivr.net", "https://ka-f.fontawesome.com", "data:"],
@@ -207,7 +215,12 @@ function ensureAuthenticated(req, res, next) {
     if (req.isAuthenticated()) {
         return next(); // If the user is authenticated, continue to the route
     }
-    res.status(401).json({ error: "Unauthorized - Please log in" });
+    const reject = () => {
+      clearSessionCookie(res);
+      return res.status(401).json({ error: "Unauthorized - Please log in" });
+    };
+    if (!req.session) return reject();
+    return req.session.destroy(() => reject());
 }
 
 // Apply after ensureAuthenticated so unauthenticated probes return 401 without consuming
@@ -520,23 +533,6 @@ function isValidTimeInput(value) {
   return typeof value === "string" && /^([01]\d|2[0-3]):([0-5]\d)$/.test(value);
 }
 
-function formatDurationFromMs(durationMs) {
-  const safeDurationMs = Math.max(0, Number(durationMs) || 0);
-  const totalMinutes = Math.floor(safeDurationMs / 60000);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-
-  if (hours === 0) {
-    return `${minutes}m`;
-  }
-
-  if (minutes === 0) {
-    return `${hours}h`;
-  }
-
-  return `${hours}h ${minutes}m`;
-}
-
 function escapeHtml(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")
@@ -654,6 +650,12 @@ function formatSignedDelta(value) {
   return String(numeric);
 }
 
+function formatSignedDuration(durationMs) {
+  const numeric = Number(durationMs) || 0;
+  const sign = numeric > 0 ? "+" : numeric < 0 ? "-" : "";
+  return `${sign}${DurationUtils.formatDuration(Math.abs(numeric))}`;
+}
+
 async function buildDailySummary(userId, daysAgo = 0, includeTaskNames = false) {
   const { start, end } = getDayBounds(daysAgo);
 
@@ -670,7 +672,7 @@ async function buildDailySummary(userId, daysAgo = 0, includeTaskNames = false) 
     }).select("durationMs"),
   ]);
 
-  const totalFocusMs = sessions.reduce((sum, session) => sum + (Number(session.durationMs) || 0), 0);
+  const totalFocusMs = DurationUtils.sumDurationMs(sessions);
 
   return {
     dateLabel: start.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }),
@@ -726,14 +728,14 @@ async function sendDailyReflectionEmail(user, emailData) {
         <p>Hi ${escapeHtml(user.firstName || "there")},</p>
         <p>Here is your daily performance trend for ${escapeHtml(emailData.dateLabel)}.</p>
         <p><strong>Today you completed:</strong> ${escapeHtml(String(emailData.completedCount))} task(s)</p>
-        <p><strong>Today you focused for:</strong> ${escapeHtml(formatDurationFromMs(emailData.totalFocusMs))}</p>
+        <p><strong>Today you focused for:</strong> ${escapeHtml(DurationUtils.formatDuration(emailData.totalFocusMs))}</p>
         <p><strong>Completed tasks today:</strong></p>
         ${tasksHtml}
         <hr />
         <p><strong>Trend vs ${escapeHtml(emailData.trend.yesterdayLabel)}:</strong></p>
         <ul>
           <li>Tasks completed: ${escapeHtml(formatSignedDelta(emailData.trend.completedVsYesterday))}</li>
-          <li>Focus time: ${escapeHtml(formatSignedDelta(Math.round(emailData.trend.focusVsYesterdayMs / 60000)))} min</li>
+          <li>Focus time: ${escapeHtml(formatSignedDuration(emailData.trend.focusVsYesterdayMs))}</li>
         </ul>
       `,
     }),
@@ -1009,68 +1011,73 @@ function validatePasswordStrength(password) {
   return minLength && hasUpper && hasLower && hasNumber;
 }
 
+const isValidEmailAddress = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+const sendGenericAccountActionResponse = (res) => {
+  const response = genericAccountActionResponse();
+  return res.status(response.status).json(response.body);
+};
+
 app.post("/register", localAuthLimiter, async (req, res) => {
   try {
     const { firstName, lastName, email, password } = req.body;
-
     if (!firstName || !lastName || !email || !password) {
       return res.status(400).json({ error: "Missing required fields" });
     }
-
-    const normalizedEmail = email.toLowerCase().trim();
-    const existingUser = await User.findOne({ email: normalizedEmail });
-    if (existingUser) return res.status(400).json({ error: "Email already exists" });
-
+    const normalizedEmail = String(email).toLowerCase().trim();
+    if (!isValidEmailAddress(normalizedEmail)) {
+      return res.status(400).json({ error: "A valid email address is required" });
+    }
     if (!validatePasswordStrength(password)) {
       return res.status(400).json({
         error: "Password must be at least 12 characters and include uppercase, lowercase, and a number.",
       });
     }
 
+    // Hash before the account lookup so valid registration requests perform the
+    // same expensive password work regardless of whether the address exists.
     const passwordHash = await bcrypt.hash(password, 10);
+    let user = await User.findOne({ email: normalizedEmail });
+    let verificationToken = null;
 
-    const verificationToken = generateVerificationToken();
-    const verificationTokenHash = hashVerificationToken(verificationToken);
-    const emailVerificationExpiresAt = new Date(Date.now() + EMAIL_VERIFICATION_TTL_MINUTES * 60 * 1000);
-
-    await User.create({
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      email: normalizedEmail,
-      passwordHash,
-      emailVerified: false,
-      emailVerificationTokenHash: verificationTokenHash,
-      emailVerificationExpiresAt,
-    });
-
-    try {
-      await sendVerificationEmail(normalizedEmail, firstName.trim(), verificationToken, resolveBaseUrl(req));
-      return res.status(201).json({ message: "Registration successful. Check your email to verify your account." });
-    } catch (emailError) {
-      console.error("Verification email delivery failed after registration:", emailError);
-      return res.status(201).json({
-        message: "Registration successful, but we could not send the verification email yet. Please use resend verification from the verification page.",
-        emailDeliveryFailed: true,
-      });
-    }
-  } catch (error) {
-    console.error("Error registering user:", error);
-
-    if (error && error.code === 11000) {
-      const duplicateFields = Object.keys(error.keyPattern || {});
-      const duplicateField = duplicateFields[0] || Object.keys(error.keyValue || {})[0] || "field";
-
-      if (duplicateField === "email") {
-        return res.status(400).json({ error: "Email already exists" });
+    if (!user) {
+      verificationToken = generateVerificationToken();
+      try {
+        user = await User.create({
+          firstName: String(firstName).trim(),
+          lastName: String(lastName).trim(),
+          email: normalizedEmail,
+          passwordHash,
+          emailVerified: false,
+          emailVerificationTokenHash: hashVerificationToken(verificationToken),
+          emailVerificationExpiresAt: new Date(Date.now() + EMAIL_VERIFICATION_TTL_MINUTES * 60 * 1000),
+        });
+      } catch (error) {
+        if (error?.code !== 11000) throw error;
+        user = await User.findOne({ email: normalizedEmail });
+        verificationToken = null;
       }
-
-      return res.status(400).json({ error: `A duplicate value exists for ${duplicateField}` });
+    } else if (user.emailVerified === false) {
+      verificationToken = generateVerificationToken();
+      user = await User.findOneAndUpdate(
+        { _id: user._id, emailVerified: false },
+        { $set: {
+          emailVerificationTokenHash: hashVerificationToken(verificationToken),
+          emailVerificationExpiresAt: new Date(Date.now() + EMAIL_VERIFICATION_TTL_MINUTES * 60 * 1000),
+        } },
+        { new: true },
+      );
     }
 
-    if (error && error.name === "ValidationError") {
-      return res.status(400).json({ error: "Invalid registration data" });
+    if (user?.emailVerified === false && verificationToken) {
+      try {
+        await sendVerificationEmail(user.email, user.firstName, verificationToken, resolveBaseUrl(req));
+      } catch (error) {
+        console.error("Verification email delivery failed");
+      }
     }
-
+    return sendGenericAccountActionResponse(res);
+  } catch (error) {
+    console.error("Error processing registration");
     return res.status(500).json({ error: "Server error while registering user" });
   }
 });
@@ -1111,32 +1118,30 @@ app.get("/verify-email", emailVerificationLimiter, async (req, res) => {
 
 app.post("/resend-verification", emailVerificationLimiter, async (req, res) => {
   try {
-    const normalizedEmail = (req.body.email || "").toLowerCase().trim();
-    if (!normalizedEmail) {
-      return res.status(400).json({ error: "Email is required" });
+    const normalizedEmail = String(req.body.email || "").toLowerCase().trim();
+    if (!isValidEmailAddress(normalizedEmail)) {
+      return res.status(400).json({ error: "A valid email address is required" });
     }
-
-    const user = await User.findOne({ email: normalizedEmail });
-
-    if (!user) {
-      return res.json({ message: "If that account exists, a verification email has been sent." });
-    }
-
-    if (user.emailVerified !== false) {
-      return res.json({ message: "Your email is already verified." });
-    }
-
     const verificationToken = generateVerificationToken();
-    user.emailVerificationTokenHash = hashVerificationToken(verificationToken);
-    user.emailVerificationExpiresAt = new Date(Date.now() + EMAIL_VERIFICATION_TTL_MINUTES * 60 * 1000);
-    await user.save();
-
-    await sendVerificationEmail(user.email, user.firstName, verificationToken, resolveBaseUrl(req));
-
-    return res.json({ message: "Verification email sent." });
+    const user = await User.findOneAndUpdate(
+      { email: normalizedEmail, emailVerified: false },
+      { $set: {
+        emailVerificationTokenHash: hashVerificationToken(verificationToken),
+        emailVerificationExpiresAt: new Date(Date.now() + EMAIL_VERIFICATION_TTL_MINUTES * 60 * 1000),
+      } },
+      { new: true },
+    );
+    if (user) {
+      try {
+        await sendVerificationEmail(user.email, user.firstName, verificationToken, resolveBaseUrl(req));
+      } catch (error) {
+        console.error("Verification email delivery failed");
+      }
+    }
+    return sendGenericAccountActionResponse(res);
   } catch (error) {
-    console.error("Error resending verification email:", error);
-    return res.status(500).json({ error: "Unable to resend verification email" });
+    console.error("Error processing verification request");
+    return res.status(500).json({ error: "Unable to process verification request" });
   }
 });
 
@@ -1158,15 +1163,15 @@ const forgotPasswordEmailLimiter = rateLimit({
 
 app.post("/forgot-password", forgotPasswordEmailLimiter, async (req, res) => {
   try {
-    const normalizedEmail = (req.body.email || "").toLowerCase().trim();
-    if (!normalizedEmail) {
-      return res.status(400).json({ error: "Email is required" });
+    const normalizedEmail = String(req.body.email || "").toLowerCase().trim();
+    if (!isValidEmailAddress(normalizedEmail)) {
+      return res.status(400).json({ error: "A valid email address is required" });
     }
 
     const user = await User.findOne({ email: normalizedEmail });
 
     if (!user) {
-      return res.json({ message: "If that account exists, a password reset email has been sent." });
+      return sendGenericAccountActionResponse(res);
     }
 
     const resetToken = generateVerificationToken();
@@ -1175,11 +1180,15 @@ app.post("/forgot-password", forgotPasswordEmailLimiter, async (req, res) => {
     user.passwordResetRequestedAt = new Date();
     await user.save();
 
-    await sendPasswordResetEmail(user.email, user.firstName, resetToken, resolveBaseUrl(req));
+    try {
+      await sendPasswordResetEmail(user.email, user.firstName, resetToken, resolveBaseUrl(req));
+    } catch (error) {
+      console.error("Password reset email delivery failed");
+    }
 
-    return res.json({ message: "If that account exists, a password reset email has been sent." });
+    return sendGenericAccountActionResponse(res);
   } catch (error) {
-    console.error("Error requesting password reset:", error);
+    console.error("Error processing password reset request");
     return res.status(500).json({ error: "Unable to process password reset request" });
   }
 });
@@ -1202,25 +1211,32 @@ app.post("/reset-password", passwordResetLimiter, async (req, res) => {
 
     const tokenHash = hashVerificationToken(token);
 
-    const user = await User.findOne({
-      email: normalizedEmail,
-      passwordResetTokenHash: tokenHash,
-      passwordResetExpiresAt: { $gt: new Date() },
-    });
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    const user = await User.findOneAndUpdate(
+      {
+        email: normalizedEmail,
+        passwordResetTokenHash: tokenHash,
+        passwordResetExpiresAt: { $gt: new Date() },
+      },
+      {
+        $set: {
+          passwordHash,
+          passwordResetTokenHash: null,
+          passwordResetExpiresAt: null,
+          passwordResetRequestedAt: null,
+        },
+        $inc: { authVersion: 1 },
+      },
+      { new: true, runValidators: true },
+    );
 
     if (!user) {
       return res.status(400).json({ error: "This password reset link is invalid or expired." });
     }
 
-    user.passwordHash = await bcrypt.hash(newPassword, 10);
-    user.passwordResetTokenHash = null;
-    user.passwordResetExpiresAt = null;
-    user.passwordResetRequestedAt = null;
-    await user.save();
-
     return res.json({ message: "Password reset successful. You can now log in." });
   } catch (error) {
-    console.error("Error resetting password:", error);
+    console.error("Error resetting password");
     return res.status(500).json({ error: "Unable to reset password" });
   }
 });
@@ -1379,21 +1395,14 @@ function toFocusSessionResponse(session, { resolvedTaskDescription = null } = {}
     startedAt: session.startedAt,
     endedAt: session.endedAt,
     durationMs: session.durationMs || 0,
+    pausedAt: session.pausedAt || null,
+    totalPausedMs: Math.max(0, Number(session.totalPausedMs) || 0),
+    timerState: session.endedAt ? "ended" : session.pausedAt ? "paused" : "running",
+    serverNow: new Date(),
     endedReason: session.endedReason
   };
 }
 
-function computeFocusSessionDurationMs(session, now = new Date()) {
-  const storedDuration = Number(session?.durationMs);
-  if (Number.isFinite(storedDuration) && storedDuration > 0) return storedDuration;
-
-  const startedAt = new Date(session?.startedAt).getTime();
-  const endedAt = session?.endedAt
-    ? new Date(session.endedAt).getTime()
-    : new Date(now).getTime();
-  const calculated = endedAt - startedAt;
-  return Number.isFinite(calculated) && calculated > 0 ? calculated : 0;
-}
 
 // Task CRUD APIs are logged-in user-data routes protected by explicit auth and rate-limit middleware.
 app.post("/tasks", apiProbeLimiter, ensureAuthenticated, userApiLimiter, async (req, res) => {
@@ -1539,85 +1548,97 @@ app.delete("/tasks/:taskId", apiProbeLimiter, ensureAuthenticated, userApiLimite
 app.post("/focus-sessions/start", apiProbeLimiter, ensureAuthenticated, userApiLimiter, async (req, res) => {
   try {
     const taskId = String(req.body.taskId || "").trim();
-    if (!taskId) {
-      return res.status(400).json({ error: "taskId is required" });
-    }
-    if (!/^[a-f\d]{24}$/i.test(taskId)) {
-      return res.status(400).json({ error: "Invalid taskId format" });
-    }
+    if (!taskId) return res.status(400).json({ error: "taskId is required" });
+    if (!/^[a-f\d]{24}$/i.test(taskId)) return res.status(400).json({ error: "Invalid taskId format" });
 
     const task = await Task.findOne(visibleTaskFilter(req.user.id, { _id: taskId }));
-    if (!task) {
-      return res.status(404).json({ error: "Task not found" });
-    }
-    if (task.status !== "active") {
-      return res.status(400).json({ error: "Only active tasks can be focused." });
-    }
+    if (!task) return res.status(404).json({ error: "Task not found" });
+    if (task.status !== "active") return res.status(400).json({ error: "Only active tasks can be focused." });
 
-    const now = new Date();
-
-    // Ensure one running session per user.
-    const openSession = await FocusSession.findOne({
-      userId: req.user.id,
-      endedAt: null
-    }).sort({ startedAt: -1 });
-
-    if (openSession) {
-      openSession.endedAt = now;
-      openSession.durationMs = Math.max(0, now.getTime() - new Date(openSession.startedAt).getTime());
-      openSession.endedReason = "manual_stop";
-      await openSession.save();
+    if (await FocusSession.exists(openFocusSessionFilter(req.user.id))) {
+      return res.status(409).json(FOCUS_STATE_CONFLICT);
     }
 
     const created = await FocusSession.create({
       userId: req.user.id,
       taskId: task._id,
       taskDescriptionSnapshot: task.description,
-      startedAt: now
+      startedAt: new Date(),
+      pausedAt: null,
+      totalPausedMs: 0,
+      endedAt: null,
+      durationMs: 0,
     });
-
-    return res.status(201).json(toFocusSessionResponse(created, {
-      resolvedTaskDescription: task.description,
-    }));
+    return res.status(201).json(toFocusSessionResponse(created, { resolvedTaskDescription: task.description }));
   } catch (err) {
-    console.error("Error starting focus session:", err);
+    if (err?.code === 11000) return res.status(409).json(FOCUS_STATE_CONFLICT);
+    console.error("Error starting focus session");
     return res.status(500).json({ error: "Server error while starting focus session" });
   }
 });
 
-// Stop the active focus session
 app.post("/focus-sessions/stop", apiProbeLimiter, ensureAuthenticated, userApiLimiter, async (req, res) => {
   try {
     const validReasons = new Set(["completed_task", "manual_stop", "timeout", "app_closed"]);
     const requestedReason = String(req.body.reason || "manual_stop");
     const endedReason = validReasons.has(requestedReason) ? requestedReason : "manual_stop";
+    const now = new Date();
+    const stopped = await FocusSession.findOneAndUpdate(
+      openFocusSessionFilter(req.user.id),
+      buildStopPipeline(now, endedReason),
+      { new: true },
+    );
+    if (!stopped) return res.status(409).json(FOCUS_STATE_CONFLICT);
 
-    const openSession = await FocusSession.findOne({
-      userId: req.user.id,
-      endedAt: null
-    }).sort({ startedAt: -1 });
-
-    if (!openSession) {
-      return res.status(404).json({ error: "No active focus session to stop." });
-    }
-
-    const endedAt = new Date();
-    openSession.endedAt = endedAt;
-    openSession.durationMs = Math.max(0, endedAt.getTime() - new Date(openSession.startedAt).getTime());
-    openSession.endedReason = endedReason;
-    await openSession.save();
-
-    const task = await Task.findOne({
-      _id: getFocusSessionTaskId(openSession),
-      userId: req.user.id,
-    }).select("description");
-
-    return res.json(toFocusSessionResponse(openSession, {
-      resolvedTaskDescription: task?.description,
-    }));
+    const task = await Task.findOne({ _id: getFocusSessionTaskId(stopped), userId: req.user.id }).select("description");
+    return res.json(toFocusSessionResponse(stopped, { resolvedTaskDescription: task?.description }));
   } catch (err) {
-    console.error("Error stopping focus session:", err);
+    console.error("Error stopping focus session");
     return res.status(500).json({ error: "Server error while stopping focus session" });
+  }
+});
+
+app.get("/focus-sessions/active", apiProbeLimiter, ensureAuthenticated, userApiLimiter, async (req, res) => {
+  try {
+    const activeSessions = await FocusSession.find(openFocusSessionFilter(req.user.id)).limit(2);
+    if (activeSessions.length > 1) return res.status(409).json(FOCUS_STATE_CONFLICT);
+    if (!activeSessions.length) return res.status(204).end();
+    return res.json(toFocusSessionResponse(activeSessions[0]));
+  } catch (err) {
+    console.error("Error restoring focus session");
+    return res.status(500).json({ error: "Server error while restoring focus session" });
+  }
+});
+
+app.post("/focus-sessions/pause", apiProbeLimiter, ensureAuthenticated, userApiLimiter, async (req, res) => {
+  try {
+    const now = new Date();
+    const active = await FocusSession.findOneAndUpdate(
+      { ...openFocusSessionFilter(req.user.id), $or: [{ pausedAt: null }, { pausedAt: { $exists: false } }] },
+      { $set: { pausedAt: now, updatedAt: now } },
+      { new: true },
+    );
+    if (!active) return res.status(409).json(FOCUS_STATE_CONFLICT);
+    return res.json(toFocusSessionResponse(active));
+  } catch (err) {
+    console.error("Error pausing focus session");
+    return res.status(500).json({ error: "Server error while pausing focus session" });
+  }
+});
+
+app.post("/focus-sessions/resume", apiProbeLimiter, ensureAuthenticated, userApiLimiter, async (req, res) => {
+  try {
+    const now = new Date();
+    const resumed = await FocusSession.findOneAndUpdate(
+      { ...openFocusSessionFilter(req.user.id), pausedAt: { $type: "date" } },
+      buildResumePipeline(now),
+      { new: true },
+    );
+    if (!resumed) return res.status(409).json(FOCUS_STATE_CONFLICT);
+    return res.json(toFocusSessionResponse(resumed));
+  } catch (err) {
+    console.error("Error resuming focus session");
+    return res.status(500).json({ error: "Server error while resuming focus session" });
   }
 });
 
@@ -1681,14 +1702,14 @@ app.get("/reflection-stats", apiProbeLimiter, ensureAuthenticated, userApiLimite
       FocusSession.find({
         userId: req.user.id,
         startedAt: { $gte: from, $lt: to },
-      }).select("taskId startedAt endedAt durationMs"),
+      }).select("taskId startedAt endedAt durationMs pausedAt totalPausedMs"),
     ]);
     const tasksFocused = new Set(
       sessions.map(getFocusSessionTaskId).filter(Boolean).map(String),
     ).size;
     const now = new Date();
     const totalFocusMs = sessions.reduce(
-      (total, session) => total + computeFocusSessionDurationMs(session, now),
+      (total, session) => total + DurationUtils.calculateElapsedMs(session, now),
       0,
     );
 
@@ -1956,7 +1977,15 @@ app.put("/settings/board-preferences", apiProbeLimiter, ensureAuthenticated, use
 
 // Route to check user authentication status
 app.get("/auth-status", (req, res) => {
-  if (!req.isAuthenticated()) return res.json({ loggedIn: false });
+  if (!req.isAuthenticated()) {
+    if (req.session?.passport?.user) {
+      return req.session.destroy(() => {
+        clearSessionCookie(res);
+        return res.json({ loggedIn: false });
+      });
+    }
+    return res.json({ loggedIn: false });
+  }
 
   return res.json({
     loggedIn: true,

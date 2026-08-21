@@ -8,6 +8,7 @@
 const LocalStrategy = require("passport-local").Strategy;
 const bcrypt = require("bcryptjs");
 const User = require("./models/user");
+const { toSessionIdentity, parseSessionIdentity } = require("./auth-version");
 
 /** Normalize user-supplied email addresses before lookup or persistence. */
 function normalizeEmail(value) {
@@ -231,15 +232,19 @@ module.exports = function (passport) {
     );
   }
 
-  // Store only the database ID in the session cookie-backed record; reload the
-  // current user on each authenticated request so profile changes take effect.
+  // Including the credential version makes password resets revoke every older
+  // local and OAuth session on its next authenticated request.
   passport.serializeUser((user, done) => {
-    done(null, user.id);
+    const identity = toSessionIdentity(user);
+    done(identity ? null : new Error("Invalid authentication version"), identity);
   });
 
-  passport.deserializeUser(async (id, done) => {
+  passport.deserializeUser(async (sessionIdentity, done) => {
     try {
-      const user = await User.findById(id);
+      const identity = parseSessionIdentity(sessionIdentity);
+      if (!identity) return done(null, false);
+      const { id, authVersion } = identity;
+      const user = await User.findOne({ _id: id, authVersion });
       done(null, user);
     } catch (err) {
       done(err);
