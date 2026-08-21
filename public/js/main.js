@@ -37,6 +37,51 @@ function notify(message, type = "error", duration = 3200) {
 
 
 let csrfTokenPromise = null;
+let authStatusPromise = null;
+let authRedirectStarted = false;
+let authenticatedUser = null;
+
+const PROTECTED_PAGE_PATHS = new Set([
+  "/dashboard.html",
+  "/calendar-page.html",
+  "/focus-page.html",
+  "/profile-page.html",
+  "/settings-page.html",
+  "/feedback-page.html",
+]);
+
+function isProtectedPagePath(pathname = window.location.pathname) {
+  return PROTECTED_PAGE_PATHS.has(pathname);
+}
+
+function redirectToLoginOnce() {
+  if (authRedirectStarted || !isProtectedPagePath()) return;
+  authRedirectStarted = true;
+  const next = `${window.location.pathname}${window.location.search}`;
+  window.location.replace(`/login.html?${new URLSearchParams({ next })}`);
+}
+
+function getSafeNextPath(value) {
+  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
+    return null;
+  }
+  try {
+    const parsed = new URL(value, window.location.origin);
+    const isAuthenticationPage = new Set([
+      "/login.html",
+      "/register.html",
+      "/forgot-password.html",
+      "/reset-password.html",
+      "/verification-status.html",
+      "/verification-success.html",
+    ]).has(parsed.pathname);
+    return parsed.origin === window.location.origin && !isAuthenticationPage
+      ? `${parsed.pathname}${parsed.search}${parsed.hash}`
+      : null;
+  } catch (error) {
+    return null;
+  }
+}
 
 function shouldAttachCsrf(method = "GET") {
   const normalizedMethod = String(method || "GET").toUpperCase();
@@ -80,6 +125,13 @@ async function apiFetch(url, options = {}, retryOnCsrfFailure = true) {
     headers,
   });
 
+  if (response.status === 401 && isProtectedPagePath()) {
+    redirectToLoginOnce();
+    // Navigation tears down this page. Keeping callers pending prevents each
+    // page widget from treating the expected sign-out as an application error.
+    return new Promise(() => {});
+  }
+
   if (response.status === 403 && shouldAttachCsrf(method) && retryOnCsrfFailure) {
     // A session rotation can invalidate a cached token. Refresh once only so a
     // persistent authorization failure cannot recurse indefinitely.
@@ -98,6 +150,11 @@ const focusState = {
   taskId: null,
   sessionId: null,
   startedAt: null,
+  pausedAt: null,
+  totalPausedMs: 0,
+  isPaused: false,
+  serverClockOffsetMs: 0,
+  transitionPending: false,
   timerIntervalId: null,
   timerEl: null,
   sessionCardEl: null,
@@ -261,6 +318,16 @@ function getFocusSessionCardEl() {
   return null;
 }
 
+function getFocusWidgetElementById(id) {
+  const sessionCard = getFocusSessionCardEl();
+  const fromSessionCard = sessionCard?.querySelector(`#${id}`);
+  if (fromSessionCard) return fromSessionCard;
+
+  return document.getElementById(id)
+    || focusState.pipWindow?.document?.getElementById(id)
+    || null;
+}
+
 function renderFocusTimer() {
   const timerEl = getFocusTimerEl();
   if (!timerEl) return;
@@ -270,8 +337,12 @@ function renderFocusTimer() {
     return;
   }
 
-  const elapsedSeconds = Math.floor((Date.now() - focusState.startedAt) / 1000);
-  timerEl.textContent = formatFocusDuration(elapsedSeconds);
+  const elapsedMs = DurationUtils.calculateElapsedMs({
+    startedAt: focusState.startedAt,
+    pausedAt: focusState.pausedAt,
+    totalPausedMs: focusState.totalPausedMs,
+  }, Date.now() + focusState.serverClockOffsetMs);
+  timerEl.textContent = DurationUtils.formatTimer(elapsedMs);
 }
 
 function startFocusTimer() {
@@ -279,6 +350,7 @@ function startFocusTimer() {
     window.clearInterval(focusState.timerIntervalId);
   }
   renderFocusTimer();
+  if (focusState.isPaused) return;
   focusState.timerIntervalId = window.setInterval(renderFocusTimer, 1000);
 }
 
@@ -294,8 +366,8 @@ function isDocumentPictureInPictureSupported() {
 }
 
 function updateFocusPiPToggleButton() {
-  const toggleBtn = document.getElementById("focusPiPToggleBtn");
-  const iconEl = document.getElementById("focusPiPIcon");
+  const toggleBtn = getFocusWidgetElementById("focusPiPToggleBtn");
+  const iconEl = getFocusWidgetElementById("focusPiPIcon");
   if (!toggleBtn || !iconEl) return;
 
   const isRunning = Boolean(focusState.taskId && focusState.startedAt);
@@ -386,7 +458,7 @@ async function openFocusWidgetInPiP() {
 
     focusState.pipWindow = pipWindow;
     focusState.isInPiP = true;
-    const startBtn = document.getElementById("focusStartBtn");
+    const startBtn = getFocusWidgetElementById("focusStartBtn");
     if (startBtn) startBtn.hidden = true;
     updateFocusPiPToggleButton();
     updateFocusModeControls({
@@ -530,7 +602,7 @@ function showFocusQuoteByCategory(category) {
 
 function scheduleSessionNudges() {
   clearFocusQuoteTimers();
-  if (!focusState.startedAt || !focusState.taskId) return;
+  if (!focusState.startedAt || !focusState.taskId || focusState.isPaused) return;
 
   const milestones = [
     { offsetMs: 2 * 60 * 1000, message: focusQuotes.timed.twoMinutes },
@@ -539,7 +611,12 @@ function scheduleSessionNudges() {
   ];
 
   milestones.forEach(({ offsetMs, message }) => {
-    const remainingMs = focusState.startedAt + offsetMs - Date.now();
+    const activeElapsedMs = DurationUtils.calculateElapsedMs({
+      startedAt: focusState.startedAt,
+      pausedAt: focusState.pausedAt,
+      totalPausedMs: focusState.totalPausedMs,
+    }, Date.now() + focusState.serverClockOffsetMs);
+    const remainingMs = offsetMs - activeElapsedMs;
     if (remainingMs <= 0) return;
 
     const timeoutId = window.setTimeout(() => {
@@ -579,6 +656,17 @@ function getFocusTasksByFilter(tasks, filter) {
   });
 }
 
+function selectFilterForFocusedTask(tasks, selectedFilter, focusedTaskId) {
+  const focusedTask = (Array.isArray(tasks) ? tasks : []).find((task) =>
+    task.status === "active" && String(task._id) === String(focusedTaskId));
+  if (!focusedTask) return null;
+
+  const selectedFilterContainsTask = getFocusTasksByFilter(tasks, selectedFilter)
+    .some((task) => String(task._id) === String(focusedTaskId));
+  if (selectedFilterContainsTask) return selectedFilter;
+  return focusedTask.isBigThree ? "big-three" : "task-list";
+}
+
 function updateFocusFilterTabs(selectedFilter, { running = false } = {}) {
   const tabButtons = document.querySelectorAll(".focus-task-tab");
   if (!tabButtons.length) return;
@@ -615,10 +703,10 @@ function bindFocusFilterTabs() {
 function updateFocusModeControls({ running, hasTask } = {}) {
   const selectEl = document.getElementById("focusTaskSelect");
   const taskListEl = document.getElementById("focusTaskList");
-  const startBtn = document.getElementById("focusStartBtn");
-  const pipToggleBtn = document.getElementById("focusPiPToggleBtn");
-  const stopBtn = document.getElementById("focusStopBtn");
-  const completeBtn = document.getElementById("focusCompleteBtn");
+  const startBtn = getFocusWidgetElementById("focusStartBtn");
+  const stopBtn = getFocusWidgetElementById("focusStopBtn");
+  const completeBtn = getFocusWidgetElementById("focusCompleteBtn");
+  const pauseBtn = getFocusWidgetElementById("focusPauseBtn");
   if (selectEl) selectEl.disabled = running;
   if (taskListEl) {
     taskListEl.setAttribute(
@@ -639,11 +727,17 @@ function updateFocusModeControls({ running, hasTask } = {}) {
   updateFocusPiPToggleButton();
   if (stopBtn) {
     stopBtn.hidden = !Boolean(running);
-    stopBtn.disabled = !Boolean(running);
+    stopBtn.disabled = !Boolean(running) || focusState.transitionPending;
   }
   if (completeBtn) {
     completeBtn.hidden = !Boolean(running);
-    completeBtn.disabled = !Boolean(running);
+    completeBtn.disabled = !Boolean(running) || focusState.transitionPending;
+  }
+  if (pauseBtn) {
+    pauseBtn.hidden = !Boolean(running);
+    pauseBtn.disabled = !Boolean(running) || focusState.transitionPending;
+    pauseBtn.textContent = focusState.isPaused ? "Resume" : "Pause";
+    pauseBtn.setAttribute("aria-label", focusState.isPaused ? "Resume focus session" : "Pause focus session");
   }
 }
 
@@ -765,17 +859,17 @@ function updateFocusTaskOptions(tasks) {
   });
 }
 
-async function loadFocusTasks() {
+async function loadFocusTasks({ render = true } = {}) {
   const response = await apiFetch("/tasks", { credentials: "include" });
   if (!response.ok) {
     focusState.allTasks = [];
-    updateFocusTaskOptions([]);
+    if (render) updateFocusTaskOptions([]);
     return [];
   }
 
   const tasks = await response.json();
   focusState.allTasks = Array.isArray(tasks) ? tasks : [];
-  updateFocusTaskOptions(focusState.allTasks);
+  if (render) updateFocusTaskOptions(focusState.allTasks);
   return focusState.allTasks;
 }
 
@@ -799,21 +893,6 @@ function getTodayIsoRange() {
   return { from: start.toISOString(), to: end.toISOString() };
 }
 
-function computeSessionDurationMs(session) {
-  const explicitDurationMs = Number(session?.durationMs);
-  if (Number.isFinite(explicitDurationMs) && explicitDurationMs > 0) {
-    return explicitDurationMs;
-  }
-
-  const startedAt = new Date(session?.startedAt || 0);
-  if (Number.isNaN(startedAt.getTime())) return 0;
-
-  const endedAt = session?.endedAt ? new Date(session.endedAt) : new Date();
-  if (Number.isNaN(endedAt.getTime())) return 0;
-
-  return Math.max(0, endedAt.getTime() - startedAt.getTime());
-}
-
 function summarizeDailyFocusSessions(sessions) {
   const totalsByTask = new Map();
 
@@ -835,7 +914,7 @@ function summarizeDailyFocusSessions(sessions) {
 
     const entry = totalsByTask.get(taskId);
     entry.sessions += 1;
-    entry.durationMs += computeSessionDurationMs(session);
+    entry.durationMs += DurationUtils.calculateElapsedMs(session);
   });
 
   return Array.from(totalsByTask.values()).sort((a, b) => {
@@ -843,11 +922,6 @@ function summarizeDailyFocusSessions(sessions) {
     if (b.sessions !== a.sessions) return b.sessions - a.sessions;
     return a.taskDescription.localeCompare(b.taskDescription);
   });
-}
-
-function formatSessionMinutes(durationMs) {
-  const minutes = Math.max(1, Math.round((Number(durationMs) || 0) / 60000));
-  return `${minutes} min`;
 }
 
 async function updateFocusLogWidget() {
@@ -892,7 +966,7 @@ async function updateFocusLogWidget() {
 
       const meta = document.createElement("span");
       meta.className = "focus-log-item-meta";
-      meta.textContent = `${entry.sessions} ${sessionLabel} - ${formatSessionMinutes(entry.durationMs)}`;
+      meta.textContent = `${entry.sessions} ${sessionLabel} - ${DurationUtils.formatDuration(entry.durationMs)}`;
 
       item.append(title, meta);
       list.appendChild(item);
@@ -908,7 +982,12 @@ async function updateFocusLogWidget() {
 
 async function stopFocusSession(reason = "manual_stop") {
   const statusEl = document.getElementById("focus-status");
-  const isRunning = Boolean(focusState.taskId);
+  if (!focusState.taskId || focusState.transitionPending) return false;
+
+  focusState.transitionPending = true;
+  if (statusEl) statusEl.textContent = "Stopping focus session…";
+  updateFocusModeControls({ running: true, hasTask: true });
+
   const endingTaskId = focusState.taskId;
   const endedTask = focusState.allTasks.find(
     (task) => String(task?._id) === String(endingTaskId),
@@ -922,25 +1001,34 @@ async function stopFocusSession(reason = "manual_stop") {
   ].includes(reason)
     ? reason
     : "manual_stop";
-  let stopError = null;
 
-  if (isRunning) {
-    try {
-      const response = await apiFetch("/focus-sessions/stop", {
-        credentials: "include",
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reason: apiReason }),
-      });
+  try {
+    const response = await apiFetch("/focus-sessions/stop", {
+      credentials: "include",
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: apiReason }),
+    });
 
-      if (!response.ok && response.status !== 404) {
-        const payload = await parseApiResponse(response);
-        stopError = payload?.error || "Could not save focus session.";
-      }
-    } catch (error) {
-      console.error("Stop focus session request failed:", error);
-      stopError = "Could not save focus session.";
+    if (!response.ok && response.status !== 404) {
+      const payload = await parseApiResponse(response);
+      throw new Error(payload?.error || "Could not save focus session.");
     }
+  } catch (error) {
+    console.error("Stop focus session request failed:", error);
+    focusState.transitionPending = false;
+    updateFocusModeControls({ running: true, hasTask: true });
+    if (statusEl) {
+      statusEl.textContent = focusState.isPaused
+        ? "Focus session is still paused. It could not be stopped."
+        : "Focus session is still running. It could not be stopped.";
+    }
+    Toast.show({
+      message: "The focus session could not be saved, so the timer was not stopped.",
+      type: "error",
+      duration: 3500,
+    });
+    return false;
   }
 
   stopFocusTimer();
@@ -949,23 +1037,19 @@ async function stopFocusSession(reason = "manual_stop") {
   focusState.taskId = null;
   focusState.sessionId = null;
   focusState.startedAt = null;
+  focusState.pausedAt = null;
+  focusState.totalPausedMs = 0;
+  focusState.isPaused = false;
+  focusState.transitionPending = false;
   updateFocusModeControls({ running: false });
   renderFocusTimer();
 
-  if (isRunning) {
-    await updateFocusLogWidget();
-  }
-
-  if (!statusEl || !isRunning) return;
-
-  if (reason === "completed_task" || taskMarkedCompleted) {
-    statusEl.textContent =
-      "Focus session ended because this task was completed.";
+  if (statusEl && (reason === "completed_task" || taskMarkedCompleted)) {
+    statusEl.textContent = "Focus session ended because this task was completed.";
     showFocusQuoteByCategory("completion");
-  } else if (reason === "task_no_longer_active") {
-    statusEl.textContent =
-      "Focus session ended because the task is no longer active.";
-  } else {
+  } else if (statusEl && reason === "task_no_longer_active") {
+    statusEl.textContent = "Focus session ended because the task is no longer active.";
+  } else if (statusEl) {
     statusEl.textContent = "Focus session stopped.";
   }
 
@@ -975,9 +1059,8 @@ async function stopFocusSession(reason = "manual_stop") {
     duration: 2500,
   });
 
-  if (stopError) {
-    Toast.show({ message: stopError, type: "error", duration: 3000 });
-  }
+  void updateFocusLogWidget();
+  return true;
 }
 
 async function completeTask(taskId) {
@@ -1012,14 +1095,74 @@ async function completeTask(taskId) {
   }
 }
 
+function applyFocusSessionState(session) {
+  const startedAt = new Date(session?.startedAt).getTime();
+  const pausedAt = session?.pausedAt ? new Date(session.pausedAt).getTime() : null;
+  const serverNow = new Date(session?.serverNow).getTime();
+  focusState.sessionId = session?._id || null;
+  focusState.taskId = session?.taskId || null;
+  focusState.startedAt = Number.isFinite(startedAt) ? startedAt : null;
+  focusState.pausedAt = Number.isFinite(pausedAt) ? pausedAt : null;
+  focusState.totalPausedMs = Math.max(0, Number(session?.totalPausedMs) || 0);
+  focusState.isPaused = Boolean(focusState.pausedAt);
+  if (Number.isFinite(serverNow)) focusState.serverClockOffsetMs = serverNow - Date.now();
+}
+
+function synchronizeRestoredFocusTask() {
+  const focusedTask = focusState.allTasks.find((task) =>
+    task.status === "active" && String(task._id) === String(focusState.taskId));
+  if (!focusedTask) return false;
+
+  const restoredFilter = selectFilterForFocusedTask(
+    focusState.allTasks,
+    focusState.filter,
+    focusState.taskId,
+  );
+  focusState.filter = restoredFilter;
+
+  updateFocusTaskOptions(focusState.allTasks);
+  const selectEl = document.getElementById("focusTaskSelect");
+  const taskListEl = document.getElementById("focusTaskList");
+  if (selectEl) selectEl.value = String(focusState.taskId);
+  syncFocusTaskSelection(taskListEl, focusState.taskId);
+  updateFocusModeControls({ running: true, hasTask: true });
+  return true;
+}
+
+async function restoreFocusSession() {
+  const response = await apiFetch("/focus-sessions/active", {
+    credentials: "include",
+    cache: "no-store",
+  });
+  if (response.status === 204) return false;
+  const session = await parseApiResponse(response);
+  if (!response.ok) throw new Error(session?.error || "Could not restore focus session.");
+  applyFocusSessionState(session);
+  if (!synchronizeRestoredFocusTask()) {
+    await stopFocusSession("task_no_longer_active");
+    return false;
+  }
+  renderFocusTimer();
+  if (!focusState.isPaused) {
+    startFocusTimer();
+    scheduleSessionNudges();
+  }
+  const statusEl = document.getElementById("focus-status");
+  if (statusEl) statusEl.textContent = focusState.isPaused
+    ? `Paused: ${session.taskDescription || "focus session"}`
+    : `Focused on: ${session.taskDescription || "current task"}`;
+  return true;
+}
+
 async function initFocusMode() {
   const selectEl = document.getElementById("focusTaskSelect");
   const startBtn = document.getElementById("focusStartBtn");
   const pipToggleBtn = document.getElementById("focusPiPToggleBtn");
   const stopBtn = document.getElementById("focusStopBtn");
+  const pauseBtn = document.getElementById("focusPauseBtn");
   const completeBtn = document.getElementById("focusCompleteBtn");
   const statusEl = document.getElementById("focus-status");
-  if (!selectEl || !startBtn || !pipToggleBtn || !stopBtn || !completeBtn || !statusEl) return;
+  if (!selectEl || !startBtn || !pipToggleBtn || !stopBtn || !pauseBtn || !completeBtn || !statusEl) return;
   pipToggleBtn.setAttribute("aria-disabled", "true");
   focusState.timerEl = document.getElementById("focusTimer");
   focusState.sessionCardEl = document.querySelector(".focus-session-card");
@@ -1029,15 +1172,19 @@ async function initFocusMode() {
   updateFocusPiPToggleButton();
 
   try {
-    await loadFocusTasks();
+    await loadFocusTasks({ render: false });
+    const restored = await restoreFocusSession();
+    if (!restored && !focusState.taskId) updateFocusTaskOptions(focusState.allTasks);
   } catch (error) {
     console.error("Focus task preload failed:", error);
     updateFocusTaskOptions([]);
   }
 
-  window.setTimeout(() => {
-    showFocusQuoteByCategory("general");
-  }, 220);
+  if (!focusState.taskId) {
+    window.setTimeout(() => {
+      showFocusQuoteByCategory("general");
+    }, 220);
+  }
 
   startBtn.addEventListener("click", async () => {
     const selectedTaskId = selectEl.value;
@@ -1076,13 +1223,7 @@ async function initFocusMode() {
         return;
       }
 
-      const parsedStartedAt = new Date(payload?.startedAt || Date.now());
-
-      focusState.sessionId = payload?._id || null;
-      focusState.taskId = selectedTaskId;
-      focusState.startedAt = Number.isNaN(parsedStartedAt.getTime())
-        ? Date.now()
-        : parsedStartedAt.getTime();
+      applyFocusSessionState(payload);
       updateFocusModeControls({ running: true, hasTask: true });
       startFocusTimer();
       const quoteCategory = hasCompletedTaskToday() ? "persistence" : "general";
@@ -1114,6 +1255,39 @@ async function initFocusMode() {
 
   stopBtn.addEventListener("click", async () => {
     await stopFocusSession("manual_stop");
+  });
+
+  pauseBtn.addEventListener("click", async () => {
+    if (!focusState.taskId || focusState.transitionPending) return;
+    focusState.transitionPending = true;
+    updateFocusModeControls({ running: true, hasTask: true });
+    try {
+      const action = focusState.isPaused ? "resume" : "pause";
+      const response = await apiFetch(`/focus-sessions/${action}`, {
+        credentials: "include",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const payload = await parseApiResponse(response);
+      if (!response.ok) throw new Error(payload?.error || `Could not ${action} focus session.`);
+      applyFocusSessionState(payload);
+      if (focusState.isPaused) {
+        stopFocusTimer();
+        clearFocusQuoteTimers();
+        statusEl.textContent = "Focus session paused.";
+      } else {
+        startFocusTimer();
+        scheduleSessionNudges();
+        statusEl.textContent = "Focus session resumed.";
+      }
+      renderFocusTimer();
+    } catch (error) {
+      Toast.show({ message: error.message, type: "error", duration: 3000 });
+    } finally {
+      focusState.transitionPending = false;
+      updateFocusModeControls({ running: Boolean(focusState.taskId), hasTask: true });
+    }
   });
 
   pipToggleBtn.addEventListener("click", async () => {
@@ -1184,16 +1358,6 @@ function getCurrentWeekDateRangeIso() {
   nextMonday.setDate(nextMonday.getDate() + 7);
 
   return { startIso: monday.toISOString(), endIso: nextMonday.toISOString(), monday };
-}
-
-function formatDailyFocusDuration(durationMs) {
-  const totalMinutes = Math.round((Number(durationMs) || 0) / 60000);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-
-  if (hours <= 0) return `${minutes} min`;
-  if (minutes <= 0) return `${hours} hr`;
-  return `${hours} hr ${minutes} min`;
 }
 
 async function fetchReflectionStats(from, to) {
@@ -1281,7 +1445,7 @@ async function refreshDailyReflectionStats() {
     renderDailyReflectionStats({
       dateLabel: todayLabel,
       tasksFocused: stats.tasksFocused,
-      focusTimeLabel: formatDailyFocusDuration(stats.totalFocusMs),
+      focusTimeLabel: DurationUtils.formatDuration(stats.totalFocusMs),
       tasksCompleted: stats.tasksCompleted,
     });
   } catch (error) {
@@ -1332,7 +1496,7 @@ async function refreshWeeklyReflectionStats() {
     renderWeeklyReflectionStats({
       dateLabel: weekLabel,
       tasksFocused: stats.tasksFocused,
-      focusTimeLabel: formatDailyFocusDuration(stats.totalFocusMs),
+      focusTimeLabel: DurationUtils.formatDuration(stats.totalFocusMs),
       tasksCompleted: stats.tasksCompleted,
     });
   } catch (error) {
@@ -2071,7 +2235,7 @@ function initProfileBoardNav() {
   if (!panelContainer || !navButtons.length) return;
 
   const userNameEl = document.getElementById("profileSidebarUserName");
-  let currentUser = null;
+  let currentUser = authenticatedUser;
   const applyUserName = (user) => {
     if (!userNameEl) return;
     const firstName = String(user?.firstName || "").trim();
@@ -2080,6 +2244,7 @@ function initProfileBoardNav() {
     const rawName = combinedName || String(user?.name || "User").trim();
     userNameEl.textContent = rawName || "User";
   };
+  applyUserName(currentUser);
 
   const renderPanel = (panelKey) => {
     panelContainer.innerHTML = getProfilePanelMarkup(panelKey, currentUser);
@@ -2238,7 +2403,7 @@ function initProfileBoardNav() {
 }
 
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   console.log("DOM Fully Loaded - JavaScript Running");
   const PASSWORD_POLICY_MESSAGE =
     "Password must be at least 12 characters and include an uppercase letter, lowercase letter, and a number.";
@@ -2281,14 +2446,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const isLoginPage = document.body.classList.contains("login-page");
   const isRegisterPage = document.body.classList.contains("register-page");
   const currentPath = window.location.pathname;
-  const protectedPaths = new Set([
-    "/dashboard.html",
-    "/calendar-page.html",
-    "/profile-page.html",
-    "/settings-page.html",
-    "/feedback-page.html",
-  ]);
-  const isProtectedPage = protectedPaths.has(currentPath);
+  const isProtectedPage = isProtectedPagePath(currentPath);
   const isHomePage = currentPath === "/" || currentPath === "/index.html";
 
   // Registration handler (used on register.html)
@@ -2574,6 +2732,9 @@ document.addEventListener("DOMContentLoaded", () => {
               : (normalizeDefaultView(data?.user?.settings?.board?.default_view) === "calendar"
                 ? "/calendar-page.html"
                 : "/dashboard.html");
+          const requestedPath = getSafeNextPath(
+            new URLSearchParams(window.location.search).get("next"),
+          );
 
           // alert("Login successful!");
           Toast.show({
@@ -2581,7 +2742,7 @@ document.addEventListener("DOMContentLoaded", () => {
             type: "success",
             duration: 2000,
           });
-          window.location.href = preferredDefaultPath;
+          window.location.href = requestedPath || preferredDefaultPath;
         } else {
           notify(`Login failed: ${data.error || "Unknown error"}`);
           Toast.show({
@@ -2633,6 +2794,14 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  const authenticated = await checkAuthStatus({
+    isLoginPage,
+    isRegisterPage,
+    isProtectedPage,
+    isHomePage,
+  });
+  if (isProtectedPage && !authenticated) return;
+
   // Task Submission Form
   // const submitBtn = document.getElementById("submitBtn");
   // if (submitBtn) {
@@ -2658,9 +2827,10 @@ document.addEventListener("DOMContentLoaded", () => {
   initFeedbackForm();
   initProfileBoardNav();
   initCalendarPage();
-
-  checkAuthStatus({ isLoginPage, isRegisterPage, isProtectedPage, isHomePage }); // Check authentication status on page load
   initFocusMode();
+
+  if (document.getElementById("main-section")) fetchTasks();
+  updateFocusLogWidget();
 });
 
 
@@ -3205,10 +3375,29 @@ async function updateNavTaskCounter() {
 }
 
 // Function to check if a user is currently logged in
+function fetchAuthStatus() {
+  if (!authStatusPromise) {
+    authStatusPromise = (async () => {
+      const response = await apiFetch("/auth-status", {
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        const data = await parseApiResponse(response);
+        throw new Error(data?.error || `Authentication check failed (${response.status})`);
+      }
+      return parseApiResponse(response);
+    })().finally(() => {
+      authStatusPromise = null;
+    });
+  }
+  return authStatusPromise;
+}
+
 async function checkAuthStatus({
   isLoginPage = false,
   isRegisterPage = false,
-  isProtectedPage = false,
+  isProtectedPage = isProtectedPagePath(),
   isHomePage = false,
 } = {}) {
   const authSection = document.getElementById("auth-section");
@@ -3216,20 +3405,17 @@ async function checkAuthStatus({
   const authStatus = document.getElementById("authStatus");
   const logoutBtn = document.getElementById("logoutBtn");
 
-  let data = { loggedIn: false };
+  let data;
 
   try {
-    const response = await apiFetch("/auth-status", {
-      credentials: "include",
-      cache: "no-store",
-    });
-
-    data = await parseApiResponse(response);
+    data = await fetchAuthStatus();
   } catch (error) {
     console.error("Auth status check failed:", error);
+    return null;
   }
 
   if (data.loggedIn) {
+    authenticatedUser = data.user || null;
     hydrateBoardPreferences(data?.user);
 
     const preferredDefaultView = normalizeDefaultView(
@@ -3276,22 +3462,19 @@ async function checkAuthStatus({
     if (logoutBtn) {
       logoutBtn.style.display = "block";
     }
-    if (mainSection) {
-      fetchTasks(); // Automatically load tasks if user is logged in
-    }
-    updateFocusLogWidget();
-
     updateNavTaskCounter();
     document.dispatchEvent(
       new CustomEvent("auth-status-resolved", {
         detail: { loggedIn: true, user: data.user },
       }),
     );
+    return true;
   } else {
+    authenticatedUser = null;
     // Protected pages should send logged-out users to login instead of showing a blank shell.
     if (isProtectedPage) {
-      window.location.href = "/login.html";
-      return;
+      redirectToLoginOnce();
+      return false;
     }
 
     // Only toggle dashboard sections if they are present on the page
@@ -3312,6 +3495,7 @@ async function checkAuthStatus({
         detail: { loggedIn: false },
       }),
     );
+    return false;
   }
 }
 
@@ -4375,7 +4559,9 @@ if (hasDashboard) {
   const REFRESH_MS = 30000;
 
   function refreshDashboard() {
-    checkAuthStatus();
+    void checkAuthStatus({ isProtectedPage: true }).then((loggedIn) => {
+      if (loggedIn) fetchTasks();
+    });
   }
 
   setInterval(refreshDashboard, REFRESH_MS);
