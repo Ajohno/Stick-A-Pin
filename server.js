@@ -20,6 +20,8 @@ const bcrypt = require("bcryptjs"); // Used to hash passwords
 const User = require("./config/models/user"); // User model for the database
 const Task = require("./config/models/task"); // Task model for the database
 const FocusSession = require("./config/models/focusSession"); // FocusSession model for tracking focus sessions
+const DurationUtils = require("./public/js/duration-utils");
+const { finalizeFocusSession, safePauseDuration } = require("./config/focus-session-time");
 const FeedbackReport = require("./config/models/feedbackReport"); // Feedback report model for durable rate limiting
 const InboundEmail = require("./config/models/inboundEmail"); // Resend inbound email storage
 const csrf = require("lusca").csrf; // CSRF protection middleware
@@ -520,23 +522,6 @@ function isValidTimeInput(value) {
   return typeof value === "string" && /^([01]\d|2[0-3]):([0-5]\d)$/.test(value);
 }
 
-function formatDurationFromMs(durationMs) {
-  const safeDurationMs = Math.max(0, Number(durationMs) || 0);
-  const totalMinutes = Math.floor(safeDurationMs / 60000);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-
-  if (hours === 0) {
-    return `${minutes}m`;
-  }
-
-  if (minutes === 0) {
-    return `${hours}h`;
-  }
-
-  return `${hours}h ${minutes}m`;
-}
-
 function escapeHtml(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")
@@ -654,6 +639,12 @@ function formatSignedDelta(value) {
   return String(numeric);
 }
 
+function formatSignedDuration(durationMs) {
+  const numeric = Number(durationMs) || 0;
+  const sign = numeric > 0 ? "+" : numeric < 0 ? "-" : "";
+  return `${sign}${DurationUtils.formatDuration(Math.abs(numeric))}`;
+}
+
 async function buildDailySummary(userId, daysAgo = 0, includeTaskNames = false) {
   const { start, end } = getDayBounds(daysAgo);
 
@@ -670,7 +661,7 @@ async function buildDailySummary(userId, daysAgo = 0, includeTaskNames = false) 
     }).select("durationMs"),
   ]);
 
-  const totalFocusMs = sessions.reduce((sum, session) => sum + (Number(session.durationMs) || 0), 0);
+  const totalFocusMs = DurationUtils.sumDurationMs(sessions);
 
   return {
     dateLabel: start.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }),
@@ -726,14 +717,14 @@ async function sendDailyReflectionEmail(user, emailData) {
         <p>Hi ${escapeHtml(user.firstName || "there")},</p>
         <p>Here is your daily performance trend for ${escapeHtml(emailData.dateLabel)}.</p>
         <p><strong>Today you completed:</strong> ${escapeHtml(String(emailData.completedCount))} task(s)</p>
-        <p><strong>Today you focused for:</strong> ${escapeHtml(formatDurationFromMs(emailData.totalFocusMs))}</p>
+        <p><strong>Today you focused for:</strong> ${escapeHtml(DurationUtils.formatDuration(emailData.totalFocusMs))}</p>
         <p><strong>Completed tasks today:</strong></p>
         ${tasksHtml}
         <hr />
         <p><strong>Trend vs ${escapeHtml(emailData.trend.yesterdayLabel)}:</strong></p>
         <ul>
           <li>Tasks completed: ${escapeHtml(formatSignedDelta(emailData.trend.completedVsYesterday))}</li>
-          <li>Focus time: ${escapeHtml(formatSignedDelta(Math.round(emailData.trend.focusVsYesterdayMs / 60000)))} min</li>
+          <li>Focus time: ${escapeHtml(formatSignedDuration(emailData.trend.focusVsYesterdayMs))}</li>
         </ul>
       `,
     }),
@@ -1379,21 +1370,14 @@ function toFocusSessionResponse(session, { resolvedTaskDescription = null } = {}
     startedAt: session.startedAt,
     endedAt: session.endedAt,
     durationMs: session.durationMs || 0,
+    pausedAt: session.pausedAt || null,
+    totalPausedMs: Math.max(0, Number(session.totalPausedMs) || 0),
+    timerState: session.endedAt ? "ended" : session.pausedAt ? "paused" : "running",
+    serverNow: new Date(),
     endedReason: session.endedReason
   };
 }
 
-function computeFocusSessionDurationMs(session, now = new Date()) {
-  const storedDuration = Number(session?.durationMs);
-  if (Number.isFinite(storedDuration) && storedDuration > 0) return storedDuration;
-
-  const startedAt = new Date(session?.startedAt).getTime();
-  const endedAt = session?.endedAt
-    ? new Date(session.endedAt).getTime()
-    : new Date(now).getTime();
-  const calculated = endedAt - startedAt;
-  return Number.isFinite(calculated) && calculated > 0 ? calculated : 0;
-}
 
 // Task CRUD APIs are logged-in user-data routes protected by explicit auth and rate-limit middleware.
 app.post("/tasks", apiProbeLimiter, ensureAuthenticated, userApiLimiter, async (req, res) => {
@@ -1563,9 +1547,7 @@ app.post("/focus-sessions/start", apiProbeLimiter, ensureAuthenticated, userApiL
     }).sort({ startedAt: -1 });
 
     if (openSession) {
-      openSession.endedAt = now;
-      openSession.durationMs = Math.max(0, now.getTime() - new Date(openSession.startedAt).getTime());
-      openSession.endedReason = "manual_stop";
+      finalizeFocusSession(openSession, now, "manual_stop");
       await openSession.save();
     }
 
@@ -1573,7 +1555,11 @@ app.post("/focus-sessions/start", apiProbeLimiter, ensureAuthenticated, userApiL
       userId: req.user.id,
       taskId: task._id,
       taskDescriptionSnapshot: task.description,
-      startedAt: now
+      startedAt: now,
+      pausedAt: null,
+      totalPausedMs: 0,
+      endedAt: null,
+      durationMs: 0
     });
 
     return res.status(201).json(toFocusSessionResponse(created, {
@@ -1601,10 +1587,7 @@ app.post("/focus-sessions/stop", apiProbeLimiter, ensureAuthenticated, userApiLi
       return res.status(404).json({ error: "No active focus session to stop." });
     }
 
-    const endedAt = new Date();
-    openSession.endedAt = endedAt;
-    openSession.durationMs = Math.max(0, endedAt.getTime() - new Date(openSession.startedAt).getTime());
-    openSession.endedReason = endedReason;
+    finalizeFocusSession(openSession, new Date(), endedReason);
     await openSession.save();
 
     const task = await Task.findOne({
@@ -1618,6 +1601,54 @@ app.post("/focus-sessions/stop", apiProbeLimiter, ensureAuthenticated, userApiLi
   } catch (err) {
     console.error("Error stopping focus session:", err);
     return res.status(500).json({ error: "Server error while stopping focus session" });
+  }
+});
+
+app.get("/focus-sessions/active", apiProbeLimiter, ensureAuthenticated, userApiLimiter, async (req, res) => {
+  try {
+    const active = await FocusSession.findOne({ userId: req.user.id, endedAt: null }).sort({ startedAt: -1 });
+    if (!active) return res.status(204).end();
+    return res.json(toFocusSessionResponse(active));
+  } catch (err) {
+    console.error("Error restoring focus session:", err);
+    return res.status(500).json({ error: "Server error while restoring focus session" });
+  }
+});
+
+app.post("/focus-sessions/pause", apiProbeLimiter, ensureAuthenticated, userApiLimiter, async (req, res) => {
+  try {
+    const active = await FocusSession.findOneAndUpdate(
+      { userId: req.user.id, endedAt: null, pausedAt: null },
+      { $set: { pausedAt: new Date() } },
+      { new: true },
+    );
+    if (active) return res.json(toFocusSessionResponse(active));
+    const open = await FocusSession.findOne({ userId: req.user.id, endedAt: null }).select("pausedAt");
+    return res.status(open ? 409 : 404).json({ error: open ? "Focus session is already paused." : "No active focus session to pause." });
+  } catch (err) {
+    console.error("Error pausing focus session:", err);
+    return res.status(500).json({ error: "Server error while pausing focus session" });
+  }
+});
+
+app.post("/focus-sessions/resume", apiProbeLimiter, ensureAuthenticated, userApiLimiter, async (req, res) => {
+  try {
+    const now = new Date();
+    const paused = await FocusSession.findOne({ userId: req.user.id, endedAt: null, pausedAt: { $ne: null } });
+    if (!paused) {
+      const open = await FocusSession.findOne({ userId: req.user.id, endedAt: null }).select("pausedAt");
+      return res.status(open ? 409 : 404).json({ error: open ? "Focus session is already running." : "No active focus session to resume." });
+    }
+    const resumed = await FocusSession.findOneAndUpdate(
+      { _id: paused._id, userId: req.user.id, endedAt: null, pausedAt: paused.pausedAt },
+      { $inc: { totalPausedMs: safePauseDuration(paused.pausedAt, now) }, $set: { pausedAt: null } },
+      { new: true },
+    );
+    if (!resumed) return res.status(409).json({ error: "Focus session state changed. Please try again." });
+    return res.json(toFocusSessionResponse(resumed));
+  } catch (err) {
+    console.error("Error resuming focus session:", err);
+    return res.status(500).json({ error: "Server error while resuming focus session" });
   }
 });
 
@@ -1681,14 +1712,14 @@ app.get("/reflection-stats", apiProbeLimiter, ensureAuthenticated, userApiLimite
       FocusSession.find({
         userId: req.user.id,
         startedAt: { $gte: from, $lt: to },
-      }).select("taskId startedAt endedAt durationMs"),
+      }).select("taskId startedAt endedAt durationMs pausedAt totalPausedMs"),
     ]);
     const tasksFocused = new Set(
       sessions.map(getFocusSessionTaskId).filter(Boolean).map(String),
     ).size;
     const now = new Date();
     const totalFocusMs = sessions.reduce(
-      (total, session) => total + computeFocusSessionDurationMs(session, now),
+      (total, session) => total + DurationUtils.calculateElapsedMs(session, now),
       0,
     );
 
