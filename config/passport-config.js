@@ -8,6 +8,11 @@
 const LocalStrategy = require("passport-local").Strategy;
 const bcrypt = require("bcryptjs");
 const User = require("./models/user");
+const {
+  toSessionIdentity,
+  parseSessionIdentity,
+  buildSessionUserFilter,
+} = require("./auth-version");
 
 /** Normalize user-supplied email addresses before lookup or persistence. */
 function normalizeEmail(value) {
@@ -86,23 +91,24 @@ async function recoverUserFromDuplicateProviderError({
   providerKey,
   providerId,
   providerEmail,
+  UserModel = User,
 }) {
   if (!error || error.code !== 11000) return null;
 
   if (providerId) {
-    const userByProviderId = await User.findOne({ [`authProviders.${providerKey}.id`]: providerId });
+    const userByProviderId = await UserModel.findOne({ [`authProviders.${providerKey}.id`]: providerId });
     if (userByProviderId) return userByProviderId;
   }
 
   if (providerEmail) {
-    const userByEmail = await User.findOne({ email: providerEmail });
+    const userByEmail = await UserModel.findOne({ email: providerEmail });
     if (userByEmail) return userByEmail;
   }
 
   return null;
 }
 
-module.exports = function (passport) {
+module.exports = function (passport, { UserModel = User } = {}) {
   // Local authentication returns the same generic failure for unknown accounts
   // and bad passwords so the endpoint does not reveal registered addresses.
   passport.use(
@@ -111,7 +117,7 @@ module.exports = function (passport) {
       async (email, password, done) => {
         try {
           const normalizedEmail = normalizeEmail(email);
-          const user = await User.findOne({ email: normalizedEmail });
+          const user = await UserModel.findOne({ email: normalizedEmail });
 
           if (!user || !user.passwordHash) {
             return done(null, false, { message: "Invalid email or password" });
@@ -165,11 +171,11 @@ module.exports = function (passport) {
             // Provider IDs are the strongest identity key. Email lookup supports
             // linking Google to an account that was originally created locally.
             let user = providerId
-              ? await User.findOne({ "authProviders.google.id": providerId })
+              ? await UserModel.findOne({ "authProviders.google.id": providerId })
               : null;
 
             if (!user && providerEmail) {
-              user = await User.findOne({ email: providerEmail });
+              user = await UserModel.findOne({ email: providerEmail });
             }
 
             if (user) {
@@ -196,7 +202,7 @@ module.exports = function (passport) {
             const { firstName, lastName } = splitName(profile, providerEmail);
             // New OAuth users are already verified by the identity provider and
             // do not need StickAPin's separate email-verification flow.
-            const createdUser = await User.create({
+            const createdUser = await UserModel.create({
               firstName,
               lastName,
               email: providerEmail,
@@ -218,6 +224,7 @@ module.exports = function (passport) {
               providerKey: "google",
               providerId,
               providerEmail,
+              UserModel,
             });
 
             if (recoveredUser) {
@@ -231,15 +238,25 @@ module.exports = function (passport) {
     );
   }
 
-  // Store only the database ID in the session cookie-backed record; reload the
-  // current user on each authenticated request so profile changes take effect.
+  // Including the credential version makes password resets revoke every older
+  // local and OAuth session on its next authenticated request.
   passport.serializeUser((user, done) => {
-    done(null, user.id);
+    const identity = toSessionIdentity(user);
+    done(identity ? null : new Error("Invalid authentication version"), identity);
   });
 
-  passport.deserializeUser(async (id, done) => {
+  passport.deserializeUser(async (sessionIdentity, done) => {
     try {
-      const user = await User.findById(id);
+      const identity = parseSessionIdentity(sessionIdentity);
+      if (!identity) return done(null, false);
+      const filter = buildSessionUserFilter(identity);
+      const user = identity.authVersion === 0
+        ? await UserModel.findOneAndUpdate(
+            filter,
+            { $set: { authVersion: 0 } },
+            { new: true }
+          )
+        : await UserModel.findOne(filter);
       done(null, user);
     } catch (err) {
       done(err);

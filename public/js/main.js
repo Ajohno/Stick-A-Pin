@@ -2499,11 +2499,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         // Check if registration went alright
         if (response.ok) {
-          const sentFlag = data?.emailDeliveryFailed ? "0" : "1";
-          const query = new URLSearchParams({
-            sent: sentFlag,
-            email,
-          }).toString();
+          const query = new URLSearchParams({ email }).toString();
           window.location.href = `/verification-status.html?${query}`;
         } else {
           notify(`Registration failed: ${data.error || "Unknown error"}`);
@@ -2518,7 +2514,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   const verificationPage = document.getElementById("verification-status-page");
   if (verificationPage) {
     const params = new URLSearchParams(window.location.search);
-    const sent = params.get("sent") === "1";
     const email = (params.get("email") || "").trim();
 
     const messageEl = document.getElementById("verificationStatusMessage");
@@ -2526,9 +2521,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     const resendBtn = document.getElementById("resendVerificationBtn");
 
     if (messageEl) {
-      messageEl.textContent = sent
-        ? "Verification email was sent."
-        : "Verification email was not sent.";
+      messageEl.textContent =
+        "If the address can be used, check your email for the next step.";
     }
 
     if (emailEl) {
@@ -2553,9 +2547,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         const data = await parseApiResponse(response);
         if (response.ok) {
-          notify(data.message || "Verification email sent.", "success", 2600);
+          notify(data.message || "If the address can be used, check your email for the next step.", "success", 2600);
           Toast.show({
-            message: "Verification email resent",
+            message: data.message || "Check your email for the next step.",
             type: "success",
             duration: 2200,
           });
@@ -2821,6 +2815,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   bindDashboardTaskFilterTabs();
+  document.getElementById("drown-noise-btn")?.addEventListener("click", () => {
+    window.location.href = "/focus-page.html";
+  });
   initDailyEmailSettings();
   initDailyReflectionStatsWidget();
   initWeeklyReflectionStatsWidget();

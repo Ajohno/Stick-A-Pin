@@ -34,5 +34,13 @@ const FocusSessionSchema = new mongoose.Schema({
 FocusSessionSchema.index({ userId: 1, startedAt: -1 });
 FocusSessionSchema.index({ userId: 1, taskId: 1, startedAt: -1 });
 FocusSessionSchema.index({ userId: 1, endedAt: 1 });
+FocusSessionSchema.index(
+    { userId: 1 },
+    {
+        name: "uniq_open_focus_session_per_user",
+        unique: true,
+        partialFilterExpression: { endedAt: null },
+    }
+);
 
 module.exports = mongoose.model("FocusSession", FocusSessionSchema);

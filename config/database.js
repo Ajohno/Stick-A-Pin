@@ -62,7 +62,7 @@ const connectDB = async () => {
     }
 
     connectionPromise = mongoose
-        .connect(process.env.MONGO_URI)
+        .connect(process.env.MONGO_URI, { autoIndex: process.env.NODE_ENV !== "production" })
         .then(async (connection) => {
             console.log("✅ MongoDB Connected Successfully!");
 

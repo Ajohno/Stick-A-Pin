@@ -21,9 +21,21 @@ const User = require("./config/models/user"); // User model for the database
 const Task = require("./config/models/task"); // Task model for the database
 const FocusSession = require("./config/models/focusSession"); // FocusSession model for tracking focus sessions
 const DurationUtils = require("./public/js/duration-utils");
-const { finalizeFocusSession, safePauseDuration } = require("./config/focus-session-time");
+const {
+  FOCUS_STATE_CONFLICT,
+  openFocusSessionFilter,
+  buildStopPipeline,
+  buildResumePipeline,
+} = require("./config/focus-session-atomic");
 const FeedbackReport = require("./config/models/feedbackReport"); // Feedback report model for durable rate limiting
 const InboundEmail = require("./config/models/inboundEmail"); // Resend inbound email storage
+const {
+  createAccountActionJobService,
+  hashAccountActionToken,
+} = require("./config/account-action-jobs");
+const { createAccountActionHandlers, validatePasswordStrength } = require("./config/account-action-routes");
+const { scheduleBackgroundTask } = require("./config/background-tasks");
+const { isAuthorizedCronRequest } = require("./config/cron-auth");
 const csrf = require("lusca").csrf; // CSRF protection middleware
 const MongoStore = require("connect-mongo").default; // Store sessions in MongoDB
 
@@ -35,9 +47,9 @@ const app = express();
 
 // Apply Helmet before sessions, CSRF, routes, and static file serving so every
 // response gets baseline security headers. The CSP intentionally allows current
-// inline styles/handlers while restricting sources to this app, Google Fonts,
-// Font Awesome, jsDelivr assets, and Vercel Analytics; tighten unsafe-inline
-// after replacing inline attributes in the static frontend.
+// inline styles while scripts are restricted to external same-origin files.
+// Google Fonts, Font Awesome CSS, jsDelivr assets, and Vercel Analytics are
+// listed only in the directives that require them.
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -47,8 +59,8 @@ app.use(
         formAction: ["'self'"],
         frameAncestors: ["'self'"],
         objectSrc: ["'none'"],
-        scriptSrc: ["'self'", "'unsafe-inline'", "https://kit.fontawesome.com", "https://cdn.jsdelivr.net"],
-        scriptSrcAttr: ["'unsafe-inline'"],
+        scriptSrc: ["'self'"],
+        scriptSrcAttr: ["'none'"],
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdn.jsdelivr.net"],
         styleSrcAttr: ["'unsafe-inline'"],
         fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdn.jsdelivr.net", "https://ka-f.fontawesome.com", "data:"],
@@ -64,6 +76,10 @@ const port = process.env.PORT || 3000;
 const REMEMBER_ME_MS = 14 * 24 * 60 * 60 * 1000;
 const EMAIL_VERIFICATION_TTL_MINUTES = Number(process.env.EMAIL_VERIFICATION_TTL_MINUTES || 60);
 const PASSWORD_RESET_TTL_MINUTES = Number(process.env.PASSWORD_RESET_TTL_MINUTES || 30);
+const ACCOUNT_EMAIL_TIMEOUT_MS = Math.max(
+  1_000,
+  Number(process.env.ACCOUNT_EMAIL_TIMEOUT_MS) || 15_000
+);
 const APP_BASE_URL = process.env.APP_BASE_URL;
 const EMAIL_FROM = process.env.EMAIL_FROM || "Stick A Pin <no-reply@mail.stickapin.app>";
 const FEEDBACK_INBOX_EMAIL = (process.env.FEEDBACK_INBOX_EMAIL || "support@stickapin.app").trim();
@@ -209,7 +225,12 @@ function ensureAuthenticated(req, res, next) {
     if (req.isAuthenticated()) {
         return next(); // If the user is authenticated, continue to the route
     }
-    res.status(401).json({ error: "Unauthorized - Please log in" });
+    const reject = () => {
+      clearSessionCookie(res);
+      return res.status(401).json({ error: "Unauthorized - Please log in" });
+    };
+    if (!req.session) return reject();
+    return req.session.destroy(() => reject());
 }
 
 // Apply after ensureAuthenticated so unauthenticated probes return 401 without consuming
@@ -220,12 +241,7 @@ const authenticatedApiMiddleware = [ensureAuthenticated, authenticatedLimiter];
 
 /** Hash one-time tokens before storage so a database leak cannot reuse them. */
 function hashVerificationToken(token) {
-  return crypto.createHash("sha256").update(token).digest("hex");
-}
-
-/** Generate a cryptographically secure token for emailed account actions. */
-function generateVerificationToken() {
-  return crypto.randomBytes(32).toString("hex");
+  return hashAccountActionToken(token);
 }
 
 async function sendVerificationEmail(email, firstName, token, baseUrl) {
@@ -237,6 +253,7 @@ async function sendVerificationEmail(email, firstName, token, baseUrl) {
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
+    signal: AbortSignal.timeout(ACCOUNT_EMAIL_TIMEOUT_MS),
     headers: {
       Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
       "Content-Type": "application/json",
@@ -246,7 +263,7 @@ async function sendVerificationEmail(email, firstName, token, baseUrl) {
       to: [email],
       subject: "Verify your Stick A Pin account",
       html: `
-        <p>Hi ${firstName},</p>
+        <p>Hi ${escapeHtml(firstName || "there")},</p>
         <p>Thanks for registering. Click the link below to verify your email address:</p>
         <p><a href="${verificationUrl}">Verify my email</a></p>
         <p>If you did not sign up, you can ignore this message.</p>
@@ -269,6 +286,7 @@ async function sendPasswordResetEmail(email, firstName, token, baseUrl) {
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
+    signal: AbortSignal.timeout(ACCOUNT_EMAIL_TIMEOUT_MS),
     headers: {
       Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
       "Content-Type": "application/json",
@@ -278,7 +296,7 @@ async function sendPasswordResetEmail(email, firstName, token, baseUrl) {
       to: [email],
       subject: "Reset your Stick A Pin password",
       html: `
-        <p>Hi ${firstName || "there"},</p>
+        <p>Hi ${escapeHtml(firstName || "there")},</p>
         <p>We received a request to reset your password.</p>
         <p><a href="${resetUrl}">Reset password</a></p>
         <p>If you did not request this, you can ignore this email.</p>
@@ -397,6 +415,11 @@ function resolveBaseUrl(req) {
     return `https://${vercelUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")}`;
   }
 
+  // Never place a client-controlled Host header into an account-action link in
+  // production. A missing canonical URL causes the durable job to retry until
+  // deployment configuration is corrected.
+  if (IS_PRODUCTION) return "";
+
   const forwardedProto = req?.headers?.["x-forwarded-proto"];
   const protocol = (forwardedProto ? forwardedProto.split(",")[0] : req?.protocol || "http").trim();
   const host = req?.get?.("host") || req?.headers?.host;
@@ -407,6 +430,21 @@ function resolveBaseUrl(req) {
 
   return `http://localhost:${port}`;
 }
+
+const accountActionJobs = createAccountActionJobService({
+  secret: process.env.SESSION_SECRET,
+  sendVerificationEmail,
+  sendPasswordResetEmail,
+  verificationTtlMs: EMAIL_VERIFICATION_TTL_MINUTES * 60 * 1000,
+  passwordResetTtlMs: PASSWORD_RESET_TTL_MINUTES * 60 * 1000,
+});
+
+const accountActionHandlers = createAccountActionHandlers({
+  enqueueAccountActionJob: accountActionJobs.enqueue,
+  processAccountActionJob: accountActionJobs.processById,
+  scheduleBackgroundTask,
+  resolveBaseUrl,
+});
 
 function extractEmailAddress(value) {
   const text = String(value || "").trim();
@@ -989,82 +1027,24 @@ app.get("/auth/google/callback", authRateLimiter, (req, res) => {
   });
 });
 
-// Register Route
-function validatePasswordStrength(password) {
-  const value = String(password || "");
-  const minLength = value.length >= 12;
-  const hasUpper = /[A-Z]/.test(value);
-  const hasLower = /[a-z]/.test(value);
-  const hasNumber = /\d/.test(value);
+app.get("/api/cron/account-action-jobs", async (req, res) => {
+  if (!isAuthorizedCronRequest(req.get("authorization"), process.env.CRON_SECRET)) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
 
-  return minLength && hasUpper && hasLower && hasNumber;
-}
-
-app.post("/register", localAuthLimiter, async (req, res) => {
   try {
-    const { firstName, lastName, email, password } = req.body;
-
-    if (!firstName || !lastName || !email || !password) {
-      return res.status(400).json({ error: "Missing required fields" });
-    }
-
-    const normalizedEmail = email.toLowerCase().trim();
-    const existingUser = await User.findOne({ email: normalizedEmail });
-    if (existingUser) return res.status(400).json({ error: "Email already exists" });
-
-    if (!validatePasswordStrength(password)) {
-      return res.status(400).json({
-        error: "Password must be at least 12 characters and include uppercase, lowercase, and a number.",
-      });
-    }
-
-    const passwordHash = await bcrypt.hash(password, 10);
-
-    const verificationToken = generateVerificationToken();
-    const verificationTokenHash = hashVerificationToken(verificationToken);
-    const emailVerificationExpiresAt = new Date(Date.now() + EMAIL_VERIFICATION_TTL_MINUTES * 60 * 1000);
-
-    await User.create({
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      email: normalizedEmail,
-      passwordHash,
-      emailVerified: false,
-      emailVerificationTokenHash: verificationTokenHash,
-      emailVerificationExpiresAt,
-    });
-
-    try {
-      await sendVerificationEmail(normalizedEmail, firstName.trim(), verificationToken, resolveBaseUrl(req));
-      return res.status(201).json({ message: "Registration successful. Check your email to verify your account." });
-    } catch (emailError) {
-      console.error("Verification email delivery failed after registration:", emailError);
-      return res.status(201).json({
-        message: "Registration successful, but we could not send the verification email yet. Please use resend verification from the verification page.",
-        emailDeliveryFailed: true,
-      });
-    }
+    const summary = await accountActionJobs.drain({ limit: 10 });
+    return res.json({ ok: true, ...summary });
   } catch (error) {
-    console.error("Error registering user:", error);
-
-    if (error && error.code === 11000) {
-      const duplicateFields = Object.keys(error.keyPattern || {});
-      const duplicateField = duplicateFields[0] || Object.keys(error.keyValue || {})[0] || "field";
-
-      if (duplicateField === "email") {
-        return res.status(400).json({ error: "Email already exists" });
-      }
-
-      return res.status(400).json({ error: `A duplicate value exists for ${duplicateField}` });
-    }
-
-    if (error && error.name === "ValidationError") {
-      return res.status(400).json({ error: "Invalid registration data" });
-    }
-
-    return res.status(500).json({ error: "Server error while registering user" });
+    console.error("Account action retry sweep failed");
+    return res.status(500).json({ error: "Unable to process queued account actions" });
   }
 });
+
+// Registration does only uniform validation, password hashing, and one durable
+// queue insert before acknowledging the request. Account lookup and email I/O
+// happen in the background worker.
+app.post("/register", localAuthLimiter, accountActionHandlers.register);
 
 app.get("/verify-email", emailVerificationLimiter, async (req, res) => {
   try {
@@ -1100,36 +1080,11 @@ app.get("/verify-email", emailVerificationLimiter, async (req, res) => {
   }
 });
 
-app.post("/resend-verification", emailVerificationLimiter, async (req, res) => {
-  try {
-    const normalizedEmail = (req.body.email || "").toLowerCase().trim();
-    if (!normalizedEmail) {
-      return res.status(400).json({ error: "Email is required" });
-    }
-
-    const user = await User.findOne({ email: normalizedEmail });
-
-    if (!user) {
-      return res.json({ message: "If that account exists, a verification email has been sent." });
-    }
-
-    if (user.emailVerified !== false) {
-      return res.json({ message: "Your email is already verified." });
-    }
-
-    const verificationToken = generateVerificationToken();
-    user.emailVerificationTokenHash = hashVerificationToken(verificationToken);
-    user.emailVerificationExpiresAt = new Date(Date.now() + EMAIL_VERIFICATION_TTL_MINUTES * 60 * 1000);
-    await user.save();
-
-    await sendVerificationEmail(user.email, user.firstName, verificationToken, resolveBaseUrl(req));
-
-    return res.json({ message: "Verification email sent." });
-  } catch (error) {
-    console.error("Error resending verification email:", error);
-    return res.status(500).json({ error: "Unable to resend verification email" });
-  }
-});
+app.post(
+  "/resend-verification",
+  emailVerificationLimiter,
+  accountActionHandlers.resendVerification
+);
 
 const passwordResetLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -1143,37 +1098,15 @@ const forgotPasswordEmailLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => {
     const normalizedEmail = String(req.body?.email || "").toLowerCase().trim();
-    return `${req.ip}:${normalizedEmail}`;
+    return `${rateLimit.ipKeyGenerator(req.ip)}:${normalizedEmail}`;
   },
 });
 
-app.post("/forgot-password", forgotPasswordEmailLimiter, async (req, res) => {
-  try {
-    const normalizedEmail = (req.body.email || "").toLowerCase().trim();
-    if (!normalizedEmail) {
-      return res.status(400).json({ error: "Email is required" });
-    }
-
-    const user = await User.findOne({ email: normalizedEmail });
-
-    if (!user) {
-      return res.json({ message: "If that account exists, a password reset email has been sent." });
-    }
-
-    const resetToken = generateVerificationToken();
-    user.passwordResetTokenHash = hashVerificationToken(resetToken);
-    user.passwordResetExpiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MINUTES * 60 * 1000);
-    user.passwordResetRequestedAt = new Date();
-    await user.save();
-
-    await sendPasswordResetEmail(user.email, user.firstName, resetToken, resolveBaseUrl(req));
-
-    return res.json({ message: "If that account exists, a password reset email has been sent." });
-  } catch (error) {
-    console.error("Error requesting password reset:", error);
-    return res.status(500).json({ error: "Unable to process password reset request" });
-  }
-});
+app.post(
+  "/forgot-password",
+  forgotPasswordEmailLimiter,
+  accountActionHandlers.forgotPassword
+);
 
 app.post("/reset-password", passwordResetLimiter, async (req, res) => {
   try {
@@ -1193,25 +1126,32 @@ app.post("/reset-password", passwordResetLimiter, async (req, res) => {
 
     const tokenHash = hashVerificationToken(token);
 
-    const user = await User.findOne({
-      email: normalizedEmail,
-      passwordResetTokenHash: tokenHash,
-      passwordResetExpiresAt: { $gt: new Date() },
-    });
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    const user = await User.findOneAndUpdate(
+      {
+        email: normalizedEmail,
+        passwordResetTokenHash: tokenHash,
+        passwordResetExpiresAt: { $gt: new Date() },
+      },
+      {
+        $set: {
+          passwordHash,
+          passwordResetTokenHash: null,
+          passwordResetExpiresAt: null,
+          passwordResetRequestedAt: null,
+        },
+        $inc: { authVersion: 1 },
+      },
+      { new: true, runValidators: true },
+    );
 
     if (!user) {
       return res.status(400).json({ error: "This password reset link is invalid or expired." });
     }
 
-    user.passwordHash = await bcrypt.hash(newPassword, 10);
-    user.passwordResetTokenHash = null;
-    user.passwordResetExpiresAt = null;
-    user.passwordResetRequestedAt = null;
-    await user.save();
-
     return res.json({ message: "Password reset successful. You can now log in." });
   } catch (error) {
-    console.error("Error resetting password:", error);
+    console.error("Error resetting password");
     return res.status(500).json({ error: "Unable to reset password" });
   }
 });
@@ -1523,110 +1463,80 @@ app.delete("/tasks/:taskId", apiProbeLimiter, ensureAuthenticated, userApiLimite
 app.post("/focus-sessions/start", apiProbeLimiter, ensureAuthenticated, userApiLimiter, async (req, res) => {
   try {
     const taskId = String(req.body.taskId || "").trim();
-    if (!taskId) {
-      return res.status(400).json({ error: "taskId is required" });
-    }
-    if (!/^[a-f\d]{24}$/i.test(taskId)) {
-      return res.status(400).json({ error: "Invalid taskId format" });
-    }
+    if (!taskId) return res.status(400).json({ error: "taskId is required" });
+    if (!/^[a-f\d]{24}$/i.test(taskId)) return res.status(400).json({ error: "Invalid taskId format" });
 
     const task = await Task.findOne(visibleTaskFilter(req.user.id, { _id: taskId }));
-    if (!task) {
-      return res.status(404).json({ error: "Task not found" });
-    }
-    if (task.status !== "active") {
-      return res.status(400).json({ error: "Only active tasks can be focused." });
-    }
+    if (!task) return res.status(404).json({ error: "Task not found" });
+    if (task.status !== "active") return res.status(400).json({ error: "Only active tasks can be focused." });
 
-    const now = new Date();
-
-    // Ensure one running session per user.
-    const openSession = await FocusSession.findOne({
-      userId: req.user.id,
-      endedAt: null
-    }).sort({ startedAt: -1 });
-
-    if (openSession) {
-      finalizeFocusSession(openSession, now, "manual_stop");
-      await openSession.save();
+    if (await FocusSession.exists(openFocusSessionFilter(req.user.id))) {
+      return res.status(409).json(FOCUS_STATE_CONFLICT);
     }
 
     const created = await FocusSession.create({
       userId: req.user.id,
       taskId: task._id,
       taskDescriptionSnapshot: task.description,
-      startedAt: now,
+      startedAt: new Date(),
       pausedAt: null,
       totalPausedMs: 0,
       endedAt: null,
-      durationMs: 0
+      durationMs: 0,
     });
-
-    return res.status(201).json(toFocusSessionResponse(created, {
-      resolvedTaskDescription: task.description,
-    }));
+    return res.status(201).json(toFocusSessionResponse(created, { resolvedTaskDescription: task.description }));
   } catch (err) {
-    console.error("Error starting focus session:", err);
+    if (err?.code === 11000) return res.status(409).json(FOCUS_STATE_CONFLICT);
+    console.error("Error starting focus session");
     return res.status(500).json({ error: "Server error while starting focus session" });
   }
 });
 
-// Stop the active focus session
 app.post("/focus-sessions/stop", apiProbeLimiter, ensureAuthenticated, userApiLimiter, async (req, res) => {
   try {
     const validReasons = new Set(["completed_task", "manual_stop", "timeout", "app_closed"]);
     const requestedReason = String(req.body.reason || "manual_stop");
     const endedReason = validReasons.has(requestedReason) ? requestedReason : "manual_stop";
+    const now = new Date();
+    const stopped = await FocusSession.findOneAndUpdate(
+      openFocusSessionFilter(req.user.id),
+      buildStopPipeline(now, endedReason),
+      { new: true },
+    );
+    if (!stopped) return res.status(409).json(FOCUS_STATE_CONFLICT);
 
-    const openSession = await FocusSession.findOne({
-      userId: req.user.id,
-      endedAt: null
-    }).sort({ startedAt: -1 });
-
-    if (!openSession) {
-      return res.status(404).json({ error: "No active focus session to stop." });
-    }
-
-    finalizeFocusSession(openSession, new Date(), endedReason);
-    await openSession.save();
-
-    const task = await Task.findOne({
-      _id: getFocusSessionTaskId(openSession),
-      userId: req.user.id,
-    }).select("description");
-
-    return res.json(toFocusSessionResponse(openSession, {
-      resolvedTaskDescription: task?.description,
-    }));
+    const task = await Task.findOne({ _id: getFocusSessionTaskId(stopped), userId: req.user.id }).select("description");
+    return res.json(toFocusSessionResponse(stopped, { resolvedTaskDescription: task?.description }));
   } catch (err) {
-    console.error("Error stopping focus session:", err);
+    console.error("Error stopping focus session");
     return res.status(500).json({ error: "Server error while stopping focus session" });
   }
 });
 
 app.get("/focus-sessions/active", apiProbeLimiter, ensureAuthenticated, userApiLimiter, async (req, res) => {
   try {
-    const active = await FocusSession.findOne({ userId: req.user.id, endedAt: null }).sort({ startedAt: -1 });
-    if (!active) return res.status(204).end();
-    return res.json(toFocusSessionResponse(active));
+    const activeSessions = await FocusSession.find(openFocusSessionFilter(req.user.id)).limit(2);
+    if (activeSessions.length > 1) return res.status(409).json(FOCUS_STATE_CONFLICT);
+    if (!activeSessions.length) return res.status(204).end();
+    return res.json(toFocusSessionResponse(activeSessions[0]));
   } catch (err) {
-    console.error("Error restoring focus session:", err);
+    console.error("Error restoring focus session");
     return res.status(500).json({ error: "Server error while restoring focus session" });
   }
 });
 
 app.post("/focus-sessions/pause", apiProbeLimiter, ensureAuthenticated, userApiLimiter, async (req, res) => {
   try {
+    const now = new Date();
     const active = await FocusSession.findOneAndUpdate(
-      { userId: req.user.id, endedAt: null, pausedAt: null },
-      { $set: { pausedAt: new Date() } },
+      { ...openFocusSessionFilter(req.user.id), $or: [{ pausedAt: null }, { pausedAt: { $exists: false } }] },
+      { $set: { pausedAt: now, updatedAt: now } },
       { new: true },
     );
-    if (active) return res.json(toFocusSessionResponse(active));
-    const open = await FocusSession.findOne({ userId: req.user.id, endedAt: null }).select("pausedAt");
-    return res.status(open ? 409 : 404).json({ error: open ? "Focus session is already paused." : "No active focus session to pause." });
+    if (!active) return res.status(409).json(FOCUS_STATE_CONFLICT);
+    return res.json(toFocusSessionResponse(active));
   } catch (err) {
-    console.error("Error pausing focus session:", err);
+    console.error("Error pausing focus session");
     return res.status(500).json({ error: "Server error while pausing focus session" });
   }
 });
@@ -1634,20 +1544,15 @@ app.post("/focus-sessions/pause", apiProbeLimiter, ensureAuthenticated, userApiL
 app.post("/focus-sessions/resume", apiProbeLimiter, ensureAuthenticated, userApiLimiter, async (req, res) => {
   try {
     const now = new Date();
-    const paused = await FocusSession.findOne({ userId: req.user.id, endedAt: null, pausedAt: { $ne: null } });
-    if (!paused) {
-      const open = await FocusSession.findOne({ userId: req.user.id, endedAt: null }).select("pausedAt");
-      return res.status(open ? 409 : 404).json({ error: open ? "Focus session is already running." : "No active focus session to resume." });
-    }
     const resumed = await FocusSession.findOneAndUpdate(
-      { _id: paused._id, userId: req.user.id, endedAt: null, pausedAt: paused.pausedAt },
-      { $inc: { totalPausedMs: safePauseDuration(paused.pausedAt, now) }, $set: { pausedAt: null } },
+      { ...openFocusSessionFilter(req.user.id), pausedAt: { $type: "date" } },
+      buildResumePipeline(now),
       { new: true },
     );
-    if (!resumed) return res.status(409).json({ error: "Focus session state changed. Please try again." });
+    if (!resumed) return res.status(409).json(FOCUS_STATE_CONFLICT);
     return res.json(toFocusSessionResponse(resumed));
   } catch (err) {
-    console.error("Error resuming focus session:", err);
+    console.error("Error resuming focus session");
     return res.status(500).json({ error: "Server error while resuming focus session" });
   }
 });
@@ -1987,7 +1892,15 @@ app.put("/settings/board-preferences", apiProbeLimiter, ensureAuthenticated, use
 
 // Route to check user authentication status
 app.get("/auth-status", (req, res) => {
-  if (!req.isAuthenticated()) return res.json({ loggedIn: false });
+  if (!req.isAuthenticated()) {
+    if (req.session?.passport?.user) {
+      return req.session.destroy(() => {
+        clearSessionCookie(res);
+        return res.json({ loggedIn: false });
+      });
+    }
+    return res.json({ loggedIn: false });
+  }
 
   return res.json({
     loggedIn: true,
