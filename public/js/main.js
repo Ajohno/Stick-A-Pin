@@ -37,6 +37,51 @@ function notify(message, type = "error", duration = 3200) {
 
 
 let csrfTokenPromise = null;
+let authStatusPromise = null;
+let authRedirectStarted = false;
+let authenticatedUser = null;
+
+const PROTECTED_PAGE_PATHS = new Set([
+  "/dashboard.html",
+  "/calendar-page.html",
+  "/focus-page.html",
+  "/profile-page.html",
+  "/settings-page.html",
+  "/feedback-page.html",
+]);
+
+function isProtectedPagePath(pathname = window.location.pathname) {
+  return PROTECTED_PAGE_PATHS.has(pathname);
+}
+
+function redirectToLoginOnce() {
+  if (authRedirectStarted || !isProtectedPagePath()) return;
+  authRedirectStarted = true;
+  const next = `${window.location.pathname}${window.location.search}`;
+  window.location.replace(`/login.html?${new URLSearchParams({ next })}`);
+}
+
+function getSafeNextPath(value) {
+  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
+    return null;
+  }
+  try {
+    const parsed = new URL(value, window.location.origin);
+    const isAuthenticationPage = new Set([
+      "/login.html",
+      "/register.html",
+      "/forgot-password.html",
+      "/reset-password.html",
+      "/verification-status.html",
+      "/verification-success.html",
+    ]).has(parsed.pathname);
+    return parsed.origin === window.location.origin && !isAuthenticationPage
+      ? `${parsed.pathname}${parsed.search}${parsed.hash}`
+      : null;
+  } catch (error) {
+    return null;
+  }
+}
 
 function shouldAttachCsrf(method = "GET") {
   const normalizedMethod = String(method || "GET").toUpperCase();
@@ -79,6 +124,13 @@ async function apiFetch(url, options = {}, retryOnCsrfFailure = true) {
     ...options,
     headers,
   });
+
+  if (response.status === 401 && isProtectedPagePath()) {
+    redirectToLoginOnce();
+    // Navigation tears down this page. Keeping callers pending prevents each
+    // page widget from treating the expected sign-out as an application error.
+    return new Promise(() => {});
+  }
 
   if (response.status === 403 && shouldAttachCsrf(method) && retryOnCsrfFailure) {
     // A session rotation can invalidate a cached token. Refresh once only so a
@@ -604,6 +656,17 @@ function getFocusTasksByFilter(tasks, filter) {
   });
 }
 
+function selectFilterForFocusedTask(tasks, selectedFilter, focusedTaskId) {
+  const focusedTask = (Array.isArray(tasks) ? tasks : []).find((task) =>
+    task.status === "active" && String(task._id) === String(focusedTaskId));
+  if (!focusedTask) return null;
+
+  const selectedFilterContainsTask = getFocusTasksByFilter(tasks, selectedFilter)
+    .some((task) => String(task._id) === String(focusedTaskId));
+  if (selectedFilterContainsTask) return selectedFilter;
+  return focusedTask.isBigThree ? "big-three" : "task-list";
+}
+
 function updateFocusFilterTabs(selectedFilter, { running = false } = {}) {
   const tabButtons = document.querySelectorAll(".focus-task-tab");
   if (!tabButtons.length) return;
@@ -664,11 +727,11 @@ function updateFocusModeControls({ running, hasTask } = {}) {
   updateFocusPiPToggleButton();
   if (stopBtn) {
     stopBtn.hidden = !Boolean(running);
-    stopBtn.disabled = !Boolean(running);
+    stopBtn.disabled = !Boolean(running) || focusState.transitionPending;
   }
   if (completeBtn) {
     completeBtn.hidden = !Boolean(running);
-    completeBtn.disabled = !Boolean(running);
+    completeBtn.disabled = !Boolean(running) || focusState.transitionPending;
   }
   if (pauseBtn) {
     pauseBtn.hidden = !Boolean(running);
@@ -796,17 +859,17 @@ function updateFocusTaskOptions(tasks) {
   });
 }
 
-async function loadFocusTasks() {
+async function loadFocusTasks({ render = true } = {}) {
   const response = await apiFetch("/tasks", { credentials: "include" });
   if (!response.ok) {
     focusState.allTasks = [];
-    updateFocusTaskOptions([]);
+    if (render) updateFocusTaskOptions([]);
     return [];
   }
 
   const tasks = await response.json();
   focusState.allTasks = Array.isArray(tasks) ? tasks : [];
-  updateFocusTaskOptions(focusState.allTasks);
+  if (render) updateFocusTaskOptions(focusState.allTasks);
   return focusState.allTasks;
 }
 
@@ -919,7 +982,12 @@ async function updateFocusLogWidget() {
 
 async function stopFocusSession(reason = "manual_stop") {
   const statusEl = document.getElementById("focus-status");
-  const isRunning = Boolean(focusState.taskId);
+  if (!focusState.taskId || focusState.transitionPending) return false;
+
+  focusState.transitionPending = true;
+  if (statusEl) statusEl.textContent = "Stopping focus session…";
+  updateFocusModeControls({ running: true, hasTask: true });
+
   const endingTaskId = focusState.taskId;
   const endedTask = focusState.allTasks.find(
     (task) => String(task?._id) === String(endingTaskId),
@@ -933,25 +1001,34 @@ async function stopFocusSession(reason = "manual_stop") {
   ].includes(reason)
     ? reason
     : "manual_stop";
-  let stopError = null;
 
-  if (isRunning) {
-    try {
-      const response = await apiFetch("/focus-sessions/stop", {
-        credentials: "include",
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reason: apiReason }),
-      });
+  try {
+    const response = await apiFetch("/focus-sessions/stop", {
+      credentials: "include",
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: apiReason }),
+    });
 
-      if (!response.ok && response.status !== 404) {
-        const payload = await parseApiResponse(response);
-        stopError = payload?.error || "Could not save focus session.";
-      }
-    } catch (error) {
-      console.error("Stop focus session request failed:", error);
-      stopError = "Could not save focus session.";
+    if (!response.ok && response.status !== 404) {
+      const payload = await parseApiResponse(response);
+      throw new Error(payload?.error || "Could not save focus session.");
     }
+  } catch (error) {
+    console.error("Stop focus session request failed:", error);
+    focusState.transitionPending = false;
+    updateFocusModeControls({ running: true, hasTask: true });
+    if (statusEl) {
+      statusEl.textContent = focusState.isPaused
+        ? "Focus session is still paused. It could not be stopped."
+        : "Focus session is still running. It could not be stopped.";
+    }
+    Toast.show({
+      message: "The focus session could not be saved, so the timer was not stopped.",
+      type: "error",
+      duration: 3500,
+    });
+    return false;
   }
 
   stopFocusTimer();
@@ -963,23 +1040,16 @@ async function stopFocusSession(reason = "manual_stop") {
   focusState.pausedAt = null;
   focusState.totalPausedMs = 0;
   focusState.isPaused = false;
+  focusState.transitionPending = false;
   updateFocusModeControls({ running: false });
   renderFocusTimer();
 
-  if (isRunning) {
-    await updateFocusLogWidget();
-  }
-
-  if (!statusEl || !isRunning) return;
-
-  if (reason === "completed_task" || taskMarkedCompleted) {
-    statusEl.textContent =
-      "Focus session ended because this task was completed.";
+  if (statusEl && (reason === "completed_task" || taskMarkedCompleted)) {
+    statusEl.textContent = "Focus session ended because this task was completed.";
     showFocusQuoteByCategory("completion");
-  } else if (reason === "task_no_longer_active") {
-    statusEl.textContent =
-      "Focus session ended because the task is no longer active.";
-  } else {
+  } else if (statusEl && reason === "task_no_longer_active") {
+    statusEl.textContent = "Focus session ended because the task is no longer active.";
+  } else if (statusEl) {
     statusEl.textContent = "Focus session stopped.";
   }
 
@@ -989,9 +1059,8 @@ async function stopFocusSession(reason = "manual_stop") {
     duration: 2500,
   });
 
-  if (stopError) {
-    Toast.show({ message: stopError, type: "error", duration: 3000 });
-  }
+  void updateFocusLogWidget();
+  return true;
 }
 
 async function completeTask(taskId) {
@@ -1039,6 +1108,27 @@ function applyFocusSessionState(session) {
   if (Number.isFinite(serverNow)) focusState.serverClockOffsetMs = serverNow - Date.now();
 }
 
+function synchronizeRestoredFocusTask() {
+  const focusedTask = focusState.allTasks.find((task) =>
+    task.status === "active" && String(task._id) === String(focusState.taskId));
+  if (!focusedTask) return false;
+
+  const restoredFilter = selectFilterForFocusedTask(
+    focusState.allTasks,
+    focusState.filter,
+    focusState.taskId,
+  );
+  focusState.filter = restoredFilter;
+
+  updateFocusTaskOptions(focusState.allTasks);
+  const selectEl = document.getElementById("focusTaskSelect");
+  const taskListEl = document.getElementById("focusTaskList");
+  if (selectEl) selectEl.value = String(focusState.taskId);
+  syncFocusTaskSelection(taskListEl, focusState.taskId);
+  updateFocusModeControls({ running: true, hasTask: true });
+  return true;
+}
+
 async function restoreFocusSession() {
   const response = await apiFetch("/focus-sessions/active", {
     credentials: "include",
@@ -1048,15 +1138,10 @@ async function restoreFocusSession() {
   const session = await parseApiResponse(response);
   if (!response.ok) throw new Error(session?.error || "Could not restore focus session.");
   applyFocusSessionState(session);
-  const taskIsStillActive = focusState.allTasks.some((task) =>
-    task.status === "active" && String(task._id) === String(focusState.taskId));
-  if (!taskIsStillActive) {
+  if (!synchronizeRestoredFocusTask()) {
     await stopFocusSession("task_no_longer_active");
     return false;
   }
-  const selectEl = document.getElementById("focusTaskSelect");
-  if (selectEl && focusState.taskId) selectEl.value = String(focusState.taskId);
-  updateFocusModeControls({ running: true, hasTask: true });
   renderFocusTimer();
   if (!focusState.isPaused) {
     startFocusTimer();
@@ -1087,8 +1172,9 @@ async function initFocusMode() {
   updateFocusPiPToggleButton();
 
   try {
-    await loadFocusTasks();
-    await restoreFocusSession();
+    await loadFocusTasks({ render: false });
+    const restored = await restoreFocusSession();
+    if (!restored && !focusState.taskId) updateFocusTaskOptions(focusState.allTasks);
   } catch (error) {
     console.error("Focus task preload failed:", error);
     updateFocusTaskOptions([]);
@@ -2149,7 +2235,7 @@ function initProfileBoardNav() {
   if (!panelContainer || !navButtons.length) return;
 
   const userNameEl = document.getElementById("profileSidebarUserName");
-  let currentUser = null;
+  let currentUser = authenticatedUser;
   const applyUserName = (user) => {
     if (!userNameEl) return;
     const firstName = String(user?.firstName || "").trim();
@@ -2158,6 +2244,7 @@ function initProfileBoardNav() {
     const rawName = combinedName || String(user?.name || "User").trim();
     userNameEl.textContent = rawName || "User";
   };
+  applyUserName(currentUser);
 
   const renderPanel = (panelKey) => {
     panelContainer.innerHTML = getProfilePanelMarkup(panelKey, currentUser);
@@ -2316,7 +2403,7 @@ function initProfileBoardNav() {
 }
 
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   console.log("DOM Fully Loaded - JavaScript Running");
   const PASSWORD_POLICY_MESSAGE =
     "Password must be at least 12 characters and include an uppercase letter, lowercase letter, and a number.";
@@ -2359,14 +2446,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const isLoginPage = document.body.classList.contains("login-page");
   const isRegisterPage = document.body.classList.contains("register-page");
   const currentPath = window.location.pathname;
-  const protectedPaths = new Set([
-    "/dashboard.html",
-    "/calendar-page.html",
-    "/profile-page.html",
-    "/settings-page.html",
-    "/feedback-page.html",
-  ]);
-  const isProtectedPage = protectedPaths.has(currentPath);
+  const isProtectedPage = isProtectedPagePath(currentPath);
   const isHomePage = currentPath === "/" || currentPath === "/index.html";
 
   // Registration handler (used on register.html)
@@ -2652,6 +2732,9 @@ document.addEventListener("DOMContentLoaded", () => {
               : (normalizeDefaultView(data?.user?.settings?.board?.default_view) === "calendar"
                 ? "/calendar-page.html"
                 : "/dashboard.html");
+          const requestedPath = getSafeNextPath(
+            new URLSearchParams(window.location.search).get("next"),
+          );
 
           // alert("Login successful!");
           Toast.show({
@@ -2659,7 +2742,7 @@ document.addEventListener("DOMContentLoaded", () => {
             type: "success",
             duration: 2000,
           });
-          window.location.href = preferredDefaultPath;
+          window.location.href = requestedPath || preferredDefaultPath;
         } else {
           notify(`Login failed: ${data.error || "Unknown error"}`);
           Toast.show({
@@ -2711,6 +2794,14 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  const authenticated = await checkAuthStatus({
+    isLoginPage,
+    isRegisterPage,
+    isProtectedPage,
+    isHomePage,
+  });
+  if (isProtectedPage && !authenticated) return;
+
   // Task Submission Form
   // const submitBtn = document.getElementById("submitBtn");
   // if (submitBtn) {
@@ -2736,9 +2827,10 @@ document.addEventListener("DOMContentLoaded", () => {
   initFeedbackForm();
   initProfileBoardNav();
   initCalendarPage();
-
-  checkAuthStatus({ isLoginPage, isRegisterPage, isProtectedPage, isHomePage }); // Check authentication status on page load
   initFocusMode();
+
+  if (document.getElementById("main-section")) fetchTasks();
+  updateFocusLogWidget();
 });
 
 
@@ -3283,10 +3375,29 @@ async function updateNavTaskCounter() {
 }
 
 // Function to check if a user is currently logged in
+function fetchAuthStatus() {
+  if (!authStatusPromise) {
+    authStatusPromise = (async () => {
+      const response = await apiFetch("/auth-status", {
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        const data = await parseApiResponse(response);
+        throw new Error(data?.error || `Authentication check failed (${response.status})`);
+      }
+      return parseApiResponse(response);
+    })().finally(() => {
+      authStatusPromise = null;
+    });
+  }
+  return authStatusPromise;
+}
+
 async function checkAuthStatus({
   isLoginPage = false,
   isRegisterPage = false,
-  isProtectedPage = false,
+  isProtectedPage = isProtectedPagePath(),
   isHomePage = false,
 } = {}) {
   const authSection = document.getElementById("auth-section");
@@ -3294,20 +3405,17 @@ async function checkAuthStatus({
   const authStatus = document.getElementById("authStatus");
   const logoutBtn = document.getElementById("logoutBtn");
 
-  let data = { loggedIn: false };
+  let data;
 
   try {
-    const response = await apiFetch("/auth-status", {
-      credentials: "include",
-      cache: "no-store",
-    });
-
-    data = await parseApiResponse(response);
+    data = await fetchAuthStatus();
   } catch (error) {
     console.error("Auth status check failed:", error);
+    return null;
   }
 
   if (data.loggedIn) {
+    authenticatedUser = data.user || null;
     hydrateBoardPreferences(data?.user);
 
     const preferredDefaultView = normalizeDefaultView(
@@ -3354,22 +3462,19 @@ async function checkAuthStatus({
     if (logoutBtn) {
       logoutBtn.style.display = "block";
     }
-    if (mainSection) {
-      fetchTasks(); // Automatically load tasks if user is logged in
-    }
-    updateFocusLogWidget();
-
     updateNavTaskCounter();
     document.dispatchEvent(
       new CustomEvent("auth-status-resolved", {
         detail: { loggedIn: true, user: data.user },
       }),
     );
+    return true;
   } else {
+    authenticatedUser = null;
     // Protected pages should send logged-out users to login instead of showing a blank shell.
     if (isProtectedPage) {
-      window.location.href = "/login.html";
-      return;
+      redirectToLoginOnce();
+      return false;
     }
 
     // Only toggle dashboard sections if they are present on the page
@@ -3390,6 +3495,7 @@ async function checkAuthStatus({
         detail: { loggedIn: false },
       }),
     );
+    return false;
   }
 }
 
@@ -4453,7 +4559,9 @@ if (hasDashboard) {
   const REFRESH_MS = 30000;
 
   function refreshDashboard() {
-    checkAuthStatus();
+    void checkAuthStatus({ isProtectedPage: true }).then((loggedIn) => {
+      if (loggedIn) fetchTasks();
+    });
   }
 
   setInterval(refreshDashboard, REFRESH_MS);
