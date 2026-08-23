@@ -46,6 +46,7 @@ function loadFrontend({ pathname = "/focus-page.html", elements = {}, fetchImpl 
     globalThis.frontendTestApi = {
       selectFilterForFocusedTask,
       stopFocusSession,
+      toggleFocusPauseState,
       focusState,
       checkAuthStatus,
       callApiFetch(...args) { return apiFetch(...args); },
@@ -56,6 +57,16 @@ function loadFrontend({ pathname = "/focus-page.html", elements = {}, fetchImpl 
     };`;
   vm.runInContext(source, context);
   return { api: context.frontendTestApi, redirects, toasts, consoleErrors };
+}
+
+function jsonResponse(status, payload = {}) {
+  return {
+    status,
+    ok: status >= 200 && status < 300,
+    headers: new Headers({ "content-type": "application/json" }),
+    json: async () => payload,
+    text: async () => JSON.stringify(payload),
+  };
 }
 
 test("restored filters retain matching filters and reveal non-Big-3 tasks", () => {
@@ -97,6 +108,95 @@ test("stop acknowledges pending state, prevents duplicates, then confirms before
   assert.equal(status.textContent, "Focus session stopped.");
   assert.equal(timer.textContent, "00:00");
   assert.equal(toasts.at(-1).type, "success");
+});
+
+test("a stale Stop conflict clears local state after another tab ended the session", async () => {
+  const status = { textContent: "Focused on: task" };
+  const timer = { textContent: "02:34", isConnected: true };
+  const { api, toasts, consoleErrors } = loadFrontend({
+    elements: { "focus-status": status, focusTimer: timer },
+  });
+  api.focusState.taskId = "task";
+  api.focusState.startedAt = Date.now();
+  api.focusState.allTasks = [{ _id: "task", status: "active" }];
+
+  const requests = [];
+  api.setApiFetch(async (url) => {
+    requests.push(url);
+    if (url === "/focus-sessions/stop") {
+      return jsonResponse(409, { error: "Focus session is no longer active." });
+    }
+    if (url === "/focus-sessions/active") return jsonResponse(204);
+    throw new Error(`Unexpected request: ${url}`);
+  });
+
+  assert.equal(await api.stopFocusSession(), true);
+  assert.deepEqual(requests, [
+    "/focus-sessions/stop",
+    "/focus-sessions/active",
+  ]);
+  assert.equal(api.focusState.taskId, null);
+  assert.equal(timer.textContent, "00:00");
+  assert.equal(status.textContent, "Focus session ended in another tab.");
+  assert.equal(toasts.at(-1).type, "info");
+  assert.equal(consoleErrors.length, 0);
+});
+
+test("a Pause conflict reconciles an already-ended session without console noise", async () => {
+  const status = { textContent: "Focused on: task" };
+  const timer = { textContent: "00:17", isConnected: true };
+  const { api, toasts, consoleErrors } = loadFrontend({
+    elements: { "focus-status": status, focusTimer: timer },
+  });
+  api.focusState.taskId = "task";
+  api.focusState.startedAt = Date.now();
+  api.focusState.allTasks = [{ _id: "task", status: "active" }];
+
+  const requests = [];
+  api.setApiFetch(async (url) => {
+    requests.push(url);
+    if (url === "/focus-sessions/pause") {
+      return jsonResponse(409, { error: "Focus session is no longer active." });
+    }
+    if (url === "/focus-sessions/active") return jsonResponse(204);
+    throw new Error(`Unexpected request: ${url}`);
+  });
+
+  assert.equal(await api.toggleFocusPauseState(status), false);
+  assert.deepEqual(requests, [
+    "/focus-sessions/pause",
+    "/focus-sessions/active",
+  ]);
+  assert.equal(api.focusState.taskId, null);
+  assert.equal(timer.textContent, "00:00");
+  assert.equal(status.textContent, "Focus session ended in another tab.");
+  assert.equal(toasts.at(-1).type, "info");
+  assert.equal(consoleErrors.length, 0);
+});
+
+test("focus controls start disabled until active-session restoration completes", () => {
+  const html = fs.readFileSync("public/focus-page.html", "utf8");
+  const disabledButtons = [
+    "focusStartBtn",
+    "focusTabBigThree",
+    "focusTabTaskList",
+    "focusTabEffort",
+  ];
+
+  disabledButtons.forEach((id) => {
+    assert.match(
+      html,
+      new RegExp(`<button(?=[^>]*id="${id}")(?=[^>]*disabled)[^>]*>`),
+    );
+  });
+  assert.match(
+    html,
+    /<select(?=[^>]*id="focusTaskSelect")(?=[^>]*disabled)[^>]*>/,
+  );
+  assert.match(
+    html,
+    /<ul(?=[^>]*id="focusTaskList")(?=[^>]*aria-disabled="true")[^>]*>/,
+  );
 });
 
 test("a Focus Log refresh failure cannot restore a successfully stopped session", async () => {

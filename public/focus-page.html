@@ -122,7 +122,12 @@
               >
             </div>
             <div class="focus-controls">
-              <button id="focusStartBtn" class="paper-button" type="button">
+              <button
+                id="focusStartBtn"
+                class="paper-button"
+                type="button"
+                disabled
+              >
                 Start
               </button>
               <button
@@ -176,6 +181,7 @@
                   aria-selected="true"
                   aria-controls="focusTaskList"
                   data-filter="big-three"
+                  disabled
                 >
                   Big 3
                 </button>
@@ -187,6 +193,7 @@
                   aria-selected="false"
                   aria-controls="focusTaskList"
                   data-filter="task-list"
+                  disabled
                 >
                   Task List
                 </button>
@@ -198,6 +205,7 @@
                   aria-selected="false"
                   aria-controls="focusTaskList"
                   data-filter="effort"
+                  disabled
                 >
                   Effort
                 </button>
@@ -206,6 +214,7 @@
                 id="focusTaskSelect"
                 aria-label="Select a task to focus on"
                 hidden
+                disabled
               ></select>
               <div
                 class="handdrawn-divider focus-task-divider"
@@ -216,6 +225,7 @@
                 class="big-three-list focus-task-list"
                 role="listbox"
                 aria-labelledby="focusTaskLabel"
+                aria-disabled="true"
               ></ul>
             </div>
           </article>

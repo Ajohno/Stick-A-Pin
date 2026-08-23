@@ -154,6 +154,7 @@ const focusState = {
   totalPausedMs: 0,
   isPaused: false,
   serverClockOffsetMs: 0,
+  isRestoring: false,
   transitionPending: false,
   timerIntervalId: null,
   timerEl: null,
@@ -685,7 +686,7 @@ function bindFocusFilterTabs() {
 
   tabButtons.forEach((buttonEl) => {
     buttonEl.addEventListener("click", () => {
-      if (focusState.taskId) return;
+      if (focusState.taskId || focusState.isRestoring) return;
 
       const filter = buttonEl.dataset.filter || "big-three";
       if (filter === focusState.filter) return;
@@ -696,7 +697,7 @@ function bindFocusFilterTabs() {
   });
 
   updateFocusFilterTabs(focusState.filter, {
-    running: Boolean(focusState.taskId),
+    running: Boolean(focusState.taskId) || focusState.isRestoring,
   });
 }
 
@@ -707,35 +708,36 @@ function updateFocusModeControls({ running, hasTask } = {}) {
   const stopBtn = getFocusWidgetElementById("focusStopBtn");
   const completeBtn = getFocusWidgetElementById("focusCompleteBtn");
   const pauseBtn = getFocusWidgetElementById("focusPauseBtn");
-  if (selectEl) selectEl.disabled = running;
+  const controlsLocked = Boolean(running) || focusState.isRestoring;
+  if (selectEl) selectEl.disabled = controlsLocked;
   if (taskListEl) {
     taskListEl.setAttribute(
       "aria-disabled",
-      Boolean(running) ? "true" : "false",
+      controlsLocked ? "true" : "false",
     );
     taskListEl.querySelectorAll(".focus-task-option").forEach((buttonEl) => {
-      buttonEl.disabled = Boolean(running);
+      buttonEl.disabled = controlsLocked;
     });
   }
 
-  updateFocusFilterTabs(focusState.filter, { running: Boolean(running) });
+  updateFocusFilterTabs(focusState.filter, { running: controlsLocked });
 
   if (startBtn) {
     startBtn.hidden = Boolean(running) || focusState.isInPiP;
-    startBtn.disabled = Boolean(running);
+    startBtn.disabled = controlsLocked;
   }
   updateFocusPiPToggleButton();
   if (stopBtn) {
     stopBtn.hidden = !Boolean(running);
-    stopBtn.disabled = !Boolean(running) || focusState.transitionPending;
+    stopBtn.disabled = !Boolean(running) || focusState.transitionPending || focusState.isRestoring;
   }
   if (completeBtn) {
     completeBtn.hidden = !Boolean(running);
-    completeBtn.disabled = !Boolean(running) || focusState.transitionPending;
+    completeBtn.disabled = !Boolean(running) || focusState.transitionPending || focusState.isRestoring;
   }
   if (pauseBtn) {
     pauseBtn.hidden = !Boolean(running);
-    pauseBtn.disabled = !Boolean(running) || focusState.transitionPending;
+    pauseBtn.disabled = !Boolean(running) || focusState.transitionPending || focusState.isRestoring;
     pauseBtn.textContent = focusState.isPaused ? "Resume" : "Pause";
     pauseBtn.setAttribute("aria-label", focusState.isPaused ? "Resume focus session" : "Pause focus session");
   }
@@ -817,7 +819,7 @@ function updateFocusTaskOptions(tasks) {
       optionButton.className = "focus-task-option";
       optionButton.textContent = task.description || "Untitled task";
       optionButton.addEventListener("click", () => {
-        if (focusState.taskId) return;
+        if (focusState.taskId || focusState.isRestoring) return;
         selectEl.value = taskId;
         syncFocusTaskSelection(taskListEl, taskId);
         updateFocusModeControls({ running: false, hasTask: true });
@@ -1010,6 +1012,11 @@ async function stopFocusSession(reason = "manual_stop") {
       body: JSON.stringify({ reason: apiReason }),
     });
 
+    if (response.status === 409) {
+      const reconciledState = await reconcileFocusSessionState();
+      return reconciledState === "inactive";
+    }
+
     if (!response.ok && response.status !== 404) {
       const payload = await parseApiResponse(response);
       throw new Error(payload?.error || "Could not save focus session.");
@@ -1031,18 +1038,7 @@ async function stopFocusSession(reason = "manual_stop") {
     return false;
   }
 
-  stopFocusTimer();
-  closeFocusWidgetPiP();
-  clearFocusQuoteTimers();
-  focusState.taskId = null;
-  focusState.sessionId = null;
-  focusState.startedAt = null;
-  focusState.pausedAt = null;
-  focusState.totalPausedMs = 0;
-  focusState.isPaused = false;
-  focusState.transitionPending = false;
-  updateFocusModeControls({ running: false });
-  renderFocusTimer();
+  clearLocalFocusSessionState();
 
   if (statusEl && (reason === "completed_task" || taskMarkedCompleted)) {
     statusEl.textContent = "Focus session ended because this task was completed.";
@@ -1108,6 +1104,39 @@ function applyFocusSessionState(session) {
   if (Number.isFinite(serverNow)) focusState.serverClockOffsetMs = serverNow - Date.now();
 }
 
+function clearLocalFocusSessionState() {
+  stopFocusTimer();
+  closeFocusWidgetPiP();
+  clearFocusQuoteTimers();
+  focusState.taskId = null;
+  focusState.sessionId = null;
+  focusState.startedAt = null;
+  focusState.pausedAt = null;
+  focusState.totalPausedMs = 0;
+  focusState.isPaused = false;
+  focusState.serverClockOffsetMs = 0;
+  focusState.transitionPending = false;
+  updateFocusModeControls({
+    running: false,
+    hasTask: Boolean(document.getElementById("focusTaskSelect")?.value),
+  });
+  renderFocusTimer();
+}
+
+async function readActiveFocusSession() {
+  const response = await apiFetch("/focus-sessions/active", {
+    credentials: "include",
+    cache: "no-store",
+  });
+  if (response.status === 204) return null;
+
+  const session = await parseApiResponse(response);
+  if (!response.ok) {
+    throw new Error(session?.error || "Could not restore focus session.");
+  }
+  return session;
+}
+
 function synchronizeRestoredFocusTask() {
   const focusedTask = focusState.allTasks.find((task) =>
     task.status === "active" && String(task._id) === String(focusState.taskId));
@@ -1129,29 +1158,113 @@ function synchronizeRestoredFocusTask() {
   return true;
 }
 
-async function restoreFocusSession() {
-  const response = await apiFetch("/focus-sessions/active", {
-    credentials: "include",
-    cache: "no-store",
-  });
-  if (response.status === 204) return false;
-  const session = await parseApiResponse(response);
-  if (!response.ok) throw new Error(session?.error || "Could not restore focus session.");
+async function presentAuthoritativeFocusSession(session) {
+  focusState.transitionPending = false;
   applyFocusSessionState(session);
   if (!synchronizeRestoredFocusTask()) {
     await stopFocusSession("task_no_longer_active");
     return false;
   }
+
+  clearFocusQuoteTimers();
   renderFocusTimer();
-  if (!focusState.isPaused) {
+  if (focusState.isPaused) {
+    stopFocusTimer();
+  } else {
     startFocusTimer();
     scheduleSessionNudges();
   }
-  const statusEl = document.getElementById("focus-status");
-  if (statusEl) statusEl.textContent = focusState.isPaused
-    ? `Paused: ${session.taskDescription || "focus session"}`
-    : `Focused on: ${session.taskDescription || "current task"}`;
+
+  const statusEl = getFocusWidgetElementById("focus-status");
+  if (statusEl) {
+    statusEl.textContent = focusState.isPaused
+      ? `Paused: ${session.taskDescription || "focus session"}`
+      : `Focused on: ${session.taskDescription || "current task"}`;
+  }
   return true;
+}
+
+async function reconcileFocusSessionState() {
+  const session = await readActiveFocusSession();
+  if (!session) {
+    clearLocalFocusSessionState();
+    const statusEl = getFocusWidgetElementById("focus-status");
+    if (statusEl) statusEl.textContent = "Focus session ended in another tab.";
+    Toast.show({
+      message: "Focus session ended in another tab. This timer was synchronized.",
+      type: "info",
+      duration: 3200,
+    });
+    void updateFocusLogWidget();
+    return "inactive";
+  }
+
+  const restored = await presentAuthoritativeFocusSession(session);
+  if (restored) {
+    Toast.show({
+      message: "Focus session changed in another tab. This timer was synchronized.",
+      type: "info",
+      duration: 3200,
+    });
+    return "active";
+  }
+  return focusState.taskId ? "active" : "inactive";
+}
+
+async function restoreFocusSession() {
+  const session = await readActiveFocusSession();
+  if (!session) return false;
+  return presentAuthoritativeFocusSession(session);
+}
+
+async function toggleFocusPauseState(
+  statusEl = getFocusWidgetElementById("focus-status"),
+) {
+  if (!focusState.taskId || focusState.transitionPending) return false;
+
+  focusState.transitionPending = true;
+  updateFocusModeControls({ running: true, hasTask: true });
+  try {
+    const action = focusState.isPaused ? "resume" : "pause";
+    const response = await apiFetch(`/focus-sessions/${action}`, {
+      credentials: "include",
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+
+    if (response.status === 409) {
+      await reconcileFocusSessionState();
+      return false;
+    }
+
+    const payload = await parseApiResponse(response);
+    if (!response.ok) {
+      throw new Error(payload?.error || `Could not ${action} focus session.`);
+    }
+
+    applyFocusSessionState(payload);
+    if (focusState.isPaused) {
+      stopFocusTimer();
+      clearFocusQuoteTimers();
+      if (statusEl) statusEl.textContent = "Focus session paused.";
+    } else {
+      startFocusTimer();
+      scheduleSessionNudges();
+      if (statusEl) statusEl.textContent = "Focus session resumed.";
+    }
+    renderFocusTimer();
+    return true;
+  } catch (error) {
+    Toast.show({ message: error.message, type: "error", duration: 3000 });
+    return false;
+  } finally {
+    focusState.transitionPending = false;
+    updateFocusModeControls({
+      running: Boolean(focusState.taskId),
+      hasTask: Boolean(document.getElementById("focusTaskSelect")?.value),
+    });
+  }
 }
 
 async function initFocusMode() {
@@ -1166,10 +1279,12 @@ async function initFocusMode() {
   pipToggleBtn.setAttribute("aria-disabled", "true");
   focusState.timerEl = document.getElementById("focusTimer");
   focusState.sessionCardEl = document.querySelector(".focus-session-card");
+  focusState.isRestoring = true;
 
   bindFocusFilterTabs();
   setFocusQuoteText("", { typewriter: false });
   updateFocusPiPToggleButton();
+  updateFocusModeControls({ running: false, hasTask: false });
 
   try {
     await loadFocusTasks({ render: false });
@@ -1178,6 +1293,12 @@ async function initFocusMode() {
   } catch (error) {
     console.error("Focus task preload failed:", error);
     updateFocusTaskOptions([]);
+  } finally {
+    focusState.isRestoring = false;
+    updateFocusModeControls({
+      running: Boolean(focusState.taskId),
+      hasTask: Boolean(selectEl.value),
+    });
   }
 
   if (!focusState.taskId) {
@@ -1212,6 +1333,12 @@ async function initFocusMode() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taskId: selectedTaskId }),
       });
+
+      if (response.status === 409) {
+        await reconcileFocusSessionState();
+        return;
+      }
+
       const payload = await parseApiResponse(response);
 
       if (!response.ok) {
@@ -1258,36 +1385,7 @@ async function initFocusMode() {
   });
 
   pauseBtn.addEventListener("click", async () => {
-    if (!focusState.taskId || focusState.transitionPending) return;
-    focusState.transitionPending = true;
-    updateFocusModeControls({ running: true, hasTask: true });
-    try {
-      const action = focusState.isPaused ? "resume" : "pause";
-      const response = await apiFetch(`/focus-sessions/${action}`, {
-        credentials: "include",
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-      });
-      const payload = await parseApiResponse(response);
-      if (!response.ok) throw new Error(payload?.error || `Could not ${action} focus session.`);
-      applyFocusSessionState(payload);
-      if (focusState.isPaused) {
-        stopFocusTimer();
-        clearFocusQuoteTimers();
-        statusEl.textContent = "Focus session paused.";
-      } else {
-        startFocusTimer();
-        scheduleSessionNudges();
-        statusEl.textContent = "Focus session resumed.";
-      }
-      renderFocusTimer();
-    } catch (error) {
-      Toast.show({ message: error.message, type: "error", duration: 3000 });
-    } finally {
-      focusState.transitionPending = false;
-      updateFocusModeControls({ running: Boolean(focusState.taskId), hasTask: true });
-    }
+    await toggleFocusPauseState(statusEl);
   });
 
   pipToggleBtn.addEventListener("click", async () => {
@@ -2499,11 +2597,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         // Check if registration went alright
         if (response.ok) {
-          const sentFlag = data?.emailDeliveryFailed ? "0" : "1";
-          const query = new URLSearchParams({
-            sent: sentFlag,
-            email,
-          }).toString();
+          const query = new URLSearchParams({ email }).toString();
           window.location.href = `/verification-status.html?${query}`;
         } else {
           notify(`Registration failed: ${data.error || "Unknown error"}`);
@@ -2518,7 +2612,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   const verificationPage = document.getElementById("verification-status-page");
   if (verificationPage) {
     const params = new URLSearchParams(window.location.search);
-    const sent = params.get("sent") === "1";
     const email = (params.get("email") || "").trim();
 
     const messageEl = document.getElementById("verificationStatusMessage");
@@ -2526,9 +2619,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     const resendBtn = document.getElementById("resendVerificationBtn");
 
     if (messageEl) {
-      messageEl.textContent = sent
-        ? "Verification email was sent."
-        : "Verification email was not sent.";
+      messageEl.textContent =
+        "If the address can be used, check your email for the next step.";
     }
 
     if (emailEl) {
@@ -2553,9 +2645,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         const data = await parseApiResponse(response);
         if (response.ok) {
-          notify(data.message || "Verification email sent.", "success", 2600);
+          notify(data.message || "If the address can be used, check your email for the next step.", "success", 2600);
           Toast.show({
-            message: "Verification email resent",
+            message: data.message || "Check your email for the next step.",
             type: "success",
             duration: 2200,
           });
@@ -2821,6 +2913,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   bindDashboardTaskFilterTabs();
+  document.getElementById("drown-noise-btn")?.addEventListener("click", () => {
+    window.location.href = "/focus-page.html";
+  });
   initDailyEmailSettings();
   initDailyReflectionStatsWidget();
   initWeeklyReflectionStatsWidget();

@@ -19,6 +19,7 @@ const UserSchema = new mongoose.Schema(
     },
 
     passwordHash: { type: String, default: null },
+    authVersion: { type: Number, default: 0, min: 0, validate: Number.isInteger },
 
     // Provider records allow a social login to be linked to the same email account.
     authProviders: {
