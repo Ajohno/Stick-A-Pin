@@ -1,5 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+
 const express = require("express");
 const { createAccountActionHandlers } = require("../config/account-action-routes");
 const {
@@ -201,8 +202,11 @@ function createFakeUserModel(state) {
         firstName: "Test",
         lastName: "User",
         email: `${state}@example.test`,
-        passwordHash: "existing-hash",
-        emailVerified: state === "verified",
+        passwordHash: state === "google-only" ? null : "existing-hash",
+        emailVerified: state !== "unverified",
+        authProviders: state.startsWith("google-")
+          ? { google: { id: "test-google-id" } }
+          : {},
       };
 
   function matches(filter) {
@@ -211,6 +215,23 @@ function createFakeUserModel(state) {
     if (filter.email && filter.email !== user.email) return false;
     if (Object.hasOwn(filter, "emailVerified") && filter.emailVerified !== user.emailVerified) {
       return false;
+    }
+    if (Object.hasOwn(filter, "passwordHash")) {
+      const condition = filter.passwordHash;
+
+      if (
+        condition.$type === "string" &&
+        typeof user.passwordHash !== "string"
+      ) {
+        return false;
+      }
+
+      if (
+        Object.hasOwn(condition, "$ne") &&
+        user.passwordHash === condition.$ne
+      ) {
+        return false;
+      }
     }
     return true;
   }
@@ -245,6 +266,8 @@ test("the background worker handles the full account-state matrix", async () => 
     ["forgot-password", "unknown", false],
     ["forgot-password", "verified", true],
     ["forgot-password", "unverified", true],
+    ["forgot-password", "google-only", false],
+    ["forgot-password", "google-linked", true],
   ];
 
   for (const [kind, state, shouldSend] of matrix) {
@@ -269,6 +292,15 @@ test("the background worker handles the full account-state matrix", async () => 
 
     assert.equal(result.emailSent, shouldSend, `${kind}/${state}`);
     assert.equal(deliveries.length, shouldSend ? 1 : 0, `${kind}/${state}`);
+    if (kind === "forgot-password" && state === "google-only") {
+      const user = UserModel.read();
+
+      assert.equal(user.passwordHash, null);
+      assert.equal(user.passwordResetTokenHash, undefined);
+      assert.equal(user.passwordResetExpiresAt, undefined);
+      assert.equal(user.passwordResetRequestedAt, undefined);
+      assert.equal(user.authProviders.google.id, "test-google-id");
+    }
     if (shouldSend && kind !== "forgot-password") {
       assert.equal(
         UserModel.read().emailVerificationTokenHash,

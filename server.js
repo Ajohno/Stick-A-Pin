@@ -6,6 +6,8 @@
  * settings, reflections, profiles, and feedback. Public assets are served before
  * database middleware so anonymous page loads do not wake MongoDB unnecessarily.
  */
+const { createEnsureAuthenticated } = require("./config/ensure-authenticated");
+const { createPasswordResetHandler } = require("./config/password-reset");
 const express = require("express");
 const helmet = require("helmet");
 const fs = require("fs");
@@ -33,7 +35,12 @@ const {
   createAccountActionJobService,
   hashAccountActionToken,
 } = require("./config/account-action-jobs");
-const { createAccountActionHandlers, validatePasswordStrength } = require("./config/account-action-routes");
+
+const {
+  createAccountActionHandlers,
+  validatePasswordStrength,
+} = require("./config/account-action-routes");
+
 const { scheduleBackgroundTask } = require("./config/background-tasks");
 const { isAuthorizedCronRequest } = require("./config/cron-auth");
 const csrf = require("lusca").csrf; // CSRF protection middleware
@@ -221,17 +228,9 @@ const authenticatedLimiter = rateLimit({
 });
 
 /** Reject requests that do not have a Passport-authenticated session. */
-function ensureAuthenticated(req, res, next) {
-    if (req.isAuthenticated()) {
-        return next(); // If the user is authenticated, continue to the route
-    }
-    const reject = () => {
-      clearSessionCookie(res);
-      return res.status(401).json({ error: "Unauthorized - Please log in" });
-    };
-    if (!req.session) return reject();
-    return req.session.destroy(() => reject());
-}
+const ensureAuthenticated = createEnsureAuthenticated({
+  clearSessionCookie,
+});
 
 // Apply after ensureAuthenticated so unauthenticated probes return 401 without consuming
 // the logged-in API quota. Stricter auth-specific limiters remain on their own routes.
@@ -1037,7 +1036,9 @@ app.get("/api/cron/account-action-jobs", async (req, res) => {
     return res.json({ ok: true, ...summary });
   } catch (error) {
     console.error("Account action retry sweep failed");
-    return res.status(500).json({ error: "Unable to process queued account actions" });
+    return res.status(500).json({
+      error: "Unable to process queued account actions",
+    });
   }
 });
 
@@ -1108,53 +1109,16 @@ app.post(
   accountActionHandlers.forgotPassword
 );
 
-app.post("/reset-password", passwordResetLimiter, async (req, res) => {
-  try {
-    const normalizedEmail = (req.body.email || "").toLowerCase().trim();
-    const token = (req.body.token || "").toString().trim();
-    const newPassword = (req.body.newPassword || "").toString();
-
-    if (!normalizedEmail || !token || !newPassword) {
-      return res.status(400).json({ error: "Email, token, and new password are required" });
-    }
-
-    if (!validatePasswordStrength(newPassword)) {
-      return res.status(400).json({
-        error: "Password must be at least 12 characters and include uppercase, lowercase, and a number.",
-      });
-    }
-
-    const tokenHash = hashVerificationToken(token);
-
-    const passwordHash = await bcrypt.hash(newPassword, 10);
-    const user = await User.findOneAndUpdate(
-      {
-        email: normalizedEmail,
-        passwordResetTokenHash: tokenHash,
-        passwordResetExpiresAt: { $gt: new Date() },
-      },
-      {
-        $set: {
-          passwordHash,
-          passwordResetTokenHash: null,
-          passwordResetExpiresAt: null,
-          passwordResetRequestedAt: null,
-        },
-        $inc: { authVersion: 1 },
-      },
-      { new: true, runValidators: true },
-    );
-
-    if (!user) {
-      return res.status(400).json({ error: "This password reset link is invalid or expired." });
-    }
-
-    return res.json({ message: "Password reset successful. You can now log in." });
-  } catch (error) {
-    console.error("Error resetting password");
-    return res.status(500).json({ error: "Unable to reset password" });
-  }
-});
+app.post(
+  "/reset-password",
+  passwordResetLimiter,
+  createPasswordResetHandler({
+    User,
+    bcrypt,
+    validatePasswordStrength,
+    hashVerificationToken,
+  })
+);
 
 
 // Login Route

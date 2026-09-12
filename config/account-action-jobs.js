@@ -214,7 +214,11 @@ async function processAccountActionPayload({
   if (kind === "forgot-password") {
     const resetToken = generateToken();
     const user = await UserModel.findOneAndUpdate(
-      { email: payload.email },
+      {
+        // This ensures that we only send password reset emails to users who have a password set (i.e., not OAuth-only users).
+        email: payload.email,
+        passwordHash: { $type: "string", $ne: "" },
+      },
       {
         $set: {
           passwordResetTokenHash: hashAccountActionToken(resetToken),

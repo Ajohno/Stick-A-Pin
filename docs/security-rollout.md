@@ -43,6 +43,71 @@ consumes its token and increments `authVersion`, so every earlier version is
 revoked. Rollback must account for the serialized Passport identity shape; do
 not roll back only the deserializer.
 
+## Password reset and OAuth policy (#299)
+
+Password reset requires an existing, nonempty local password hash:
+
+- Local-only accounts may reset their password.
+- Accounts with both a local password and Google linkage may reset their password.
+- Google-only accounts cannot establish a local password through Forgot Password.
+  They receive no reset token or reset email.
+- Reset completion also checks eligibility, blocking previously issued tokens
+  from establishing a password on Google-only accounts.
+
+Validly formatted forgot-password requests receive the same generic public
+acknowledgment regardless of account existence or authentication method.
+
+A successful reset atomically replaces the password hash, clears the reset
+token fields, and increments `authVersion`. Every earlier Stick A Pin session
+then fails authentication on its next request, including sessions created
+through Google. Old cookies receive `401` on protected APIs.
+
+Google linkage remains intact. This does not revoke the user's Google account
+session or provider tokens. The user may sign in again through Google, or
+through the new local password, to obtain a valid Stick A Pin session.
+
+## Password-reset security logging
+
+After a successful reset, the server emits a structured
+`password_reset_sessions_revoked` event containing:
+
+- `timestamp`
+- `userId` (internal account ID)
+- `reason` (`password_reset`)
+- `authVersion` (the resulting version)
+
+The event excludes passwords, password hashes, reset tokens, token hashes,
+cookies, email addresses, and request bodies.
+
+Rejected reset attempts do not emit this success event.
+
+## Local verification for #299
+
+The developer's local PowerShell run of `npm test` reported 40 passed,
+0 failed, and 0 skipped, with `TEST_MONGO_URI=mongodb://127.0.0.1:27018`
+pointing to the isolated `stickapin-299-test-mongo` container (`mongo:7`).
+The same full suite was rerun after formatting cleanup and again passed all
+40 tests with no failures or skips.
+
+Coverage includes:
+
+- Generic account-action responses and worker reset eligibility for local,
+  Google-only, and Google-linked accounts.
+- Real reset-handler execution against MongoDB, legacy authentication-version
+  backfill, token reuse rejection, Google-only reset rejection, and preservation
+  of Google linkage during an eligible reset.
+- A single structured success event containing only the documented fields,
+  and no success event for a rejected reset.
+- Two distinct HTTP session cookies working before reset and receiving `401`
+  afterward; the old password failing login and the new password creating a
+  working session.
+
+The HTTP test uses an isolated Express server with the application's Passport
+configuration, reset handler, and authentication guard, plus an in-memory
+session store. It does not exercise the full deployed application's middleware,
+MongoDB session storage, or a live Google OAuth exchange. These local results
+do not establish CI or deployment verification.
+
 ## API and browser security changes
 
 Focus Start returns `409` if an open session already exists or the unique-index
