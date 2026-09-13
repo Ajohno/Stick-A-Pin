@@ -133,3 +133,64 @@ all script attributes. Application startup must be smoke-tested after rollout by
 loading Login, Registration, Dashboard, and Focus with the browser console open;
 verify registration messaging, signed-out redirects, restored focus state, and
 Start/Pause/Resume/Stop without CSP violations.
+
+## CSP violation reporting (#301)
+
+The enforced Content-Security-Policy includes `report-uri /csp-report`.
+Script restrictions remain enforced: `script-src 'self'` and
+`script-src-attr 'none'`.
+
+POST /csp-report accepts legacy `application/csp-report` payloads and
+modern `application/reports+json` batches. The current CSP advertises
+the legacy report-uri mechanism.
+
+The endpoint runs before database, session, and CSRF middleware.
+Requests are limited to 16 KB, batches to 10 reports, and each IP to
+30 requests per minute per server instance. This in-memory rate limit
+is not shared across deployment instances.
+
+Accepted CSP reports produce structured `csp_violation` log events with:
+
+- timestamp
+- directive
+- documentOrigin
+- blockedOrigin
+- disposition
+
+HTTP(S) URLs are reduced to origins. URL credentials, paths, queries,
+fragments, script samples, and unselected report fields are excluded.
+Malformed payloads receive generic errors without logging their bodies.
+
+### Rollout monitoring
+
+In the deployed application's runtime logs, search for `csp_violation`.
+Review the directive and blockedOrigin while checking Login,
+Registration, Dashboard, and Focus, including Start/Pause/Resume/Stop.
+
+Reports are unauthenticated browser input. Reproduce unexpected reports
+before changing the policy. Do not broaden script permissions solely
+because a report requests it.
+
+Verify that:
+
+- Page responses contain the enforced CSP and `report-uri /csp-report`.
+- A controlled browser violation produces a POST to /csp-report.
+- That request receives 204 and produces a sanitized csp_violation event.
+- Normal application flows work without unexpected CSP violations.
+
+A manually posted report checks ingestion only; it does not prove that
+the browser sends reports automatically.
+
+### Verification status
+
+The targeted local CSP suite passed 11 tests with no failures or skips.
+Coverage includes URL sanitization, both payload formats, complete
+batch rejection, the generated enforced CSP header, and endpoint
+rejection of malformed, oversized, and unsupported requests.
+
+The developer's local PowerShell run of `npm test` on 2026-09-13 passed
+all 48 tests with no failures or skips, using
+`TEST_MONGO_URI=mongodb://127.0.0.1:27018` against the isolated MongoDB 7
+test container. This includes all four database integration tests.
+
+CI and deployed browser/log verification remain pending for this change.
