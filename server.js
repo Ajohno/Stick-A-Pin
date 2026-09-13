@@ -6,6 +6,7 @@
  * settings, reflections, profiles, and feedback. Public assets are served before
  * database middleware so anonymous page loads do not wake MongoDB unnecessarily.
  */
+const { createCspReportHandler } = require("./config/csp-reporting");
 const { createEnsureAuthenticated } = require("./config/ensure-authenticated");
 const { createPasswordResetHandler } = require("./config/password-reset");
 const express = require("express");
@@ -68,6 +69,7 @@ app.use(
         objectSrc: ["'none'"],
         scriptSrc: ["'self'"],
         scriptSrcAttr: ["'none'"],
+        reportUri: ["/csp-report"],
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdn.jsdelivr.net"],
         styleSrcAttr: ["'unsafe-inline'"],
         fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdn.jsdelivr.net", "https://ka-f.fontawesome.com", "data:"],
@@ -183,6 +185,38 @@ app.use(express.static(publicDir));
 app.get(/^\/.*\.[^/]+$/, (req, res) => {
   return res.status(404).send("404 Error: File Not Found");
 });
+
+// Browser reports must work without a database, session, or CSRF token.
+const cspReportLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many reports" },
+});
+
+const parseCspReport = express.json({
+  type: ["application/csp-report", "application/reports+json"],
+  limit: "16kb",
+  inflate: false,
+});
+
+app.post(
+  "/csp-report",
+  cspReportLimiter,
+  (req, res, next) => {
+    parseCspReport(req, res, (error) => {
+      if (!error) return next();
+
+      // Never echo or log the submitted body on parsing failures.
+      const status = error.type === "entity.too.large" ? 413 : 400;
+      return res.status(status).json({
+        error: "Invalid report payload",
+      });
+    });
+  },
+  createCspReportHandler()
+);
 
 app.use(requireDatabase);
 
