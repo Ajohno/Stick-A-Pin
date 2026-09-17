@@ -9,6 +9,55 @@
 
 // API RESPONSE, NOTIFICATION, AND CSRF HELPERS --------------------------------
 
+const NOTIFICATION_COPY = Object.freeze({
+  genericError: "Something went wrong. Please try again.",
+  connectionError: "We couldn’t connect. Check your connection and try again.",
+  loginFailed: "We couldn’t sign you in. Check your email and password, then try again.",
+  logoutFailed: "We couldn’t sign you out. Please try again.",
+  registrationFailed: "We couldn’t create your account. Please try again.",
+  resendVerificationFailed:
+    "We couldn’t resend the verification email. Please try again.",
+  passwordResetRequestFailed:
+    "We couldn’t process that password reset request. Please try again.",
+  passwordResetFailed:
+    "We couldn’t update your password. Please try again.",
+  passwordResetRequested:
+    "If that account exists, check your email for the next step.",
+  passwordUpdated: "Your password has been updated. Please sign in.",
+  verificationEmailSent:
+    "If the address can be used, check your email for the next step.",
+  focusUpdateFailed: "We couldn’t update your focus session. Please try again.",
+  taskCompletionFailed: "We couldn’t complete that task. Please try again.",
+  taskCreateFailed: "We couldn’t add that task. Please try again.",
+  taskUpdateFailed: "We couldn’t update that task. Please try again.",
+  taskDeleteFailed: "We couldn’t delete that task. Please try again.",
+  bigThreeUpdateFailed: "We couldn’t update your Big 3. Please try again.",
+  dailyEmailSettingsFailed:
+    "We couldn’t save daily reflection settings. Please try again.",
+  dailyEmailSettingsLoadFailed:
+    "We couldn’t load daily reflection settings. Please refresh and try again.",
+  dailyEmailTestFailed:
+    "We couldn’t send a test daily reflection email. Please try again.",
+  feedbackAccountFailed:
+    "We couldn’t load your account details. Please sign in and try again.",
+  feedbackSubmitFailed:
+    "We couldn’t send your bug report. Please try again.",
+  boardPreferencesFailed:
+    "We couldn’t save board preferences. Please try again.",
+  accountDeleteFailed: "We couldn’t delete your account. Please try again.",
+});
+
+function notifyFailure(copyKey, error, duration = 3200) {
+  const message =
+    NOTIFICATION_COPY[copyKey] || NOTIFICATION_COPY.genericError;
+
+  if (error) {
+    console.error(`Notification failure: ${copyKey}`, error);
+  }
+
+  notify(message, "error", duration);
+}
+
 async function parseApiResponse(response) {
   const contentType = response.headers.get("content-type") || "";
 
@@ -1256,7 +1305,7 @@ async function toggleFocusPauseState(
     renderFocusTimer();
     return true;
   } catch (error) {
-    Toast.show({ message: error.message, type: "error", duration: 3000 });
+    notifyFailure("focusUpdateFailed", error, 3000);
     return false;
   } finally {
     focusState.transitionPending = false;
@@ -1342,11 +1391,7 @@ async function initFocusMode() {
       const payload = await parseApiResponse(response);
 
       if (!response.ok) {
-        Toast.show({
-          message: payload?.error || "Could not start focus session.",
-          type: "error",
-          duration: 3000,
-        });
+        notifyFailure("focusUpdateFailed", payload?.error, 3000);
         return;
       }
 
@@ -1423,7 +1468,7 @@ async function initFocusMode() {
 
     const completion = await completeTask(focusState.taskId);
     if (!completion.ok) {
-      Toast.show({ message: completion.error, type: "error", duration: 3000 });
+      notifyFailure("taskCompletionFailed", completion.error, 3000);
       updateFocusModeControls({
         running: Boolean(focusState.taskId),
         hasTask: Boolean(selectEl.value),
@@ -1674,12 +1719,7 @@ async function initDailyEmailSettings() {
         duration: 1800,
       });
     } catch (error) {
-      console.error("Saving daily email settings failed:", error);
-      Toast.show({
-        message: error.message || "Could not save daily reflection settings.",
-        type: "error",
-        duration: 2600,
-      });
+      notifyFailure("dailyEmailSettingsFailed", error, 2600);
     }
   };
 
@@ -1698,12 +1738,7 @@ async function initDailyEmailSettings() {
     toggleEl.checked = Boolean(data?.dailyEmail);
     timeEl.value = typeof data?.dailyEmailTime === "string" ? data.dailyEmailTime : "18:00";
   } catch (error) {
-    console.error("Loading daily email settings failed:", error);
-    Toast.show({
-      message: "Could not load daily reflection settings.",
-      type: "error",
-      duration: 2600,
-    });
+    notifyFailure("dailyEmailSettingsLoadFailed", error, 2600);
   } finally {
     setInputsDisabled(false);
   }
@@ -1741,12 +1776,7 @@ async function initDailyEmailSettings() {
         duration: 2600,
       });
     } catch (error) {
-      console.error("Sending daily email test failed:", error);
-      Toast.show({
-        message: error.message || "Could not send test daily reflection email.",
-        type: "error",
-        duration: 3000,
-      });
+      notifyFailure("dailyEmailTestFailed", error, 3000);
     } finally {
       testBtn.disabled = false;
     }
@@ -1947,11 +1977,7 @@ async function initFeedbackForm() {
       emailEl.value = authData.user.email;
     }
   } catch (error) {
-    Toast.show({
-      message: error?.message || "Unable to load account email for feedback.",
-      type: "error",
-      duration: 3000,
-    });
+    notifyFailure("feedbackAccountFailed", error, 3000);
   }
 
   feedbackForm.addEventListener("submit", async (event) => {
@@ -2005,11 +2031,7 @@ async function initFeedbackForm() {
         duration: 2800,
       });
     } catch (error) {
-      Toast.show({
-        message: error?.message || "Unable to send feedback right now.",
-        type: "error",
-        duration: 3200,
-      });
+      notifyFailure("feedbackSubmitFailed", error, 3200);
     } finally {
       submitBtn.disabled = false;
     }
@@ -2054,11 +2076,7 @@ async function initBoardTaskPreferencesSettings() {
       if (dashboardTaskState.allTasks?.length) {
         updateTaskList(dashboardTaskState.allTasks);
       }
-      Toast.show({
-        message: error.message || "Could not save board preferences.",
-        type: "error",
-        duration: 2800,
-      });
+      notifyFailure("boardPreferencesFailed", error, 2800);
     }
   };
 
@@ -2314,12 +2332,7 @@ function initDeleteAccountFlow() {
       });
       window.location.href = "/login.html";
     } catch (error) {
-      console.error("Delete account failed:", error);
-      Toast.show({
-        message: error?.message || "Unable to delete account right now.",
-        type: "error",
-        duration: 3500,
-      });
+      notifyFailure("accountDeleteFailed", error, 3500);
       setBusyState(false);
     }
   });
@@ -2478,12 +2491,11 @@ function initProfileBoardNav() {
         window.location.href = "/login.html";
       } else {
         const data = await parseApiResponse(response);
-        notify(`Logout failed: ${data.error || "Unknown error"}`);
+        notifyFailure("logoutFailed", data.error);
       }
-    } catch (error) {
-      console.error("Logout request failed:", error);
-      notify("Logout failed due to a network/server issue.");
-    }
+      } catch (error) {
+        notifyFailure("connectionError", error);
+      }
   };
 
   const sidebarLogoutBtn = document.getElementById("profileSidebarLogoutBtn");
@@ -2600,12 +2612,11 @@ document.addEventListener("DOMContentLoaded", async () => {
           const query = new URLSearchParams({ email }).toString();
           window.location.href = `/verification-status.html?${query}`;
         } else {
-          notify(`Registration failed: ${data.error || "Unknown error"}`);
+          notifyFailure("registrationFailed", data.error);
         }
-      } catch (error) {
-        console.error("Registration request failed:", error);
-        notify("Registration failed due to a network/server issue.");
-      }
+        } catch (error) {
+          notifyFailure("connectionError", error);
+        }
     });
   }
 
@@ -2645,23 +2656,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         const data = await parseApiResponse(response);
         if (response.ok) {
-          notify(data.message || "If the address can be used, check your email for the next step.", "success", 2600);
-          Toast.show({
-            message: data.message || "Check your email for the next step.",
-            type: "success",
-            duration: 2200,
-          });
+          notify(NOTIFICATION_COPY.verificationEmailSent, "success", 2600);
         } else {
-          notify(data.error || "Could not resend verification email.");
-          Toast.show({
-            message: "Resend failed",
-            type: "error",
-            duration: 2200,
-          });
+          notifyFailure("resendVerificationFailed", data.error);
         }
       } catch (error) {
-        console.error("Resend verification request failed:", error);
-        notify("Network error while resending verification email.");
+        notifyFailure("connectionError", error);
       } finally {
         resendBtn.disabled = false;
       }
@@ -2691,19 +2691,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         const data = await parseApiResponse(response);
         if (response.ok) {
-          Toast.show({
-            message:
-              data.message ||
-              "If that account exists, a password reset email has been sent.",
-            type: "success",
-            duration: 3200,
-          });
+          notify(NOTIFICATION_COPY.passwordResetRequested, "success", 3200);
         } else {
-          notify(data.error || "Could not process reset request.");
+          notifyFailure("passwordResetRequestFailed", data.error);
         }
       } catch (error) {
-        console.error("Forgot password request failed:", error);
-        notify("Network error while requesting password reset.");
+        notifyFailure("connectionError", error);
       }
     });
   }
@@ -2763,19 +2756,18 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         const data = await parseApiResponse(response);
         if (response.ok) {
-          notify(data.message || "Password reset successful.", "success", 2600);
           Toast.show({
-            message: "Password updated",
+            message: NOTIFICATION_COPY.passwordUpdated,
             type: "success",
             duration: 2200,
           });
           window.location.href = "/login.html";
         } else {
-          notify(data.error || "Unable to reset password.");
+          notifyFailure("passwordResetFailed", data.error);
         }
       } catch (error) {
         console.error("Reset password request failed:", error);
-        notify("Network error while resetting password.");
+        notifyFailure("connectionError", error);
       }
     });
   }
@@ -2830,27 +2822,16 @@ document.addEventListener("DOMContentLoaded", async () => {
 
           // alert("Login successful!");
           Toast.show({
-            message: "Login Sucessful",
+            message: "Signed in successfully.",
             type: "success",
             duration: 2000,
           });
           window.location.href = requestedPath || preferredDefaultPath;
         } else {
-          notify(`Login failed: ${data.error || "Unknown error"}`);
-          Toast.show({
-            message: "Login failed: " + (data.error || "Unknown error"),
-            type: "error",
-            duration: 4000,
-          });
+          notifyFailure("loginFailed", data.error);
         }
       } catch (error) {
-        console.error("Login request failed:", error);
-        notify("Login failed due to a network/server issue.");
-        Toast.show({
-          message: "Login failed due to a network/server issue.",
-          type: "error",
-          duration: 2000,
-        });
+        notifyFailure("connectionError", error);
       }
     });
   }
@@ -2877,11 +2858,10 @@ document.addEventListener("DOMContentLoaded", async () => {
           window.location.href = "/login.html";
         } else {
           const data = await parseApiResponse(response);
-          notify(`Logout failed: ${data.error || "Unknown error"}`);
+          notifyFailure("logoutFailed", data.error);
         }
       } catch (error) {
-        console.error("Logout request failed:", error);
-        notify("Logout failed due to a network/server issue.");
+        notifyFailure("connectionError", error);
       }
     });
   }
@@ -3101,11 +3081,7 @@ function initCalendarPage() {
 
       const updateData = await parseApiResponse(updateResponse);
       if (!updateResponse.ok) {
-        Toast.show({
-          message: updateData.error || "Error updating task",
-          type: "error",
-          duration: 3200,
-        });
+        notifyFailure("taskUpdateFailed", updateData.error, 3200);
         return null;
       }
 
@@ -3827,7 +3803,7 @@ const submit = async function (event) {
     if (response.ok) {
       console.log("Task added successfully:", data);
       updateTaskList(data); // Refresh task list
-      Toast.show({ message: "Task Submitted", type: "success", duration: 2000 });
+      Toast.show({ message: "Task submitted.", type: "success", duration: 2000 });
 
       // Clear input fields after successful submission
       taskInput.value = "";
@@ -3839,19 +3815,9 @@ const submit = async function (event) {
       return;
     }
 
-    console.error("Task Submission Error:", data?.error);
-    Toast.show({
-      message: data?.error || "Could not submit task.",
-      type: "error",
-      duration: 3000,
-    });
+    notifyFailure("taskCreateFailed", data?.error, 3000);
   } catch (error) {
-    console.error("Task submission failed:", error);
-    Toast.show({
-      message: "Could not submit task.",
-      type: "error",
-      duration: 3000,
-    });
+    notifyFailure("taskCreateFailed", error, 3000);
   }
 };
 
@@ -4497,20 +4463,11 @@ function updateTaskList(tasks) {
           }
           fetchTasks();
         } else {
-          Toast.show({
-            message: updatedTask.error || "Could not update Big 3 status.",
-            type: "error",
-            duration: 3500,
-          });
+          notifyFailure("bigThreeUpdateFailed", updatedTask.error, 3500);
           setBigThreeButtonState(bigThreeButton, task.isBigThree);
         }
       } catch (error) {
-        console.error("Task Big 3 toggle failed:", error);
-        Toast.show({
-          message: "Could not update Big 3 status.",
-          type: "error",
-          duration: 3000,
-        });
+        notifyFailure("bigThreeUpdateFailed", error, 3000);
         setBigThreeButtonState(bigThreeButton, task.isBigThree);
       } finally {
         if (bigThreeButton) bigThreeButton.disabled = false;
@@ -4537,11 +4494,7 @@ function updateTaskList(tasks) {
         return updateData;
       }
 
-      Toast.show({
-        message: updateData.error || "Error updating task",
-        type: "error",
-        duration: 3200,
-      });
+      notifyFailure("taskUpdateFailed", updateData.error, 3200);
       return null;
     };
 
