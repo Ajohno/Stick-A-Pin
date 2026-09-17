@@ -162,23 +162,3 @@ const Toast = (() => {
   return { show, hide };
 })();
 
-/* =========================================================
-   Test Notifications
-   ========================================================= */
-function sucessToast(){
-  Toast.show({ message: "Task saved!", type: "success" });
-}
-
-function errorToast(){
-  Toast.show({ message: "Could not connect to server.", type: "error", title: "Network", duration: 5000 });
-}
-
-function infoToast(){
-  Toast.show({ message: "Reminder: hydrate, mortal.", type: "info", duration: 5000 });
-}
-
-function warningToast(){
-  // Persistent until user closes:
-Toast.show({ message: "You are offline. Some actions may fail.", type: "warning", duration: 0 });
-}
-
