@@ -67,3 +67,15 @@ test("representative auth, task, focus, and feedback failures use reviewed copy"
   assert.doesNotMatch(source, /notify\([^\n]*(?:data\.error|Unknown error)/);
   assert.doesNotMatch(source, /Login Sucessful|function sucessToast|function errorToast/);
 });
+
+test("smoke-tested success notifications use sentence case and confirm both Big 3 states", () => {
+  const source = fs.readFileSync("public/js/main.js", "utf8");
+
+  assert.match(source, /message: "Task completed\. One step down, time for the next\."/);
+  assert.match(source, /message: "Board preferences saved\."/);
+  assert.match(
+    source,
+    /\? "Task added to your Big 3\."\s*:\s*"Task removed from your Big 3\."/,
+  );
+  assert.doesNotMatch(source, /Task Completed!|Board preferences saved"/);
+});

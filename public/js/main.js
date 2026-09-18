@@ -2065,7 +2065,7 @@ async function initBoardTaskPreferencesSettings() {
       }
 
       Toast.show({
-        message: "Board preferences saved",
+        message: "Board preferences saved.",
         type: "success",
         duration: 1800,
       });
@@ -4078,7 +4078,7 @@ async function updateTaskCompletionStatus(
 
     if (nextStatus === "completed") {
       Toast.show({
-        message: "Task Completed! One step down, time for the next.",
+        message: "Task completed. One step down, time for the next.",
         type: "success",
         duration: 4000,
       });
@@ -4454,13 +4454,13 @@ function updateTaskList(tasks) {
         if (updateResponse.ok) {
           task.isBigThree = Boolean(updatedTask.isBigThree);
           setBigThreeButtonState(bigThreeButton, task.isBigThree);
-          if (task.isBigThree) {
-            Toast.show({
-              message: "Task added to your Big 3",
-              type: "success",
-              duration: 2200,
-            });
-          }
+          Toast.show({
+            message: task.isBigThree
+              ? "Task added to your Big 3."
+              : "Task removed from your Big 3.",
+            type: "success",
+            duration: 2200,
+          });
           fetchTasks();
         } else {
           notifyFailure("bigThreeUpdateFailed", updatedTask.error, 3500);
