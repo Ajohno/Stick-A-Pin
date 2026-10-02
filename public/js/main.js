@@ -225,6 +225,125 @@ const focusState = {
   allTasks: [],
 };
 
+// Cross-tab messages are invalidation hints only. Session/task data always comes
+// from authenticated server reads, never from another tab's message payload.
+const focusSync = {
+  initialized: false,
+  channel: null,
+  refreshPromise: null,
+  refreshRequested: false,
+  generation: 0,
+  mutationDepth: 0,
+};
+
+function beginFocusMutation() {
+  focusSync.mutationDepth += 1;
+  focusSync.generation += 1;
+}
+
+function endFocusMutation() {
+  focusSync.mutationDepth -= 1;
+  if (focusSync.refreshRequested) void drainFocusRefresh();
+}
+
+function broadcastFocusChange() {
+  if (!focusSync.channel) return;
+  try {
+    focusSync.channel.postMessage({ type: "focus-session-changed" });
+  } catch {
+    // Returning to the tab still refreshes state if messaging is unavailable.
+  }
+}
+
+function requestFocusRefresh() {
+  if (!focusSync.initialized) return Promise.resolve();
+  focusSync.generation += 1;
+  focusSync.refreshRequested = true;
+  return drainFocusRefresh();
+}
+
+function drainFocusRefresh() {
+  if (focusSync.refreshPromise) return focusSync.refreshPromise;
+  if (!focusSync.refreshRequested || focusSync.mutationDepth
+      || focusState.isRestoring || document.visibilityState === "hidden") {
+    return Promise.resolve();
+  }
+
+  focusSync.refreshPromise = (async () => {
+    while (focusSync.refreshRequested && !focusSync.mutationDepth
+        && !focusState.isRestoring && document.visibilityState !== "hidden") {
+      focusSync.refreshRequested = false;
+      const generation = focusSync.generation;
+      try {
+        const session = await readActiveFocusSession();
+        let tasks;
+        if (session) {
+          const response = await apiFetch("/tasks", {
+            credentials: "include",
+            cache: "no-store",
+          });
+          if (!response.ok) throw new Error("Could not refresh focus tasks.");
+          tasks = await response.json();
+          if (!Array.isArray(tasks)) throw new Error("Invalid focus task response.");
+        }
+
+        // A newer signal or local action invalidates this snapshot. Do not let
+        // a delayed GET resurrect a stopped session or undo a successful pause.
+        if (generation !== focusSync.generation || focusSync.mutationDepth
+            || document.visibilityState === "hidden") continue;
+
+        if (session) {
+          focusState.allTasks = tasks;
+          await presentAuthoritativeFocusSession(session, { stopInactiveTask: false });
+        } else if (focusState.sessionId || focusState.taskId) {
+          clearLocalFocusSessionState();
+          const statusEl = getFocusWidgetElementById("focus-status");
+          if (statusEl) statusEl.textContent = "Focus session ended in another tab.";
+          void updateFocusLogWidget();
+        }
+      } catch (error) {
+        // A temporary refresh failure must not clear a valid local session or
+        // create repeated user-facing notifications. The next event retries.
+        console.error("Focus session refresh failed:", error);
+      }
+    }
+  })().finally(() => {
+    focusSync.refreshPromise = null;
+    if (focusSync.refreshRequested && !focusSync.mutationDepth
+        && !focusState.isRestoring && document.visibilityState !== "hidden") {
+      void drainFocusRefresh();
+    }
+  });
+  return focusSync.refreshPromise;
+}
+
+function initFocusSessionSync() {
+  if (focusSync.initialized) return;
+  focusSync.initialized = true;
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") void requestFocusRefresh();
+  });
+  window.addEventListener("focus", () => { void requestFocusRefresh(); });
+  window.addEventListener("pageshow", () => { void requestFocusRefresh(); });
+
+  try {
+    if (typeof window.BroadcastChannel === "function") {
+      focusSync.channel = new window.BroadcastChannel("stickapin-focus-session");
+      focusSync.channel.addEventListener("message", (event) => {
+        if (event.data?.type === "focus-session-changed") void requestFocusRefresh();
+      });
+    }
+  } catch {
+    focusSync.channel = null;
+  }
+  if (!focusSync.channel) {
+    // Cover simultaneously visible windows on browsers without tab messaging.
+    window.setInterval(() => {
+      if (document.visibilityState === "visible") void requestFocusRefresh();
+    }, 15000);
+  }
+}
+
 const focusQuotes = {
   general: [
     "You showed up. That’s the hardest part.",
@@ -1035,77 +1154,83 @@ async function stopFocusSession(reason = "manual_stop") {
   const statusEl = document.getElementById("focus-status");
   if (!focusState.taskId || focusState.transitionPending) return false;
 
-  focusState.transitionPending = true;
-  if (statusEl) statusEl.textContent = "Stopping focus session…";
-  updateFocusModeControls({ running: true, hasTask: true });
-
-  const endingTaskId = focusState.taskId;
-  const endedTask = focusState.allTasks.find(
-    (task) => String(task?._id) === String(endingTaskId),
-  );
-  const taskMarkedCompleted = endedTask?.status === "completed";
-  const apiReason = [
-    "completed_task",
-    "manual_stop",
-    "timeout",
-    "app_closed",
-  ].includes(reason)
-    ? reason
-    : "manual_stop";
-
+  beginFocusMutation();
   try {
-    const response = await apiFetch("/focus-sessions/stop", {
-      credentials: "include",
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reason: apiReason }),
-    });
-
-    if (response.status === 409) {
-      const reconciledState = await reconcileFocusSessionState();
-      return reconciledState === "inactive";
-    }
-
-    if (!response.ok && response.status !== 404) {
-      const payload = await parseApiResponse(response);
-      throw new Error(payload?.error || "Could not save focus session.");
-    }
-  } catch (error) {
-    console.error("Stop focus session request failed:", error);
-    focusState.transitionPending = false;
+    focusState.transitionPending = true;
+    if (statusEl) statusEl.textContent = "Stopping focus session…";
     updateFocusModeControls({ running: true, hasTask: true });
-    if (statusEl) {
-      statusEl.textContent = focusState.isPaused
-        ? "Focus session is still paused. It could not be stopped."
-        : "Focus session is still running. It could not be stopped.";
+
+    const endingTaskId = focusState.taskId;
+    const endedTask = focusState.allTasks.find(
+      (task) => String(task?._id) === String(endingTaskId),
+    );
+    const taskMarkedCompleted = endedTask?.status === "completed";
+    const apiReason = [
+      "completed_task",
+      "manual_stop",
+      "timeout",
+      "app_closed",
+    ].includes(reason)
+      ? reason
+      : "manual_stop";
+
+    try {
+      const response = await apiFetch("/focus-sessions/stop", {
+        credentials: "include",
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: apiReason }),
+      });
+
+      if (response.status === 409) {
+        const reconciledState = await reconcileFocusSessionState();
+        return reconciledState === "inactive";
+      }
+
+      if (!response.ok && response.status !== 404) {
+        const payload = await parseApiResponse(response);
+        throw new Error(payload?.error || "Could not save focus session.");
+      }
+    } catch (error) {
+      console.error("Stop focus session request failed:", error);
+      focusState.transitionPending = false;
+      updateFocusModeControls({ running: true, hasTask: true });
+      if (statusEl) {
+        statusEl.textContent = focusState.isPaused
+          ? "Focus session is still paused. It could not be stopped."
+          : "Focus session is still running. It could not be stopped.";
+      }
+      Toast.show({
+        message: "The focus session could not be saved, so the timer was not stopped.",
+        type: "error",
+        duration: 3500,
+      });
+      return false;
     }
+
+    clearLocalFocusSessionState();
+    broadcastFocusChange();
+
+    if (statusEl && (reason === "completed_task" || taskMarkedCompleted)) {
+      statusEl.textContent = "Focus session ended because this task was completed.";
+      showFocusQuoteByCategory("completion");
+    } else if (statusEl && reason === "task_no_longer_active") {
+      statusEl.textContent = "Focus session ended because the task is no longer active.";
+    } else if (statusEl) {
+      statusEl.textContent = "Focus session stopped.";
+    }
+
     Toast.show({
-      message: "The focus session could not be saved, so the timer was not stopped.",
-      type: "error",
-      duration: 3500,
+      message: "Focus timer ended.",
+      type: "success",
+      duration: 2500,
     });
-    return false;
+
+    void updateFocusLogWidget();
+    return true;
+  } finally {
+    endFocusMutation();
   }
-
-  clearLocalFocusSessionState();
-
-  if (statusEl && (reason === "completed_task" || taskMarkedCompleted)) {
-    statusEl.textContent = "Focus session ended because this task was completed.";
-    showFocusQuoteByCategory("completion");
-  } else if (statusEl && reason === "task_no_longer_active") {
-    statusEl.textContent = "Focus session ended because the task is no longer active.";
-  } else if (statusEl) {
-    statusEl.textContent = "Focus session stopped.";
-  }
-
-  Toast.show({
-    message: "Focus timer ended.",
-    type: "success",
-    duration: 2500,
-  });
-
-  void updateFocusLogWidget();
-  return true;
 }
 
 async function completeTask(taskId) {
@@ -1207,11 +1332,18 @@ function synchronizeRestoredFocusTask() {
   return true;
 }
 
-async function presentAuthoritativeFocusSession(session) {
+async function presentAuthoritativeFocusSession(session, { stopInactiveTask = true } = {}) {
   focusState.transitionPending = false;
   applyFocusSessionState(session);
   if (!synchronizeRestoredFocusTask()) {
-    await stopFocusSession("task_no_longer_active");
+    if (stopInactiveTask) {
+      await stopFocusSession("task_no_longer_active");
+    } else {
+      // Background reads update this display only; they never end server work.
+      clearLocalFocusSessionState();
+      const statusEl = getFocusWidgetElementById("focus-status");
+      if (statusEl) statusEl.textContent = "The focused task is no longer active.";
+    }
     return false;
   }
 
@@ -1271,6 +1403,7 @@ async function toggleFocusPauseState(
 ) {
   if (!focusState.taskId || focusState.transitionPending) return false;
 
+  beginFocusMutation();
   focusState.transitionPending = true;
   updateFocusModeControls({ running: true, hasTask: true });
   try {
@@ -1303,6 +1436,7 @@ async function toggleFocusPauseState(
       if (statusEl) statusEl.textContent = "Focus session resumed.";
     }
     renderFocusTimer();
+    broadcastFocusChange();
     return true;
   } catch (error) {
     notifyFailure("focusUpdateFailed", error, 3000);
@@ -1313,6 +1447,7 @@ async function toggleFocusPauseState(
       running: Boolean(focusState.taskId),
       hasTask: Boolean(document.getElementById("focusTaskSelect")?.value),
     });
+    endFocusMutation();
   }
 }
 
@@ -1329,6 +1464,7 @@ async function initFocusMode() {
   focusState.timerEl = document.getElementById("focusTimer");
   focusState.sessionCardEl = document.querySelector(".focus-session-card");
   focusState.isRestoring = true;
+  initFocusSessionSync();
 
   bindFocusFilterTabs();
   setFocusQuoteText("", { typewriter: false });
@@ -1348,6 +1484,7 @@ async function initFocusMode() {
       running: Boolean(focusState.taskId),
       hasTask: Boolean(selectEl.value),
     });
+    if (focusSync.refreshRequested) void drainFocusRefresh();
   }
 
   if (!focusState.taskId) {
@@ -1369,10 +1506,12 @@ async function initFocusMode() {
       return;
     }
 
-    if (focusState.taskId) {
+    if (focusState.taskId || focusState.transitionPending || focusState.isRestoring) {
       return;
     }
 
+    beginFocusMutation();
+    focusState.transitionPending = true;
     startBtn.disabled = true;
 
     try {
@@ -1402,6 +1541,7 @@ async function initFocusMode() {
       showFocusQuoteByCategory(quoteCategory);
       scheduleSessionNudges();
       statusEl.textContent = `Focused on: ${selectedTaskLabel}`;
+      broadcastFocusChange();
       Toast.show({
         message: "Focus timer started.",
         type: "success",
@@ -1416,12 +1556,12 @@ async function initFocusMode() {
         duration: 3000,
       });
     } finally {
-      if (!focusState.taskId) {
-        updateFocusModeControls({
-          running: false,
-          hasTask: Boolean(selectEl.value),
-        });
-      }
+      focusState.transitionPending = false;
+      updateFocusModeControls({
+        running: Boolean(focusState.taskId),
+        hasTask: Boolean(selectEl.value),
+      });
+      endFocusMutation();
     }
   });
 
@@ -1461,23 +1601,36 @@ async function initFocusMode() {
   });
 
   completeBtn.addEventListener("click", async () => {
-    if (!focusState.taskId) return;
+    if (!focusState.taskId || focusState.transitionPending || focusState.isRestoring) return;
 
-    completeBtn.disabled = true;
-    stopBtn.disabled = true;
+    beginFocusMutation();
+    try {
+      focusState.transitionPending = true;
+      updateFocusModeControls({ running: true, hasTask: true });
+      completeBtn.disabled = true;
+      stopBtn.disabled = true;
 
-    const completion = await completeTask(focusState.taskId);
-    if (!completion.ok) {
-      notifyFailure("taskCompletionFailed", completion.error, 3000);
+      const completion = await completeTask(focusState.taskId);
+      if (!completion.ok) {
+        notifyFailure("taskCompletionFailed", completion.error, 3000);
+        updateFocusModeControls({
+          running: Boolean(focusState.taskId),
+          hasTask: Boolean(selectEl.value),
+        });
+        return;
+      }
+
+      focusState.transitionPending = false;
+      await stopFocusSession("completed_task");
+      await loadFocusTasks();
+    } finally {
+      focusState.transitionPending = false;
       updateFocusModeControls({
         running: Boolean(focusState.taskId),
         hasTask: Boolean(selectEl.value),
       });
-      return;
+      endFocusMutation();
     }
-
-    await stopFocusSession("completed_task");
-    await loadFocusTasks();
   });
 }
 
