@@ -194,3 +194,39 @@ all 48 tests with no failures or skips, using
 test container. This includes all four database integration tests.
 
 CI and deployed browser/log verification remain pending for this change.
+
+## Focus cross-tab recovery (#306)
+
+The Focus page refreshes the authenticated active-session endpoint when it becomes
+visible, regains window focus, or is restored from the browser page cache. After a
+successful Start, Pause, Resume, or Stop, same-origin tabs receive a
+`focus-session-changed` BroadcastChannel hint and read the current session from
+the server. The hint contains no account, task, session, or credential data.
+Browsers without BroadcastChannel refresh visible Focus pages every 15 seconds
+in addition to the visibility/focus events.
+
+Refreshes are serialized and deferred during initial restoration or local Focus
+mutations. New signals and local mutations invalidate older responses. A failed
+background refresh retains the displayed session and retries on the next event;
+background refreshes do not show repetitive toasts or write session state.
+
+### Verification and remaining release checks
+
+On October 2, 2026, the developer tested the `dev` preview at `c7c99ae` and reported
+successful reload, browser restart, laptop restart, phone restart, and paused
+reload recovery, with one correctly timed Focus Log entry. The two-tab test
+identified stale Pause and Stop displays until reload, despite correct saved
+session duration and a single entry. This change addresses that display defect.
+
+Regression coverage executes the frontend code with simulated tab events and
+same-origin messaging. It covers Start/Pause/Resume/Stop propagation, paused time,
+controls returning to idle, overlapping refreshes, local-action races, hidden
+tabs, unavailable messaging, failed requests, and read-only background recovery.
+These automated results do not replace deployed browser verification.
+
+After this fix is integrated, repeat two-tab Start/Pause/Resume/Stop without
+reloading, including two simultaneously visible windows and switching away/back.
+Confirm one session with correct active duration and no duplicate notifications.
+Keep #306 and its release gate open until the required tab-discard, mobile
+screen-lock/restart, installed-app (where supported), completed/deleted-task,
+and concurrency checks are satisfied on the release candidate.
