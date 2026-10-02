@@ -19,6 +19,8 @@
    - Page defaults, variables, and safe layout rules
    ========================================================= */
 :root{
+  /* Keep the paper theme light, including browser-rendered form controls. */
+  color-scheme: only light;
   /* Dashboard spacing (used by corkboard + grid) */
   --board-pad: clamp(12px, 2vw, 22px);
   --board-gap: clamp(12px, 2vw, 20px);
@@ -36,6 +38,7 @@
 
 /* Global safety net: prevent horizontal scroll */
 html, body{
+  background: #F4E6D3;
   width: 100%;
   max-width: 100%;
   /* overflow-x: hidden; */
@@ -43,7 +46,6 @@ html, body{
 
 body{
   margin: 0;
-  background: #F4E6D3;
   color: #5B3A34;
   font-family: "Itim", serif;
 }
