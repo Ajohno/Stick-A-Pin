@@ -43,6 +43,59 @@ async function cleanupLegacyUserIndexes(db) {
 }
 
 /**
+ * Error names that indicate a transient network/Atlas hiccup worth retrying,
+ * rather than a configuration problem (bad URI, auth failure) that retrying
+ * won't fix.
+ */
+const TRANSIENT_MONGO_ERRORS = new Set([
+    "MongoServerSelectionError",
+    "MongoNetworkError",
+    "MongoNetworkTimeoutError",
+]);
+
+const MAX_CONNECT_ATTEMPTS = 3;
+const CONNECT_RETRY_BASE_DELAY_MS = 1000;
+const CONNECT_RETRY_MAX_DELAY_MS = 5000;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Connect to MongoDB, retrying transient network failures with exponential
+ * backoff. Each attempt fails fast (10s server selection) instead of the 30s
+ * driver default, which would outlive a serverless function's own timeout and
+ * turn a momentary Atlas blip into a failed request.
+ */
+async function connectWithRetry() {
+    const options = {
+        autoIndex: process.env.NODE_ENV !== "production",
+        serverSelectionTimeoutMS: 10000,
+    };
+
+    let lastError;
+    for (let attempt = 1; attempt <= MAX_CONNECT_ATTEMPTS; attempt += 1) {
+        try {
+            return await mongoose.connect(process.env.MONGO_URI, options);
+        } catch (err) {
+            lastError = err;
+            const transient = TRANSIENT_MONGO_ERRORS.has(err?.name);
+            const attemptsLeft = MAX_CONNECT_ATTEMPTS - attempt;
+            if (!transient || attemptsLeft === 0) {
+                throw err;
+            }
+            const delay = Math.min(
+                CONNECT_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1),
+                CONNECT_RETRY_MAX_DELAY_MS
+            );
+            console.warn(
+                `⚠️ MongoDB connection attempt ${attempt}/${MAX_CONNECT_ATTEMPTS} failed (${err.name}); retrying in ${delay}ms...`
+            );
+            await sleep(delay);
+        }
+    }
+    throw lastError;
+}
+
+/**
  * Return the active Mongoose connection, creating it only when needed.
  * @returns {Promise<import("mongoose").Mongoose|import("mongoose").Connection>}
  */
@@ -61,8 +114,7 @@ const connectDB = async () => {
         return connectionPromise;
     }
 
-    connectionPromise = mongoose
-        .connect(process.env.MONGO_URI, { autoIndex: process.env.NODE_ENV !== "production" })
+    connectionPromise = connectWithRetry()
         .then(async (connection) => {
             console.log("✅ MongoDB Connected Successfully!");
 
