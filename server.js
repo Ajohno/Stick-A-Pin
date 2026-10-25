@@ -46,7 +46,9 @@ const { scheduleBackgroundTask } = require("./config/background-tasks");
 const { isAuthorizedCronRequest } = require("./config/cron-auth");
 const csrf = require("lusca").csrf; // CSRF protection middleware
 const MongoStore = require("connect-mongo").default; // Store sessions in MongoDB
-
+const {
+  resolveAccountActionBaseUrl,
+} = require("./config/account-action-base-url");
 
 require("dotenv").config(); // Loads environment variables
 require("./config/passport-config")(passport); // Configures Passport authentication
@@ -437,24 +439,20 @@ async function sendBugFeedbackEmail({ user, subject, message, attachments = [], 
 }
 
 function resolveBaseUrl(req) {
-  if (APP_BASE_URL) {
-    return APP_BASE_URL.replace(/\/$/, "");
-  }
+  const deploymentBaseUrl = resolveAccountActionBaseUrl(process.env);
+  if (deploymentBaseUrl) return deploymentBaseUrl;
 
-  const vercelUrl = String(
-    process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL || ""
-  ).trim();
-  if (vercelUrl) {
-    return `https://${vercelUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")}`;
-  }
-
-  // Never place a client-controlled Host header into an account-action link in
-  // production. A missing canonical URL causes the durable job to retry until
-  // deployment configuration is corrected.
+  // Never use a client-controlled Host header for production account links.
+  // Missing deployment configuration causes the durable job to retry.
   if (IS_PRODUCTION) return "";
 
   const forwardedProto = req?.headers?.["x-forwarded-proto"];
-  const protocol = (forwardedProto ? forwardedProto.split(",")[0] : req?.protocol || "http").trim();
+  const protocol = (
+    forwardedProto
+      ? forwardedProto.split(",")[0]
+      : req?.protocol || "http"
+  ).trim();
+
   const host = req?.get?.("host") || req?.headers?.host;
 
   if (host) {
